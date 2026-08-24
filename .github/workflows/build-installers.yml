@@ -47,28 +47,36 @@ jobs:
         include:
           - name: macOS Apple Silicon
             platform: macos-latest
-            args: --target aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles dmg
             rust_targets: aarch64-apple-darwin
             cache_key: macos-aarch64
             apple_signing_identity: "-"
+            asset_os: macOS
+            asset_arch: arm64
           - name: macOS Intel
             platform: macos-latest
-            args: --target x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles dmg
             rust_targets: x86_64-apple-darwin
             cache_key: macos-x86_64
             apple_signing_identity: "-"
+            asset_os: macOS
+            asset_arch: x64
           - name: Windows x64
             platform: windows-latest
-            args: ""
+            args: --bundles msi,nsis
             rust_targets: ""
             cache_key: windows-x86_64
             apple_signing_identity: ""
+            asset_os: Windows
+            asset_arch: x64
           - name: Linux x64
             platform: ubuntu-22.04
-            args: ""
+            args: --bundles deb,rpm,appimage
             rust_targets: ""
             cache_key: linux-x86_64
             apple_signing_identity: ""
+            asset_os: Linux
+            asset_arch: x64
 
     steps:
       - name: 检出代码
@@ -113,6 +121,28 @@ jobs:
           releaseBody: 下载与你的系统和架构对应的安装包。macOS 产物使用 ad-hoc 签名，首次运行时可能需要在“隐私与安全性”中确认打开。
           releaseDraft: false
           prerelease: ${{ contains(needs.prepare.outputs.release_tag, '-') }}
-          releaseAssetNamePattern: codex-auth-switch-[version]-[platform]-[arch]-[bundle][setup][ext]
+          releaseAssetNamePattern: Codex-Auth-Switch_[version]_${{ matrix.asset_os }}_${{ matrix.asset_arch }}[setup][ext]
           uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: codex-auth-switch-[version]-[platform]-[arch]-[bundle]
+          workflowArtifactNamePattern: Codex-Auth-Switch-[version]-${{ matrix.asset_os }}-${{ matrix.asset_arch }}-[bundle]
+
+  cleanup:
+    name: 清理旧命名产物
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 删除旧命名的安装产物
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        shell: bash
+        run: |
+          gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' |
+            while IFS= read -r asset_name; do
+              case "${asset_name}" in
+                codex-auth-switch-*)
+                  gh release delete-asset "${RELEASE_TAG}" "${asset_name}" --repo "${GITHUB_REPOSITORY}" --yes
+                  ;;
+              esac
+            done
