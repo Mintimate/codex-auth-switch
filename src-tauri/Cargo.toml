@@ -1,0 +1,33 @@
+[package]
+name = "codex-auth-switch"
+version = "0.1.0"
+description = "A local desktop switcher for Codex ChatGPT sign-in profiles"
+authors = ["Codex Auth Switch contributors"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "codex_auth_switch_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "codex-auth-switch"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.3", features = [] }
+tauri-plugin-opener = "2"
+tokio = { version = "1", features = ["sync"] }
+toml = "0.9"
+
+[dev-dependencies]
+tempfile = "3"

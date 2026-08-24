@@ -1,0 +1,39 @@
+# Dependencies
+/node_modules/
+
+# Frontend build output and test coverage
+/dist/
+/coverage/
+
+# Tauri / Rust generated output
+/src-tauri/gen/
+/src-tauri/target/
+
+# Local packaged releases (keep release binaries out of source control)
+/Codex Auth Switch.app/
+/Codex Auth Switch_*.zip
+/Codex Auth Switch_*.dmg
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# Operating systems
+.DS_Store
+._*
+Thumbs.db
