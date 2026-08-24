@@ -385,7 +385,7 @@ impl AccountManager {
             .find(|profile| profile.id == profile_id)
             .ok_or(ManagerError::ProfileNotFound)?;
         let auth = canonical_chatgpt_auth(&profile.auth)?;
-        auth_share::encode_text(&profile.label, &auth, unix_timestamp())
+        auth_share::encode_text(&profile.label, &auth)
             .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
     }
 
@@ -798,17 +798,21 @@ fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
 }
 
 fn canonical_chatgpt_auth(auth: &Value) -> Result<Value, ManagerError> {
-    validate_chatgpt_auth(auth)?;
+    let identity = validate_chatgpt_auth(auth)?;
     let tokens = auth
         .get("tokens")
         .and_then(Value::as_object)
         .ok_or_else(|| ManagerError::InvalidAuth("Codex auth.json 缺少 tokens".to_string()))?;
     let mut normalized_tokens = serde_json::Map::new();
-    for field in ["id_token", "access_token", "refresh_token", "account_id"] {
+    for field in ["id_token", "access_token", "refresh_token"] {
         if let Some(value) = tokens.get(field) {
             normalized_tokens.insert(field.to_string(), value.clone());
         }
     }
+    normalized_tokens.insert(
+        "account_id".to_string(),
+        Value::String(identity.account_id),
+    );
     let mut normalized = serde_json::Map::new();
     normalized.insert(
         "auth_mode".to_string(),

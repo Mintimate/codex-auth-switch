@@ -657,7 +657,7 @@ function App() {
               )}
             </div>
             <p className="sensitive-warning">
-              二维码和剪贴板内容包含可登录凭据，请仅分享给你信任的设备，并避免截图留存或发送到聊天软件。
+              紧凑编码不是加密；二维码和剪贴板内容仍包含可登录凭据，请仅分享给你信任的设备，并避免截图留存或发送到聊天软件。
             </p>
             {shareDialog.copied && (
               <p className="share-feedback success-text">

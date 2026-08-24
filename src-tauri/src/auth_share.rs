@@ -1,4 +1,7 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use image::{DynamicImage, ImageFormat, ImageReader, Luma};
 use qrcode::{EcLevel, QrCode};
@@ -9,9 +12,7 @@ use std::{
     io::{Cursor, Read, Write},
 };
 
-const SHARE_VERSION: u32 = 1;
-const SHARE_TEXT_PREFIX: &str = "CAS-AUTH:1:";
-const BASE45_ALPHABET: &[u8; 45] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+const SHARE_TEXT_PREFIX: &str = "CAS2:";
 const MAX_ENVELOPE_BYTES: usize = 128 * 1024;
 const MAX_SHARE_TEXT_BYTES: usize = 256 * 1024;
 const MAX_QR_IMAGE_BYTES: usize = 12 * 1024 * 1024;
@@ -44,12 +45,18 @@ impl fmt::Display for AuthShareError {
 impl std::error::Error for AuthShareError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AuthShareEnvelope {
-    version: u32,
+#[serde(deny_unknown_fields)]
+struct CompactAuthShareEnvelope {
+    #[serde(rename = "l")]
     label: String,
-    auth: Value,
-    created_at: u64,
+    #[serde(rename = "d")]
+    id_token: String,
+    #[serde(rename = "a")]
+    access_token: String,
+    #[serde(rename = "r")]
+    refresh_token: String,
+    #[serde(rename = "i")]
+    account_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -58,30 +65,24 @@ pub(crate) struct ImportedAuth {
     pub auth: Value,
 }
 
-pub(crate) fn encode_text(
-    label: &str,
-    auth: &Value,
-    created_at: u64,
-) -> Result<String, AuthShareError> {
-    let envelope = AuthShareEnvelope {
-        version: SHARE_VERSION,
+pub(crate) fn encode_text(label: &str, auth: &Value) -> Result<String, AuthShareError> {
+    let envelope = CompactAuthShareEnvelope {
         label: label.to_string(),
-        auth: auth.clone(),
-        created_at,
+        id_token: required_auth_token(auth, "id_token")?.to_string(),
+        access_token: required_auth_token(auth, "access_token")?.to_string(),
+        refresh_token: required_auth_token(auth, "refresh_token")?.to_string(),
+        account_id: required_auth_token(auth, "account_id")?.to_string(),
     };
     let json = serde_json::to_vec(&envelope).map_err(|_| AuthShareError::InvalidPayload)?;
     if json.len() > MAX_ENVELOPE_BYTES {
         return Err(AuthShareError::PayloadTooLarge);
     }
 
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-    encoder
-        .write_all(&json)
-        .map_err(|_| AuthShareError::InvalidPayload)?;
-    let compressed = encoder
-        .finish()
-        .map_err(|_| AuthShareError::InvalidPayload)?;
-    Ok(format!("{SHARE_TEXT_PREFIX}{}", base45_encode(&compressed)))
+    let compressed = compress(&json)?;
+    Ok(format!(
+        "{SHARE_TEXT_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(compressed)
+    ))
 }
 
 pub(crate) fn decode_text(text: &str) -> Result<ImportedAuth, AuthShareError> {
@@ -92,8 +93,28 @@ pub(crate) fn decode_text(text: &str) -> Result<ImportedAuth, AuthShareError> {
     let encoded = text
         .strip_prefix(SHARE_TEXT_PREFIX)
         .ok_or(AuthShareError::InvalidPayload)?;
-    let compressed = base45_decode(encoded)?;
-    let decoder = ZlibDecoder::new(compressed.as_slice());
+    decode_compact_text(encoded)
+}
+
+fn required_auth_token<'a>(auth: &'a Value, field: &str) -> Result<&'a str, AuthShareError> {
+    auth.get("tokens")
+        .and_then(Value::as_object)
+        .and_then(|tokens| tokens.get(field))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or(AuthShareError::InvalidPayload)
+}
+
+fn compress(json: &[u8]) -> Result<Vec<u8>, AuthShareError> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+    encoder
+        .write_all(json)
+        .map_err(|_| AuthShareError::InvalidPayload)?;
+    encoder.finish().map_err(|_| AuthShareError::InvalidPayload)
+}
+
+fn decompress(compressed: &[u8]) -> Result<Vec<u8>, AuthShareError> {
+    let decoder = ZlibDecoder::new(compressed);
     let mut json = Vec::new();
     decoder
         .take((MAX_ENVELOPE_BYTES + 1) as u64)
@@ -102,58 +123,37 @@ pub(crate) fn decode_text(text: &str) -> Result<ImportedAuth, AuthShareError> {
     if json.len() > MAX_ENVELOPE_BYTES {
         return Err(AuthShareError::PayloadTooLarge);
     }
-    let envelope: AuthShareEnvelope =
+    Ok(json)
+}
+
+fn decode_compact_text(encoded: &str) -> Result<ImportedAuth, AuthShareError> {
+    let compressed = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| AuthShareError::InvalidPayload)?;
+    let json = decompress(&compressed)?;
+    let envelope: CompactAuthShareEnvelope =
         serde_json::from_slice(&json).map_err(|_| AuthShareError::InvalidPayload)?;
-    if envelope.version != SHARE_VERSION {
+    if envelope.label.trim().is_empty()
+        || envelope.id_token.trim().is_empty()
+        || envelope.access_token.trim().is_empty()
+        || envelope.refresh_token.trim().is_empty()
+        || envelope.account_id.trim().is_empty()
+    {
         return Err(AuthShareError::InvalidPayload);
     }
     Ok(ImportedAuth {
         label: envelope.label,
-        auth: envelope.auth,
+        auth: serde_json::json!({
+            "auth_mode": "chatgpt",
+            "OPENAI_API_KEY": null,
+            "tokens": {
+                "id_token": envelope.id_token,
+                "access_token": envelope.access_token,
+                "refresh_token": envelope.refresh_token,
+                "account_id": envelope.account_id,
+            }
+        }),
     })
-}
-
-fn base45_encode(bytes: &[u8]) -> String {
-    let mut encoded = String::with_capacity((bytes.len() * 3).div_ceil(2));
-    for chunk in bytes.chunks(2) {
-        let value = if chunk.len() == 2 {
-            u16::from_be_bytes([chunk[0], chunk[1]]) as usize
-        } else {
-            chunk[0] as usize
-        };
-        encoded.push(BASE45_ALPHABET[value % 45] as char);
-        encoded.push(BASE45_ALPHABET[(value / 45) % 45] as char);
-        if chunk.len() == 2 {
-            encoded.push(BASE45_ALPHABET[value / (45 * 45)] as char);
-        }
-    }
-    encoded
-}
-
-fn base45_decode(encoded: &str) -> Result<Vec<u8>, AuthShareError> {
-    if encoded.len() % 3 == 1 || !encoded.is_ascii() {
-        return Err(AuthShareError::InvalidPayload);
-    }
-    let values = encoded
-        .bytes()
-        .map(|byte| {
-            BASE45_ALPHABET
-                .iter()
-                .position(|candidate| *candidate == byte)
-                .ok_or(AuthShareError::InvalidPayload)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut decoded = Vec::with_capacity((values.len() * 2) / 3 + 1);
-    for chunk in values.chunks(3) {
-        let value = chunk[0] + chunk[1] * 45 + chunk.get(2).copied().unwrap_or(0) * 45 * 45;
-        if chunk.len() == 3 {
-            let value = u16::try_from(value).map_err(|_| AuthShareError::InvalidPayload)?;
-            decoded.extend_from_slice(&value.to_be_bytes());
-        } else {
-            decoded.push(u8::try_from(value).map_err(|_| AuthShareError::InvalidPayload)?);
-        }
-    }
-    Ok(decoded)
 }
 
 pub(crate) fn render_qr_data_url(text: &str) -> Result<String, AuthShareError> {
@@ -256,46 +256,59 @@ mod tests {
         })
     }
 
+    fn assert_compact_auth_matches(decoded: &Value, original: &Value) {
+        for field in [
+            "id_token",
+            "access_token",
+            "refresh_token",
+            "account_id",
+        ] {
+            assert_eq!(
+                decoded.pointer(&format!("/tokens/{field}")),
+                original.pointer(&format!("/tokens/{field}"))
+            );
+        }
+        assert!(decoded["OPENAI_API_KEY"].is_null());
+    }
+
     #[test]
     fn text_share_round_trips_without_plain_json() {
-        let encoded = encode_text("个人账号", &sample_auth(), 123).unwrap();
+        let auth = sample_auth();
+        let encoded = encode_text("个人账号", &auth).unwrap();
         assert!(encoded.starts_with(SHARE_TEXT_PREFIX));
         assert!(!encoded.contains("refresh-token"));
+        assert!(encoded
+            .strip_prefix(SHARE_TEXT_PREFIX)
+            .unwrap()
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')));
 
         let decoded = decode_text(&encoded).unwrap();
         assert_eq!(decoded.label, "个人账号");
-        assert_eq!(decoded.auth, sample_auth());
+        assert_compact_auth_matches(&decoded.auth, &auth);
     }
 
     #[test]
     fn qr_share_round_trips_through_png() {
         let auth = realistic_sized_auth();
-        let text = encode_text("个人账号", &auth, 123).unwrap();
+        let text = encode_text("个人账号", &auth).unwrap();
         let data_url = render_qr_data_url(&text).unwrap();
         let png = STANDARD
             .decode(data_url.strip_prefix("data:image/png;base64,").unwrap())
             .unwrap();
         let decoded = decode_qr_image(&png).unwrap();
         assert_eq!(decoded.label, "个人账号");
-        assert_eq!(decoded.auth, auth);
-    }
-
-    #[test]
-    fn base45_round_trips_binary_values() {
-        for value in [
-            Vec::new(),
-            vec![0],
-            vec![0, 255],
-            (0..=255).collect::<Vec<u8>>(),
-        ] {
-            assert_eq!(base45_decode(&base45_encode(&value)).unwrap(), value);
-        }
+        assert_compact_auth_matches(&decoded.auth, &auth);
     }
 
     #[test]
     fn rejects_unrecognized_text_and_images() {
         assert!(matches!(
             decode_text("not-a-share"),
+            Err(AuthShareError::InvalidPayload)
+        ));
+        assert!(matches!(
+            decode_text("CAS-AUTH:1:LEGACY"),
             Err(AuthShareError::InvalidPayload)
         ));
         assert!(matches!(
