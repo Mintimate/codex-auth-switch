@@ -1,4 +1,4 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AppStatus,
@@ -449,7 +449,24 @@ function App() {
                 </div>
                 <div>
                   <span>本地账号库</span>
-                  <code>{status?.vaultPath}</code>
+                  <button
+                    type="button"
+                    className="path-link"
+                    disabled={!status?.vaultPath}
+                    aria-label="在文件管理器中打开本地账号库目录"
+                    title="在文件管理器中显示账号库文件"
+                    onClick={() => {
+                      if (!status?.vaultPath) return;
+                      void revealItemInDir(status.vaultPath).catch((reason) =>
+                        setError(
+                          `无法打开本地账号库目录：${messageOf(reason)}`,
+                        ),
+                      );
+                    }}
+                  >
+                    <code>{status?.vaultPath}</code>
+                    <strong>打开目录</strong>
+                  </button>
                 </div>
                 <p>认证文件包含敏感令牌。应用不会上传、显示或写入日志。</p>
               </footer>

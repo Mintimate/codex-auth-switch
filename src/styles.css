@@ -902,6 +902,46 @@ button:disabled {
   white-space: nowrap;
 }
 
+.path-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  width: calc(100% + 12px);
+  margin: -6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  padding: 6px;
+  color: inherit;
+  gap: 10px;
+  text-align: left;
+}
+
+.path-link:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.path-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.path-link code {
+  overflow: visible;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.path-link strong {
+  color: var(--accent-deep);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
 .paths-card p {
   grid-column: 1 / -1;
   margin: 1px 0 0;
@@ -1072,6 +1112,14 @@ button:disabled {
 
   .dashboard-grid.accounts-only {
     grid-template-columns: 1fr;
+  }
+
+  .account-column .paths-card {
+    grid-template-columns: 1fr;
+  }
+
+  .account-column .paths-card p {
+    grid-column: 1;
   }
 }
 
