@@ -9,6 +9,9 @@
 /src-tauri/gen/
 /src-tauri/target/
 
+# CI-generated macOS icon output
+/src-tauri/icons/Assets.car
+
 # Local packaged releases (keep release binaries out of source control)
 /Codex Auth Switch.app/
 /Codex Auth Switch_*.zip
