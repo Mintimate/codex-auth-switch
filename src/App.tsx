@@ -338,115 +338,123 @@ function App() {
             <section className="alert success">{notice}</section>
           )}
 
-          {status?.supported && (
-            <UsagePanel
-              usage={usage}
-              loading={usageLoading}
-              error={usageError}
-              onRefresh={() => void refreshUsage()}
-            />
-          )}
-
-          <section className="accounts-section">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">本机账号库</span>
-                <h2>已保存账号</h2>
-              </div>
-              <button
-                className="text-button"
-                disabled={Boolean(busy)}
-                onClick={() => {
-                  void refresh();
-                  void refreshUsage();
-                }}
-              >
-                刷新
-              </button>
-            </div>
-
-            {status?.accounts.length ? (
-              <div className="account-list">
-                {status.accounts.map((account) => (
-                  <article
-                    className={`account-card ${account.active ? "active" : ""}`}
-                    key={account.id}
-                  >
-                    <div className="avatar" aria-hidden="true">
-                      {(account.label || account.email || "C")
-                        .slice(0, 1)
-                        .toUpperCase()}
-                    </div>
-                    <div className="account-main">
-                      <div className="account-title-row">
-                        <h3>{account.label}</h3>
-                        {account.active && (
-                          <span className="active-badge">当前</span>
-                        )}
-                      </div>
-                      <p>{account.email ?? "未提供邮箱"}</p>
-                      <span className="account-id">
-                        {shortId(account.accountId)}
-                      </span>
-                    </div>
-                    <div className="account-actions">
-                      {!account.active && (
-                        <button
-                          className="button compact"
-                          disabled={Boolean(busy) || !status.supported}
-                          onClick={() =>
-                            void run("切换账号", () =>
-                              switchAccount(account.id),
-                            )
-                          }
-                        >
-                          切换
-                        </button>
-                      )}
-                      <button
-                        className="icon-button"
-                        title="重命名"
-                        disabled={Boolean(busy)}
-                        onClick={() =>
-                          openDialog("rename", account.label, account.id)
-                        }
-                      >
-                        编辑
-                      </button>
-                      <button
-                        className="icon-button danger"
-                        title="移除"
-                        disabled={Boolean(busy) || account.active}
-                        onClick={() =>
-                          void handleRemove(account.id, account.label)
-                        }
-                      >
-                        移除
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <div className="empty-icon">+</div>
-                <h3>还没有保存账号</h3>
-                <p>可以保存现有 Codex 登录，也可以通过浏览器授权添加新账号。</p>
-              </div>
+          <div
+            className={`dashboard-grid${status?.supported ? "" : " accounts-only"}`}
+          >
+            {status?.supported && (
+              <UsagePanel
+                usage={usage}
+                loading={usageLoading}
+                error={usageError}
+                onRefresh={() => void refreshUsage()}
+              />
             )}
-          </section>
 
-          <footer className="paths-card">
-            <div>
-              <span>Codex 目录</span>
-              <code>{status?.codexHome}</code>
+            <div className="account-column">
+              <section className="accounts-section">
+                <div className="section-heading">
+                  <div>
+                    <span className="eyebrow">本机账号库</span>
+                    <h2>已保存账号</h2>
+                  </div>
+                  <button
+                    className="text-button"
+                    disabled={Boolean(busy)}
+                    onClick={() => {
+                      void refresh();
+                      void refreshUsage();
+                    }}
+                  >
+                    刷新
+                  </button>
+                </div>
+
+                {status?.accounts.length ? (
+                  <div className="account-list">
+                    {status.accounts.map((account) => (
+                      <article
+                        className={`account-card ${account.active ? "active" : ""}`}
+                        key={account.id}
+                      >
+                        <div className="avatar" aria-hidden="true">
+                          {(account.label || account.email || "C")
+                            .slice(0, 1)
+                            .toUpperCase()}
+                        </div>
+                        <div className="account-main">
+                          <div className="account-title-row">
+                            <h3>{account.label}</h3>
+                            {account.active && (
+                              <span className="active-badge">当前</span>
+                            )}
+                          </div>
+                          <p>{account.email ?? "未提供邮箱"}</p>
+                          <span className="account-id">
+                            {shortId(account.accountId)}
+                          </span>
+                        </div>
+                        <div className="account-actions">
+                          {!account.active && (
+                            <button
+                              className="button compact"
+                              disabled={Boolean(busy) || !status.supported}
+                              onClick={() =>
+                                void run("切换账号", () =>
+                                  switchAccount(account.id),
+                                )
+                              }
+                            >
+                              切换
+                            </button>
+                          )}
+                          <button
+                            className="icon-button"
+                            title="重命名"
+                            disabled={Boolean(busy)}
+                            onClick={() =>
+                              openDialog("rename", account.label, account.id)
+                            }
+                          >
+                            编辑
+                          </button>
+                          <button
+                            className="icon-button danger"
+                            title="移除"
+                            disabled={Boolean(busy) || account.active}
+                            onClick={() =>
+                              void handleRemove(account.id, account.label)
+                            }
+                          >
+                            移除
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <div className="empty-icon">+</div>
+                    <h3>还没有保存账号</h3>
+                    <p>
+                      可以保存现有 Codex 登录，也可以通过浏览器授权添加新账号。
+                    </p>
+                  </div>
+                )}
+              </section>
+
+              <footer className="paths-card">
+                <div>
+                  <span>Codex 目录</span>
+                  <code>{status?.codexHome}</code>
+                </div>
+                <div>
+                  <span>本地账号库</span>
+                  <code>{status?.vaultPath}</code>
+                </div>
+                <p>认证文件包含敏感令牌。应用不会上传、显示或写入日志。</p>
+              </footer>
             </div>
-            <div>
-              <span>本地账号库</span>
-              <code>{status?.vaultPath}</code>
-            </div>
-            <p>认证文件包含敏感令牌。应用不会上传、显示或写入日志。</p>
-          </footer>
+          </div>
         </div>
       )}
 

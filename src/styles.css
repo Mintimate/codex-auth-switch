@@ -33,6 +33,7 @@
   --offline: #aaa19b;
   --danger: #ad554c;
   --hint: #f7f2ea;
+  --content-max: 1480px;
   font-family:
     Inter,
     ui-sans-serif,
@@ -114,14 +115,14 @@ button:disabled {
 
 .app-shell {
   min-height: 100vh;
-  padding: 30px 42px 42px;
+  padding: clamp(24px, 3vw, 48px) clamp(24px, 4vw, 64px) clamp(36px, 4vw, 64px);
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 1040px;
+  width: min(100%, var(--content-max));
   margin: 0 auto 28px;
 }
 
@@ -251,12 +252,20 @@ button:disabled {
 
 .content-grid,
 .loading-card {
-  max-width: 1040px;
+  width: min(100%, var(--content-max));
   margin: 0 auto;
 }
 
 .content-grid {
   display: grid;
+  gap: 18px;
+}
+
+.dashboard-grid,
+.account-column {
+  display: grid;
+  min-width: 0;
+  align-items: start;
   gap: 18px;
 }
 
@@ -1044,6 +1053,17 @@ button:disabled {
 @keyframes pulse {
   50% {
     opacity: 0.45;
+  }
+}
+
+@media (min-width: 1240px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.9fr);
+    gap: 20px;
+  }
+
+  .dashboard-grid.accounts-only {
+    grid-template-columns: 1fr;
   }
 }
 
