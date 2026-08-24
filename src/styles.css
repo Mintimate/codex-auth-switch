@@ -19,7 +19,6 @@
   --accent-shadow: rgba(77, 65, 58, 0.14);
   --accent-ring: rgba(184, 101, 70, 0.16);
   --accent-pulse: rgba(184, 101, 70, 0.13);
-  --brand-ring: #f7eee9;
   --shadow: 0 14px 44px rgba(38, 39, 36, 0.06);
   --shadow-strong: 0 24px 64px rgba(38, 39, 36, 0.18);
   --overlay: rgba(35, 36, 33, 0.36);
@@ -73,7 +72,6 @@
   --accent-shadow: rgba(0, 0, 0, 0.2);
   --accent-ring: rgba(204, 125, 94, 0.2);
   --accent-pulse: rgba(204, 125, 94, 0.16);
-  --brand-ring: #f1e6e1;
   --shadow: 0 14px 42px rgba(0, 0, 0, 0.16);
   --shadow-strong: 0 24px 64px rgba(0, 0, 0, 0.38);
   --overlay: rgba(12, 12, 11, 0.58);
@@ -168,30 +166,24 @@ button:disabled {
 }
 
 .brand-mark {
-  position: relative;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: linear-gradient(145deg, var(--accent), var(--accent-hover));
-  box-shadow: 0 8px 22px var(--accent-shadow);
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
 }
 
-.brand-mark span {
-  position: absolute;
-  width: 17px;
-  height: 17px;
-  border: 2px solid var(--brand-ring);
-  border-radius: 50%;
+.brand-mark svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 4px 9px var(--accent-shadow));
 }
 
-.brand-mark span:first-child {
-  top: 8px;
-  left: 8px;
+.app-icon-ink {
+  fill: var(--foreground);
 }
 
-.brand-mark span:last-child {
-  right: 8px;
-  bottom: 8px;
+.app-icon-accent {
+  fill: var(--accent);
 }
 
 .unofficial,
