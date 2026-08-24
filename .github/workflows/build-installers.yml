@@ -108,6 +108,34 @@ jobs:
       - name: 安装前端依赖
         run: npm ci
 
+      - name: 编译 macOS 自适应图标
+        if: startsWith(matrix.platform, 'macos-')
+        shell: bash
+        run: |
+          icon_output="${RUNNER_TEMP}/codex-icon-assets"
+          mkdir -p "${icon_output}"
+
+          xcrun actool src-tauri/icons/Icon.icon \
+            --compile "${icon_output}" \
+            --output-format human-readable-text \
+            --notices \
+            --warnings \
+            --output-partial-info-plist "${icon_output}/assetcatalog_generated_info.plist" \
+            --app-icon Icon \
+            --include-all-app-icons \
+            --accent-color AccentColor \
+            --enable-on-demand-resources NO \
+            --development-region en \
+            --target-device mac \
+            --minimum-deployment-target 26.0 \
+            --platform macosx
+
+          test -f "${icon_output}/Assets.car"
+          cp "${icon_output}/Assets.car" src-tauri/icons/Assets.car
+          jq '(.bundle.icon[] | select(. == "icons/Icon.icon")) = "icons/Assets.car"' \
+            src-tauri/tauri.conf.json > "${RUNNER_TEMP}/tauri.conf.json"
+          mv "${RUNNER_TEMP}/tauri.conf.json" src-tauri/tauri.conf.json
+
       - name: 构建并上传安装产物
         uses: tauri-apps/tauri-action@v1
         env:

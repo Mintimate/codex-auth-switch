@@ -17,44 +17,55 @@
     {
       "layers": [
         {
-          "blend-mode": "normal",
-          "fill": {
-            "solid": "extended-srgb:0.97647,0.45098,0.08627,1.00000"
-          },
           "glass": false,
-          "image-name": "switch-arrows.svg",
-          "name": "切换箭头"
-        },
-        {
-          "blend-mode": "normal",
-          "fill-specializations": [
+          "image-name": "logo-light.svg",
+          "name": "logo-light",
+          "opacity-specializations": [
             {
-              "value": {
-                "solid": "extended-srgb:0.16078,0.14510,0.14118,1.00000"
-              }
+              "value": 1
             },
             {
               "appearance": "dark",
-              "value": {
-                "solid": "extended-srgb:0.95686,0.94510,0.92157,1.00000"
-              }
+              "value": 0
             }
           ],
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        },
+        {
           "glass": false,
-          "image-name": "terminal.svg",
-          "name": "终端"
+          "image-name": "logo-dark.svg",
+          "name": "logo-dark",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ],
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
         }
       ],
-      "blur": 0,
-      "lighting": "individual",
       "shadow": {
         "kind": "none",
-        "opacity": 0
+        "opacity": 0.5
       },
-      "specular": false,
       "translucency": {
         "enabled": false,
-        "value": 0
+        "value": 0.5
       }
     }
   ],
