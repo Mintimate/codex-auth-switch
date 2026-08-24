@@ -130,14 +130,40 @@ jobs:
             --platform macosx
 
           test -f "${icon_output}/Assets.car"
+          test -f "${icon_output}/assetcatalog_generated_info.plist"
+          test "$(plutil -extract CFBundleIconName raw -o - \
+            "${icon_output}/assetcatalog_generated_info.plist")" = "AppIcon"
+
           assetutil --info "${icon_output}/Assets.car" > "${icon_output}/assets-info.json"
           jq -e 'any(.[]; .AssetType == "Icon Image" and .Name == "AppIcon")' \
             "${icon_output}/assets-info.json"
 
-          cp "${icon_output}/Assets.car" src-tauri/icons/Assets.car
-          jq '.bundle.icon += ["icons/Assets.car"]' \
+          jq \
+            --arg assets_car "${icon_output}/Assets.car" \
+            --arg icon_plist "${icon_output}/assetcatalog_generated_info.plist" \
+            '
+              .bundle.resources = (
+                if .bundle.resources == null then
+                  {($assets_car): "Assets.car"}
+                elif (.bundle.resources | type) == "object" then
+                  .bundle.resources + {($assets_car): "Assets.car"}
+                else
+                  error("bundle.resources 必须使用对象形式才能设置 Assets.car 的目标路径")
+                end
+              )
+              | .bundle.macOS.infoPlist = $icon_plist
+            ' \
             src-tauri/tauri.conf.json > "${RUNNER_TEMP}/tauri.conf.json"
           mv "${RUNNER_TEMP}/tauri.conf.json" src-tauri/tauri.conf.json
+
+          jq -e \
+            --arg assets_car "${icon_output}/Assets.car" \
+            --arg icon_plist "${icon_output}/assetcatalog_generated_info.plist" \
+            '
+              .bundle.resources[$assets_car] == "Assets.car"
+              and .bundle.macOS.infoPlist == $icon_plist
+            ' \
+            src-tauri/tauri.conf.json
 
       - name: 构建并上传安装产物
         uses: tauri-apps/tauri-action@v1
