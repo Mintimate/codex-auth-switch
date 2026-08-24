@@ -1,38 +1,43 @@
 :root {
-  --background: #fff8f1;
-  --foreground: #2c1d14;
-  --muted: #7d6b60;
-  --muted-soft: #a08f84;
-  --card: rgba(255, 253, 250, 0.84);
-  --card-solid: #fffdfa;
-  --surface: rgba(255, 250, 245, 0.9);
-  --surface-hover: #fff2e4;
-  --surface-active: rgba(255, 237, 213, 0.82);
-  --border: rgba(124, 67, 28, 0.13);
-  --border-strong: rgba(234, 88, 12, 0.28);
-  --accent: #f97316;
-  --accent-hover: #ea580c;
-  --accent-deep: #9a3412;
-  --accent-soft: #ffedd5;
-  --accent-foreground: #fffaf5;
-  --shadow: 0 18px 60px rgba(91, 45, 15, 0.08);
-  --shadow-strong: 0 28px 80px rgba(62, 30, 10, 0.24);
-  --overlay: rgba(48, 28, 16, 0.38);
-  --input: #fffdf9;
-  --glow-start: rgba(251, 146, 60, 0.24);
-  --glow-end: rgba(253, 186, 116, 0.2);
-  --hero-orb: rgba(251, 146, 60, 0.18);
-  --warning-bg: rgba(255, 247, 225, 0.9);
-  --warning-border: rgba(180, 111, 31, 0.24);
-  --error-bg: rgba(255, 237, 235, 0.9);
-  --error-border: rgba(180, 65, 55, 0.24);
-  --success-bg: rgba(234, 248, 238, 0.9);
-  --success-border: rgba(48, 130, 82, 0.2);
-  --success-text: #286344;
-  --online: #42a66c;
-  --offline: #aaa19b;
-  --danger: #ad554c;
-  --hint: #f7f2ea;
+  color-scheme: light;
+  --background: #f5f3ed;
+  --foreground: #2f312d;
+  --muted: #6f716b;
+  --muted-soft: #92938d;
+  --card: rgba(251, 250, 247, 0.88);
+  --card-solid: #fbfaf7;
+  --surface: rgba(241, 239, 233, 0.92);
+  --surface-hover: #ebe9e3;
+  --surface-active: rgba(204, 125, 94, 0.11);
+  --border: rgba(47, 49, 45, 0.12);
+  --border-strong: rgba(184, 101, 70, 0.3);
+  --accent: #b86546;
+  --accent-hover: #a8583c;
+  --accent-deep: #784632;
+  --accent-soft: rgba(204, 125, 94, 0.13);
+  --accent-foreground: #fffdfa;
+  --accent-shadow: rgba(77, 65, 58, 0.14);
+  --accent-ring: rgba(184, 101, 70, 0.16);
+  --accent-pulse: rgba(184, 101, 70, 0.13);
+  --brand-ring: #f7eee9;
+  --shadow: 0 14px 44px rgba(38, 39, 36, 0.06);
+  --shadow-strong: 0 24px 64px rgba(38, 39, 36, 0.18);
+  --overlay: rgba(35, 36, 33, 0.36);
+  --input: #fbfaf7;
+  --glow-start: rgba(204, 125, 94, 0.055);
+  --glow-end: rgba(61, 117, 93, 0.04);
+  --hero-orb: rgba(204, 125, 94, 0.07);
+  --warning-bg: rgba(247, 240, 222, 0.82);
+  --warning-border: rgba(146, 108, 56, 0.22);
+  --error-bg: rgba(248, 235, 232, 0.82);
+  --error-border: rgba(154, 69, 62, 0.2);
+  --success-bg: rgba(232, 242, 235, 0.82);
+  --success-border: rgba(61, 117, 93, 0.2);
+  --success-text: #35634f;
+  --online: #4f906f;
+  --offline: #9b9b95;
+  --danger: #9d5149;
+  --hint: #eeece6;
   --content-max: 1480px;
   font-family:
     Inter,
@@ -48,40 +53,45 @@
 }
 
 :root[data-theme="dark"] {
-  --background: #17110d;
-  --foreground: #faeee4;
-  --muted: #b09c8e;
-  --muted-soft: #88776c;
-  --card: rgba(38, 29, 23, 0.88);
-  --card-solid: #261d17;
-  --surface: rgba(46, 35, 27, 0.92);
-  --surface-hover: #3a281c;
-  --surface-active: rgba(87, 45, 22, 0.72);
-  --border: rgba(253, 186, 116, 0.14);
-  --border-strong: rgba(251, 146, 60, 0.35);
-  --accent: #fb923c;
-  --accent-hover: #f97316;
-  --accent-deep: #fdba74;
-  --accent-soft: #4b2918;
-  --accent-foreground: #21140d;
-  --shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
-  --shadow-strong: 0 28px 80px rgba(0, 0, 0, 0.5);
-  --overlay: rgba(8, 5, 3, 0.62);
-  --input: #201813;
-  --glow-start: rgba(249, 115, 22, 0.14);
-  --glow-end: rgba(251, 146, 60, 0.1);
-  --hero-orb: rgba(249, 115, 22, 0.13);
-  --warning-bg: rgba(76, 52, 20, 0.72);
-  --warning-border: rgba(251, 191, 36, 0.24);
-  --error-bg: rgba(75, 30, 28, 0.7);
-  --error-border: rgba(248, 113, 113, 0.25);
-  --success-bg: rgba(24, 68, 43, 0.64);
-  --success-border: rgba(74, 222, 128, 0.18);
-  --success-text: #9ee6b7;
-  --online: #5cc681;
-  --offline: #766d67;
-  --danger: #ee9a91;
-  --hint: #2d241e;
+  color-scheme: dark;
+  --background: #2d2d2b;
+  --foreground: #f1f0ec;
+  --muted: #b4b3ad;
+  --muted-soft: #85847f;
+  --card: rgba(61, 61, 58, 0.9);
+  --card-solid: #3d3d3a;
+  --surface: rgba(67, 67, 64, 0.9);
+  --surface-hover: #4b4b48;
+  --surface-active: rgba(204, 125, 94, 0.19);
+  --border: rgba(249, 249, 247, 0.11);
+  --border-strong: rgba(204, 125, 94, 0.36);
+  --accent: #cc7d5e;
+  --accent-hover: #d58d70;
+  --accent-deep: #e2a58d;
+  --accent-soft: rgba(204, 125, 94, 0.17);
+  --accent-foreground: #27211e;
+  --accent-shadow: rgba(0, 0, 0, 0.2);
+  --accent-ring: rgba(204, 125, 94, 0.2);
+  --accent-pulse: rgba(204, 125, 94, 0.16);
+  --brand-ring: #f1e6e1;
+  --shadow: 0 14px 42px rgba(0, 0, 0, 0.16);
+  --shadow-strong: 0 24px 64px rgba(0, 0, 0, 0.38);
+  --overlay: rgba(12, 12, 11, 0.58);
+  --input: #363633;
+  --glow-start: rgba(204, 125, 94, 0.04);
+  --glow-end: rgba(249, 249, 247, 0.018);
+  --hero-orb: rgba(204, 125, 94, 0.08);
+  --warning-bg: rgba(91, 70, 39, 0.38);
+  --warning-border: rgba(211, 164, 91, 0.22);
+  --error-bg: rgba(91, 46, 43, 0.38);
+  --error-border: rgba(211, 108, 101, 0.23);
+  --success-bg: rgba(48, 83, 65, 0.42);
+  --success-border: rgba(93, 153, 120, 0.2);
+  --success-text: #a8d2b9;
+  --online: #6eae87;
+  --offline: #777772;
+  --danger: #e09a92;
+  --hint: #393936;
 }
 
 * {
@@ -163,14 +173,14 @@ button:disabled {
   height: 42px;
   border-radius: 14px;
   background: linear-gradient(145deg, var(--accent), var(--accent-hover));
-  box-shadow: 0 8px 22px rgba(234, 88, 12, 0.24);
+  box-shadow: 0 8px 22px var(--accent-shadow);
 }
 
 .brand-mark span {
   position: absolute;
   width: 17px;
   height: 17px;
-  border: 2px solid #fff4e8;
+  border: 2px solid var(--brand-ring);
   border-radius: 50%;
 }
 
@@ -209,7 +219,7 @@ button:disabled {
   border-radius: 12px;
   background: var(--card);
   padding: 3px;
-  box-shadow: 0 5px 18px rgba(91, 45, 15, 0.06);
+  box-shadow: var(--shadow);
 }
 
 .theme-switcher button {
@@ -378,7 +388,7 @@ button:disabled {
 .button.primary {
   background: var(--accent);
   color: var(--accent-foreground);
-  box-shadow: 0 8px 20px rgba(234, 88, 12, 0.22);
+  box-shadow: 0 8px 20px var(--accent-shadow);
 }
 
 .button.primary:hover:not(:disabled) {
@@ -1025,7 +1035,7 @@ button:disabled {
 
 .dialog input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .dialog p {
@@ -1082,7 +1092,7 @@ button:disabled {
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.13);
+  box-shadow: 0 0 0 4px var(--accent-pulse);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
