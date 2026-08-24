@@ -94,7 +94,9 @@ function QuotaCard({
       <div className="quota-account">
         <div>
           <strong>{quota.label}</strong>
-          <span>{accountTokens ? "近 30 天本机用量" : "暂无可归属用量"}</span>
+          <span>
+            {accountTokens ? "近 30 天本机归属用量" : "暂无本机归属用量"}
+          </span>
         </div>
         <b
           title={
@@ -103,7 +105,14 @@ function QuotaCard({
               : undefined
           }
         >
-          {accountTokens ? formatTokens(accountTokens.totalTokens) : "—"}
+          {accountTokens ? (
+            <>
+              {formatTokens(accountTokens.totalTokens)}
+              <small>tokens</small>
+            </>
+          ) : (
+            "—"
+          )}
         </b>
       </div>
       {quota.success ? (
@@ -144,8 +153,8 @@ export function UsagePanel({
       <div className="section-heading usage-heading">
         <div>
           <span className="eyebrow">Usage insight</span>
-          <h2>订阅额度与 Token 明细</h2>
-          <p>账号窗口来自在线查询，本机明细来自 Codex 会话元数据。</p>
+          <h2>Token 用量与订阅额度</h2>
+          <p>Token 来自本机会话，额度百分比来自在线窗口查询。</p>
         </div>
         <button className="text-button" disabled={loading} onClick={onRefresh}>
           {loading ? "统计中…" : "刷新用量"}
@@ -232,8 +241,10 @@ export function UsagePanel({
 
           <div className="quota-heading">
             <div>
-              <strong>账号额度</strong>
-              <span>每个账号独立查询，单个失败不会影响其他账号</span>
+              <strong>账号归属与额度</strong>
+              <span>
+                数字为近 30 天本机归属 Token，下方百分比为订阅窗口已用额度
+              </span>
             </div>
             {usage.local.unassigned.totalTokens > 0 && (
               <small
@@ -260,8 +271,8 @@ export function UsagePanel({
           )}
 
           <p className="usage-privacy-note">
-            只提取会话中的 token_count
-            元数据，不解析提示词或回复正文。账号归属从本版本记录切换历史后开始生效。
+            只提取会话中的 token_count 元数据，不解析提示词或回复正文。Token
+            数字不是订阅总额度；账号归属从本版本记录切换历史后开始生效。
           </p>
         </>
       ) : null}
