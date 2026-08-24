@@ -1,0 +1,64 @@
+{
+  "color-space-for-untagged-svg-colors": "srgb",
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "extended-srgb:0.90980,0.87059,0.81569,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "extended-srgb:0.14118,0.14118,0.14118,1.00000"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "blend-mode": "normal",
+          "fill": {
+            "solid": "extended-srgb:0.97647,0.45098,0.08627,1.00000"
+          },
+          "glass": false,
+          "image-name": "switch-arrows.svg",
+          "name": "切换箭头"
+        },
+        {
+          "blend-mode": "normal",
+          "fill-specializations": [
+            {
+              "value": {
+                "solid": "extended-srgb:0.16078,0.14510,0.14118,1.00000"
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "extended-srgb:0.95686,0.94510,0.92157,1.00000"
+              }
+            }
+          ],
+          "glass": false,
+          "image-name": "terminal.svg",
+          "name": "终端"
+        }
+      ],
+      "blur": 0,
+      "lighting": "individual",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}
