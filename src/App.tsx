@@ -1,10 +1,21 @@
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AppStatus,
+  copyAuthShare,
   DeviceLoginResponse,
+  getAuthShareQr,
   getStatus,
   getUsageOverview,
+  importAuthFromClipboard,
+  importAuthFromQr,
   pollDeviceLogin,
   removeAccount,
   renameAccount,
@@ -22,6 +33,15 @@ type PendingDeviceLogin = {
   label: string;
   response: DeviceLoginResponse;
   expiresAt: number;
+};
+
+type ShareDialogState = {
+  profileId: string;
+  label: string;
+  qrDataUrl: string | null;
+  qrError: string | null;
+  copied: boolean;
+  copyError: string | null;
 };
 
 const shortId = (value: string) =>
@@ -102,6 +122,9 @@ function App() {
   const [deviceLogin, setDeviceLogin] = useState<PendingDeviceLogin | null>(
     null,
   );
+  const [shareDialog, setShareDialog] = useState<ShareDialogState | null>(null);
+  const [importDialog, setImportDialog] = useState(false);
+  const qrFileInput = useRef<HTMLInputElement>(null);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
@@ -268,6 +291,73 @@ function App() {
     await run("移除账号", () => removeAccount(profileId));
   };
 
+  const openShareDialog = async (profileId: string, accountLabel: string) => {
+    setShareDialog({
+      profileId,
+      label: accountLabel,
+      qrDataUrl: null,
+      qrError: null,
+      copied: false,
+      copyError: null,
+    });
+    try {
+      const qrDataUrl = await getAuthShareQr(profileId);
+      setShareDialog((current) =>
+        current?.profileId === profileId ? { ...current, qrDataUrl } : current,
+      );
+    } catch (reason) {
+      setShareDialog((current) =>
+        current?.profileId === profileId
+          ? { ...current, qrError: messageOf(reason) }
+          : current,
+      );
+    }
+  };
+
+  const copyShareToClipboard = async () => {
+    if (!shareDialog) return;
+    try {
+      await copyAuthShare(shareDialog.profileId);
+      setShareDialog((current) =>
+        current ? { ...current, copied: true, copyError: null } : current,
+      );
+    } catch (reason) {
+      setShareDialog((current) =>
+        current
+          ? { ...current, copied: false, copyError: messageOf(reason) }
+          : current,
+      );
+    }
+  };
+
+  const importAuth = async (
+    description: string,
+    action: () => Promise<AppStatus>,
+  ) => {
+    setBusy(description);
+    setError(null);
+    setNotice(null);
+    try {
+      setStatus(await action());
+      setImportDialog(false);
+      setNotice(`${description}完成`);
+      void refreshUsage();
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const importQrFile = async (file: File) => {
+    if (file.size > 12 * 1024 * 1024) {
+      setError("二维码图片不能超过 12 MB");
+      return;
+    }
+    const image = Array.from(new Uint8Array(await file.arrayBuffer()));
+    await importAuth("导入并切换 Auth", () => importAuthFromQr(image));
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -340,6 +430,17 @@ function App() {
                 }
               >
                 登录新账号
+              </button>
+              <button
+                className="button secondary"
+                disabled={Boolean(busy) || !status?.supported}
+                onClick={() => {
+                  setError(null);
+                  setNotice(null);
+                  setImportDialog(true);
+                }}
+              >
+                导入 Auth
               </button>
             </div>
           </section>
@@ -437,6 +538,16 @@ function App() {
                           )}
                           <button
                             className="icon-button"
+                            title="分享 Auth"
+                            disabled={Boolean(busy) || !status.supported}
+                            onClick={() =>
+                              void openShareDialog(account.id, account.label)
+                            }
+                          >
+                            分享
+                          </button>
+                          <button
+                            className="icon-button"
                             title="重命名"
                             disabled={Boolean(busy)}
                             onClick={() =>
@@ -508,6 +619,156 @@ function App() {
           <div className="spinner" />
           <strong>{busy}中…</strong>
           <p>请稍候</p>
+        </div>
+      )}
+
+      {shareDialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={() => setShareDialog(null)}
+        >
+          <section
+            className="dialog share-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-dialog-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="eyebrow">Auth 分享</span>
+            <h2 id="share-dialog-title">分享“{shareDialog.label}”</h2>
+            <p>在另一台设备打开本应用，扫描此二维码或导入剪贴板内容。</p>
+            <div className="share-qr" aria-live="polite">
+              {shareDialog.qrDataUrl ? (
+                <img
+                  src={shareDialog.qrDataUrl}
+                  alt={`${shareDialog.label} 的 Auth 分享二维码`}
+                />
+              ) : shareDialog.qrError ? (
+                <div className="share-qr-message">
+                  <strong>无法生成二维码</strong>
+                  <span>{shareDialog.qrError}</span>
+                </div>
+              ) : (
+                <div className="share-qr-message">
+                  <span className="inline-spinner" />
+                  <span>正在本机生成二维码…</span>
+                </div>
+              )}
+            </div>
+            <p className="sensitive-warning">
+              二维码和剪贴板内容包含可登录凭据，请仅分享给你信任的设备，并避免截图留存或发送到聊天软件。
+            </p>
+            {shareDialog.copied && (
+              <p className="share-feedback success-text">
+                已复制。粘贴完成后建议清空系统剪贴板。
+              </p>
+            )}
+            {shareDialog.copyError && (
+              <p className="share-feedback error-text">
+                {shareDialog.copyError}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setShareDialog(null)}
+              >
+                完成
+              </button>
+              <button
+                type="button"
+                className="button primary"
+                onClick={() => void copyShareToClipboard()}
+              >
+                {shareDialog.copied ? "重新复制" : "复制到剪贴板"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {importDialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={() => setImportDialog(false)}
+        >
+          <section
+            className="dialog import-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-dialog-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="eyebrow">Auth 导入</span>
+            <h2 id="import-dialog-title">选择导入方式</h2>
+            <p>导入成功后会保存该账号，并立即切换为当前 Codex 登录。</p>
+            <div className="import-options">
+              <button
+                type="button"
+                className="import-option"
+                disabled={Boolean(busy)}
+                onClick={() =>
+                  void importAuth("导入并切换 Auth", importAuthFromClipboard)
+                }
+              >
+                <span className="import-option-icon" aria-hidden="true">
+                  ⎘
+                </span>
+                <span>
+                  <strong>从剪贴板导入</strong>
+                  <small>读取本应用生成的 Auth 分享文本</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="import-option"
+                disabled={Boolean(busy)}
+                onClick={() => qrFileInput.current?.click()}
+              >
+                <span className="import-option-icon qr-icon" aria-hidden="true">
+                  ▦
+                </span>
+                <span>
+                  <strong>导入二维码图片</strong>
+                  <small>选择 PNG、JPEG、WebP 或 GIF 图片</small>
+                </span>
+              </button>
+              <input
+                ref={qrFileInput}
+                className="visually-hidden"
+                type="file"
+                aria-hidden="true"
+                tabIndex={-1}
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (!file) return;
+                  void importQrFile(file).catch((reason) =>
+                    setError(`无法读取二维码图片：${messageOf(reason)}`),
+                  );
+                }}
+              />
+            </div>
+            <p className="sensitive-warning">
+              只导入来自可信来源的内容。分享载荷会在 Rust
+              后端校验，原始令牌不会显示在界面或写入日志。
+            </p>
+            {error && <p className="share-feedback error-text">{error}</p>}
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button secondary"
+                disabled={Boolean(busy)}
+                onClick={() => setImportDialog(false)}
+              >
+                取消
+              </button>
+            </div>
+          </section>
         </div>
       )}
 

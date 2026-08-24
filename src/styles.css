@@ -963,6 +963,7 @@ button:disabled {
 }
 
 .busy-overlay {
+  z-index: 40;
   align-content: center;
   color: white;
   text-align: center;
@@ -1046,6 +1047,160 @@ button:disabled {
 
 .device-dialog {
   width: min(470px, calc(100vw - 44px));
+}
+
+.share-dialog,
+.import-dialog {
+  width: min(490px, calc(100vw - 44px));
+}
+
+.share-qr {
+  display: grid;
+  width: min(330px, 100%);
+  aspect-ratio: 1;
+  place-items: center;
+  margin: 20px auto 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: white;
+  padding: 14px;
+}
+
+.share-qr img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.share-qr-message {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  color: #6f716b;
+  text-align: center;
+}
+
+.share-qr-message strong {
+  color: #2f312d;
+  font-size: 13px;
+}
+
+.share-qr-message span:not(.inline-spinner) {
+  max-width: 250px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.inline-spinner {
+  width: 25px;
+  height: 25px;
+  border: 3px solid rgba(184, 101, 70, 0.18);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+.dialog .sensitive-warning {
+  margin-top: 16px;
+  border: 1px solid var(--warning-border);
+  border-radius: 12px;
+  background: var(--warning-bg);
+  padding: 11px 12px;
+  color: var(--muted);
+}
+
+.dialog .share-feedback {
+  margin: 10px 0 0;
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-weight: 650;
+}
+
+.share-feedback.success-text {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.share-feedback.error-text {
+  background: var(--error-bg);
+  color: var(--danger);
+}
+
+.import-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.import-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  padding: 14px 15px;
+  color: var(--foreground);
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.import-option:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.import-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.import-option-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.import-option-icon.qr-icon {
+  font-size: 24px;
+}
+
+.import-option strong,
+.import-option small {
+  display: block;
+}
+
+.import-option strong {
+  font-size: 13px;
+}
+
+.import-option small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .device-code {

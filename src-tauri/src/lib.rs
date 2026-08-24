@@ -1,3 +1,4 @@
+mod auth_share;
 mod manager;
 mod usage;
 
@@ -108,6 +109,73 @@ async fn remove_account(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn copy_auth_share(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> Result<(), String> {
+    let text = {
+        let _guard = state.operation_gate.lock().await;
+        account_manager(&app)?
+            .auth_share_text(&profile_id)
+            .map_err(|error| error.to_string())?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|_| "无法访问系统剪贴板".to_string())?;
+        clipboard
+            .set_text(text)
+            .map_err(|_| "无法写入系统剪贴板".to_string())
+    })
+    .await
+    .map_err(|_| "无法访问系统剪贴板".to_string())?
+}
+
+#[tauri::command]
+async fn get_auth_share_qr(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> Result<String, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .auth_share_qr(&profile_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn import_auth_from_clipboard(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppStatus, String> {
+    let text = tauri::async_runtime::spawn_blocking(move || {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|_| "无法访问系统剪贴板".to_string())?;
+        clipboard
+            .get_text()
+            .map_err(|_| "无法读取系统剪贴板中的文本".to_string())
+    })
+    .await
+    .map_err(|_| "无法访问系统剪贴板".to_string())??;
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .import_auth_share_text(&text)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn import_auth_from_qr(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    image: Vec<u8>,
+) -> Result<AppStatus, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .import_auth_share_qr(&image)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -124,6 +192,10 @@ pub fn run() {
             switch_account,
             rename_account,
             remove_account,
+            copy_auth_share,
+            get_auth_share_qr,
+            import_auth_from_clipboard,
+            import_auth_from_qr,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Codex Auth Switch");

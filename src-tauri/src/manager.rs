@@ -1,4 +1,7 @@
-use crate::usage::{scan_local_usage, AccountLabel, ActivationRecord, LocalUsageStats};
+use crate::{
+    auth_share::{self, ImportedAuth},
+    usage::{scan_local_usage, AccountLabel, ActivationRecord, LocalUsageStats},
+};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use reqwest::{Client, StatusCode};
@@ -367,6 +370,70 @@ impl AccountManager {
         self.status()
     }
 
+    pub fn auth_share_text(&self, profile_id: &str) -> Result<String, ManagerError> {
+        self.ensure_file_storage()?;
+        let mut vault = self.load_vault()?;
+        if let Ok(current_auth) = self.read_live_auth() {
+            if validate_chatgpt_auth(&current_auth).is_ok() {
+                upsert_profile(&mut vault, current_auth, None)?;
+                self.save_vault(&vault)?;
+            }
+        }
+        let profile = vault
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .ok_or(ManagerError::ProfileNotFound)?;
+        let auth = canonical_chatgpt_auth(&profile.auth)?;
+        auth_share::encode_text(&profile.label, &auth, unix_timestamp())
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
+    }
+
+    pub fn auth_share_qr(&self, profile_id: &str) -> Result<String, ManagerError> {
+        let text = self.auth_share_text(profile_id)?;
+        auth_share::render_qr_data_url(&text)
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
+    }
+
+    pub fn import_auth_share_text(&self, text: &str) -> Result<AppStatus, ManagerError> {
+        let imported = auth_share::decode_text(text)
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
+        self.import_shared_auth(imported)
+    }
+
+    pub fn import_auth_share_qr(&self, image: &[u8]) -> Result<AppStatus, ManagerError> {
+        let imported = auth_share::decode_qr_image(image)
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
+        self.import_shared_auth(imported)
+    }
+
+    fn import_shared_auth(&self, imported: ImportedAuth) -> Result<AppStatus, ManagerError> {
+        self.ensure_file_storage()?;
+        let label = validate_label(&imported.label)?.to_string();
+        let auth = canonical_chatgpt_auth(&imported.auth)?;
+        let identity = validate_chatgpt_auth(&auth)?;
+        let mut vault = self.load_vault()?;
+
+        if let Ok(current_auth) = self.read_live_auth() {
+            if validate_chatgpt_auth(&current_auth).is_ok() {
+                upsert_profile(&mut vault, current_auth, None)?;
+            }
+        }
+        let already_saved = vault
+            .profiles
+            .iter()
+            .any(|profile| profile.account_id == identity.account_id);
+        upsert_profile(
+            &mut vault,
+            auth.clone(),
+            (!already_saved).then_some(label.as_str()),
+        )?;
+        record_activation(&mut vault, &identity.account_id, unix_timestamp());
+        self.save_vault(&vault)?;
+        self.write_live_auth(&auth)?;
+        self.status()
+    }
+
     pub async fn start_device_login(
         &self,
         label: &str,
@@ -728,6 +795,36 @@ fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
                 .and_then(|claims| claims.email.clone())
         });
     Ok(AuthIdentity { account_id, email })
+}
+
+fn canonical_chatgpt_auth(auth: &Value) -> Result<Value, ManagerError> {
+    validate_chatgpt_auth(auth)?;
+    let tokens = auth
+        .get("tokens")
+        .and_then(Value::as_object)
+        .ok_or_else(|| ManagerError::InvalidAuth("Codex auth.json 缺少 tokens".to_string()))?;
+    let mut normalized_tokens = serde_json::Map::new();
+    for field in ["id_token", "access_token", "refresh_token", "account_id"] {
+        if let Some(value) = tokens.get(field) {
+            normalized_tokens.insert(field.to_string(), value.clone());
+        }
+    }
+    let mut normalized = serde_json::Map::new();
+    normalized.insert(
+        "auth_mode".to_string(),
+        Value::String("chatgpt".to_string()),
+    );
+    normalized.insert("OPENAI_API_KEY".to_string(), Value::Null);
+    normalized.insert("tokens".to_string(), Value::Object(normalized_tokens));
+    if let Some(last_refresh) = auth.get("last_refresh").and_then(Value::as_str) {
+        normalized.insert(
+            "last_refresh".to_string(),
+            Value::String(last_refresh.to_string()),
+        );
+    }
+    let normalized = Value::Object(normalized);
+    validate_chatgpt_auth(&normalized)?;
+    Ok(normalized)
 }
 
 fn parse_claims(token: &str) -> Option<TokenClaims> {
@@ -1173,6 +1270,77 @@ mod tests {
                 .and_then(Value::as_str),
             Some("refresh-b-rotated")
         );
+    }
+
+    #[test]
+    fn shares_and_imports_an_account_as_the_active_login() {
+        let (_source_root, source) = test_manager();
+        source
+            .write_live_auth(&auth("account-a", "a@example.com", "refresh-a"))
+            .unwrap();
+        source.save_current("个人账号").unwrap();
+        let share = source.auth_share_text("account-a").unwrap();
+
+        let (_target_root, target) = test_manager();
+        target
+            .write_live_auth(&auth("account-b", "b@example.com", "refresh-b"))
+            .unwrap();
+        target.save_current("工作账号").unwrap();
+        let status = target.import_auth_share_text(&share).unwrap();
+
+        assert_eq!(status.active_account_id.as_deref(), Some("account-a"));
+        assert_eq!(status.accounts.len(), 2);
+        assert_eq!(
+            target
+                .read_live_auth()
+                .unwrap()
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str),
+            Some("refresh-a")
+        );
+    }
+
+    #[test]
+    fn importing_an_existing_account_keeps_its_local_label() {
+        let (_source_root, source) = test_manager();
+        source
+            .write_live_auth(&auth("account-a", "a@example.com", "refresh-from-source"))
+            .unwrap();
+        source.save_current("来源名称").unwrap();
+        let share = source.auth_share_text("account-a").unwrap();
+
+        let (_target_root, target) = test_manager();
+        target
+            .write_live_auth(&auth("account-a", "a@example.com", "refresh-from-target"))
+            .unwrap();
+        target.save_current("本地名称").unwrap();
+        let status = target.import_auth_share_text(&share).unwrap();
+
+        assert_eq!(status.accounts[0].label, "本地名称");
+        assert_eq!(
+            target
+                .read_live_auth()
+                .unwrap()
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str),
+            Some("refresh-from-source")
+        );
+    }
+
+    #[test]
+    fn sharing_strips_api_keys_and_unrelated_auth_fields() {
+        let (_root, manager) = test_manager();
+        let mut value = auth("account-a", "a@example.com", "refresh-a");
+        value["OPENAI_API_KEY"] = Value::String("must-not-be-shared".to_string());
+        value["unrelated_secret"] = Value::String("also-private".to_string());
+        manager.write_live_auth(&value).unwrap();
+        manager.save_current("个人账号").unwrap();
+
+        let share = manager.auth_share_text("account-a").unwrap();
+        let imported = crate::auth_share::decode_text(&share).unwrap();
+
+        assert!(imported.auth["OPENAI_API_KEY"].is_null());
+        assert!(imported.auth.get("unrelated_secret").is_none());
     }
 
     #[test]

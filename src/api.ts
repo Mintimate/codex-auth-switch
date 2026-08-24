@@ -185,6 +185,13 @@ const previewUsage: UsageOverview = {
   },
 };
 
+const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges">
+    <rect width="29" height="29" fill="white"/>
+    <path fill="#222" d="M2 2h7v7H2zm2 2v3h3V4zM20 2h7v7h-7zm2 2v3h3V4zM2 20h7v7H2zm2 2v3h3v-3zM12 2h2v2h-2zm3 0h2v4h-2zm-4 5h6v2h-6zm0 4h3v3h-3zm5 0h2v7h-2zm4 0h2v3h-2zm3 0h4v2h-4zm-1 4h5v2h-5zm-11 2h3v2h-3zm4 2h2v2h-2zm4 0h3v3h-3zm5 0h3v2h-3zm-13 4h6v2h-6zm8 1h2v3h-2zm4-1h4v4h-4z"/>
+  </svg>
+`)}`;
+
 const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
@@ -203,6 +210,12 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     }
     if (command === "get_usage_overview") {
       return Promise.resolve(structuredClone(previewUsage) as T);
+    }
+    if (command === "get_auth_share_qr") {
+      return Promise.resolve(previewShareQr as T);
+    }
+    if (command === "copy_auth_share") {
+      return Promise.resolve(undefined as T);
     }
     return Promise.resolve(structuredClone(previewStatus) as T);
   }
@@ -238,3 +251,15 @@ export const renameAccount = (profileId: string, label: string) =>
 
 export const removeAccount = (profileId: string) =>
   call<AppStatus>("remove_account", { profileId });
+
+export const copyAuthShare = (profileId: string) =>
+  call<void>("copy_auth_share", { profileId });
+
+export const getAuthShareQr = (profileId: string) =>
+  call<string>("get_auth_share_qr", { profileId });
+
+export const importAuthFromClipboard = () =>
+  call<AppStatus>("import_auth_from_clipboard");
+
+export const importAuthFromQr = (image: number[]) =>
+  call<AppStatus>("import_auth_from_qr", { image });

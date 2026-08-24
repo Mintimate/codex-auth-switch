@@ -18,10 +18,15 @@ path = "src/main.rs"
 tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+flate2 = "1"
+image = { version = "=0.25.5", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+qrcode = { version = "0.14", default-features = false, features = ["image"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rqrr = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2.11.3", features = [] }
