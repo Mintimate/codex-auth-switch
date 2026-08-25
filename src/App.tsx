@@ -44,6 +44,12 @@ type ShareDialogState = {
   copyError: string | null;
 };
 
+type RemoveDialogState = {
+  profileId: string;
+  label: string;
+  active: boolean;
+};
+
 const shortId = (value: string) =>
   value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
 
@@ -123,6 +129,9 @@ function App() {
     null,
   );
   const [shareDialog, setShareDialog] = useState<ShareDialogState | null>(null);
+  const [removeDialog, setRemoveDialog] = useState<RemoveDialogState | null>(
+    null,
+  );
   const [importDialog, setImportDialog] = useState(false);
   const qrFileInput = useRef<HTMLInputElement>(null);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
@@ -284,10 +293,10 @@ function App() {
     }
   };
 
-  const handleRemove = async (profileId: string, accountLabel: string) => {
-    if (!window.confirm(`确定移除“${accountLabel}”吗？这不会注销官方账号。`)) {
-      return;
-    }
+  const handleRemove = async () => {
+    if (!removeDialog) return;
+    const { profileId } = removeDialog;
+    setRemoveDialog(null);
     await run("移除账号", () => removeAccount(profileId));
   };
 
@@ -386,7 +395,7 @@ function App() {
               </button>
             ))}
           </div>
-          <span className="unofficial">非官方工具 · 纯本地</span>
+          <span className="unofficial">纯本地 · 切换 Auth</span>
         </div>
       </header>
 
@@ -525,7 +534,7 @@ function App() {
                         <div className="account-actions">
                           {!account.active && (
                             <button
-                              className="button compact"
+                              className="account-action primary-action"
                               disabled={Boolean(busy) || !status.supported}
                               onClick={() =>
                                 void run("切换账号", () =>
@@ -533,11 +542,11 @@ function App() {
                                 )
                               }
                             >
-                              切换
+                              切换到此账号
                             </button>
                           )}
                           <button
-                            className="icon-button"
+                            className="account-action"
                             title="分享 Auth"
                             disabled={Boolean(busy) || !status.supported}
                             onClick={() =>
@@ -547,21 +556,25 @@ function App() {
                             分享
                           </button>
                           <button
-                            className="icon-button"
+                            className="account-action"
                             title="重命名"
                             disabled={Boolean(busy)}
                             onClick={() =>
                               openDialog("rename", account.label, account.id)
                             }
                           >
-                            编辑
+                            重命名
                           </button>
                           <button
-                            className="icon-button danger"
-                            title="移除"
-                            disabled={Boolean(busy) || account.active}
+                            className="account-action danger"
+                            title="从本机账号库移除"
+                            disabled={Boolean(busy)}
                             onClick={() =>
-                              void handleRemove(account.id, account.label)
+                              setRemoveDialog({
+                                profileId: account.id,
+                                label: account.label,
+                                active: account.active,
+                              })
                             }
                           >
                             移除
@@ -619,6 +632,50 @@ function App() {
           <div className="spinner" />
           <strong>{busy}中…</strong>
           <p>请稍候</p>
+        </div>
+      )}
+
+      {removeDialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={() => setRemoveDialog(null)}
+        >
+          <section
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-dialog-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="eyebrow">本机账号库</span>
+            <h2 id="remove-dialog-title">移除“{removeDialog.label}”？</h2>
+            <p>
+              这会删除该账号的本地保存副本，不会注销 ChatGPT 账号
+              {removeDialog.active ? "，也不会中断当前 Codex 登录。" : "。"}
+            </p>
+            {removeDialog.active && (
+              <p className="remove-dialog-note">
+                移除后将不能再从列表切换回该账号，除非重新保存当前登录。
+              </p>
+            )}
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setRemoveDialog(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="button danger-button"
+                onClick={() => void handleRemove()}
+              >
+                仅从本机移除
+              </button>
+            </div>
+          </section>
         </div>
       )}
 

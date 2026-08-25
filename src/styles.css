@@ -751,8 +751,7 @@ button:disabled {
   letter-spacing: -0.025em;
 }
 
-.text-button,
-.icon-button {
+.text-button {
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -771,7 +770,7 @@ button:disabled {
 
 .account-card {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
   border: 1px solid var(--border);
@@ -831,16 +830,50 @@ button:disabled {
 
 .account-actions {
   display: flex;
+  grid-column: 2;
   align-items: center;
+  justify-content: flex-end;
   gap: 5px;
+  margin-top: -3px;
 }
 
-.icon-button {
-  padding: 8px 6px;
+.account-action {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  padding: 7px 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 680;
+  line-height: 1;
+  white-space: nowrap;
 }
 
-.icon-button.danger {
+.account-action:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+
+.account-action.primary-action {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.account-action.danger {
   color: var(--danger);
+}
+
+.button.danger-button {
+  background: var(--danger);
+  color: var(--accent-foreground);
+}
+
+.remove-dialog-note {
+  border-radius: 10px;
+  background: var(--hint);
+  padding: 10px 11px;
 }
 
 .empty-state {

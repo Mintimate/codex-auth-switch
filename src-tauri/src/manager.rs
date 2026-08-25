@@ -37,7 +37,6 @@ pub enum ManagerError {
     UnsupportedStorage(String),
     InvalidAuth(String),
     ProfileNotFound,
-    ActiveProfileRemoval,
     Network(String),
     DeviceCodeExpired,
     TokenExchange(String),
@@ -56,9 +55,6 @@ impl fmt::Display for ManagerError {
                 "当前 Codex 凭据存储模式为 {mode}；请先在 config.toml 中设置 cli_auth_credentials_store = \"file\""
             ),
             Self::ProfileNotFound => formatter.write_str("找不到指定账号"),
-            Self::ActiveProfileRemoval => {
-                formatter.write_str("不能移除当前正在使用的账号，请先切换到其他账号")
-            }
             Self::DeviceCodeExpired => {
                 formatter.write_str("登录验证码已过期，请重新发起登录")
             }
@@ -351,19 +347,13 @@ impl AccountManager {
     }
 
     pub fn remove_account(&self, profile_id: &str) -> Result<AppStatus, ManagerError> {
-        let active_account_id = self
-            .read_live_auth()
-            .ok()
-            .and_then(|auth| validate_chatgpt_auth(&auth).ok())
-            .map(|identity| identity.account_id);
         let mut vault = self.load_vault()?;
-        let profile = vault
+        if !vault
             .profiles
             .iter()
-            .find(|profile| profile.id == profile_id)
-            .ok_or(ManagerError::ProfileNotFound)?;
-        if active_account_id.as_deref() == Some(profile.account_id.as_str()) {
-            return Err(ManagerError::ActiveProfileRemoval);
+            .any(|profile| profile.id == profile_id)
+        {
+            return Err(ManagerError::ProfileNotFound);
         }
         vault.profiles.retain(|profile| profile.id != profile_id);
         self.save_vault(&vault)?;
@@ -1281,6 +1271,20 @@ mod tests {
                 .and_then(Value::as_str),
             Some("refresh-b-rotated")
         );
+    }
+
+    #[test]
+    fn removes_the_active_saved_profile_without_logging_out() {
+        let (_root, manager) = test_manager();
+        let live_auth = auth("account-a", "a@example.com", "refresh-a");
+        manager.write_live_auth(&live_auth).unwrap();
+        manager.save_current("个人账号").unwrap();
+
+        let status = manager.remove_account("account-a").unwrap();
+
+        assert!(status.accounts.is_empty());
+        assert_eq!(status.active_account_id.as_deref(), Some("account-a"));
+        assert_eq!(manager.read_live_auth().unwrap(), live_auth);
     }
 
     #[test]
