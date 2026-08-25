@@ -371,6 +371,20 @@ impl AccountManager {
     }
 
     pub fn auth_share_text(&self, profile_id: &str) -> Result<String, ManagerError> {
+        let (label, auth) = self.auth_share_payload(profile_id)?;
+        auth_share::encode_text(&label, &auth)
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
+    }
+
+    pub fn auth_share_qr(&self, profile_id: &str) -> Result<String, ManagerError> {
+        let (label, auth) = self.auth_share_payload(profile_id)?;
+        let payload = auth_share::encode_qr_payload(&label, &auth)
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
+        auth_share::render_qr_data_url(&payload)
+            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
+    }
+
+    fn auth_share_payload(&self, profile_id: &str) -> Result<(String, Value), ManagerError> {
         self.ensure_file_storage()?;
         let mut vault = self.load_vault()?;
         if let Ok(current_auth) = self.read_live_auth() {
@@ -385,14 +399,7 @@ impl AccountManager {
             .find(|profile| profile.id == profile_id)
             .ok_or(ManagerError::ProfileNotFound)?;
         let auth = canonical_chatgpt_auth(&profile.auth)?;
-        auth_share::encode_text(&profile.label, &auth)
-            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
-    }
-
-    pub fn auth_share_qr(&self, profile_id: &str) -> Result<String, ManagerError> {
-        let text = self.auth_share_text(profile_id)?;
-        auth_share::render_qr_data_url(&text)
-            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
+        Ok((profile.label.clone(), auth))
     }
 
     pub fn import_auth_share_text(&self, text: &str) -> Result<AppStatus, ManagerError> {

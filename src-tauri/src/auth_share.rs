@@ -13,6 +13,7 @@ use std::{
 };
 
 const SHARE_TEXT_PREFIX: &str = "CAS2:";
+const SHARE_QR_PREFIX: &[u8] = b"CAS2Q";
 const MAX_ENVELOPE_BYTES: usize = 128 * 1024;
 const MAX_SHARE_TEXT_BYTES: usize = 256 * 1024;
 const MAX_QR_IMAGE_BYTES: usize = 12 * 1024 * 1024;
@@ -66,6 +67,22 @@ pub(crate) struct ImportedAuth {
 }
 
 pub(crate) fn encode_text(label: &str, auth: &Value) -> Result<String, AuthShareError> {
+    let compressed = encode_compressed(label, auth)?;
+    Ok(format!(
+        "{SHARE_TEXT_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(compressed)
+    ))
+}
+
+pub(crate) fn encode_qr_payload(label: &str, auth: &Value) -> Result<Vec<u8>, AuthShareError> {
+    let compressed = encode_compressed(label, auth)?;
+    let mut payload = Vec::with_capacity(SHARE_QR_PREFIX.len() + compressed.len());
+    payload.extend_from_slice(SHARE_QR_PREFIX);
+    payload.extend_from_slice(&compressed);
+    Ok(payload)
+}
+
+fn encode_compressed(label: &str, auth: &Value) -> Result<Vec<u8>, AuthShareError> {
     let envelope = CompactAuthShareEnvelope {
         label: label.to_string(),
         id_token: required_auth_token(auth, "id_token")?.to_string(),
@@ -78,11 +95,7 @@ pub(crate) fn encode_text(label: &str, auth: &Value) -> Result<String, AuthShare
         return Err(AuthShareError::PayloadTooLarge);
     }
 
-    let compressed = compress(&json)?;
-    Ok(format!(
-        "{SHARE_TEXT_PREFIX}{}",
-        URL_SAFE_NO_PAD.encode(compressed)
-    ))
+    compress(&json)
 }
 
 pub(crate) fn decode_text(text: &str) -> Result<ImportedAuth, AuthShareError> {
@@ -93,7 +106,17 @@ pub(crate) fn decode_text(text: &str) -> Result<ImportedAuth, AuthShareError> {
     let encoded = text
         .strip_prefix(SHARE_TEXT_PREFIX)
         .ok_or(AuthShareError::InvalidPayload)?;
-    decode_compact_text(encoded)
+    let compressed = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| AuthShareError::InvalidPayload)?;
+    decode_compressed(&compressed)
+}
+
+fn decode_qr_payload(payload: &[u8]) -> Result<ImportedAuth, AuthShareError> {
+    let compressed = payload
+        .strip_prefix(SHARE_QR_PREFIX)
+        .ok_or(AuthShareError::InvalidPayload)?;
+    decode_compressed(compressed)
 }
 
 fn required_auth_token<'a>(auth: &'a Value, field: &str) -> Result<&'a str, AuthShareError> {
@@ -126,11 +149,8 @@ fn decompress(compressed: &[u8]) -> Result<Vec<u8>, AuthShareError> {
     Ok(json)
 }
 
-fn decode_compact_text(encoded: &str) -> Result<ImportedAuth, AuthShareError> {
-    let compressed = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|_| AuthShareError::InvalidPayload)?;
-    let json = decompress(&compressed)?;
+fn decode_compressed(compressed: &[u8]) -> Result<ImportedAuth, AuthShareError> {
+    let json = decompress(compressed)?;
     let envelope: CompactAuthShareEnvelope =
         serde_json::from_slice(&json).map_err(|_| AuthShareError::InvalidPayload)?;
     if envelope.label.trim().is_empty()
@@ -156,8 +176,8 @@ fn decode_compact_text(encoded: &str) -> Result<ImportedAuth, AuthShareError> {
     })
 }
 
-pub(crate) fn render_qr_data_url(text: &str) -> Result<String, AuthShareError> {
-    let code = QrCode::with_error_correction_level(text.as_bytes(), EcLevel::L)
+pub(crate) fn render_qr_data_url(payload: &[u8]) -> Result<String, AuthShareError> {
+    let code = QrCode::with_error_correction_level(payload, EcLevel::L)
         .map_err(|_| AuthShareError::QrTooLarge)?;
     let image = code
         .render::<Luma<u8>>()
@@ -203,10 +223,7 @@ pub(crate) fn decode_qr_image(image_bytes: &[u8]) -> Result<ImportedAuth, AuthSh
         if grid.decode_to(&mut content).is_err() {
             continue;
         }
-        let Ok(text) = String::from_utf8(content) else {
-            continue;
-        };
-        if let Ok(imported) = decode_text(&text) {
+        if let Ok(imported) = decode_qr_payload(&content) {
             return Ok(imported);
         }
     }
@@ -248,8 +265,8 @@ mod tests {
             "auth_mode": "chatgpt",
             "OPENAI_API_KEY": null,
             "tokens": {
-                "id_token": format!("{}.{}.{}", noisy_text(36, 1), noisy_text(900, 2), noisy_text(342, 3)),
-                "access_token": format!("{}.{}.{}", noisy_text(36, 4), noisy_text(700, 5), noisy_text(342, 6)),
+                "id_token": format!("{}.{}.{}", noisy_text(36, 1), noisy_text(1_300, 2), noisy_text(342, 3)),
+                "access_token": format!("{}.{}.{}", noisy_text(36, 4), noisy_text(1_100, 5), noisy_text(342, 6)),
                 "refresh_token": noisy_text(110, 7),
                 "account_id": "account-a"
             }
@@ -291,8 +308,16 @@ mod tests {
     #[test]
     fn qr_share_round_trips_through_png() {
         let auth = realistic_sized_auth();
-        let text = encode_text("个人账号", &auth).unwrap();
-        let data_url = render_qr_data_url(&text).unwrap();
+        let clipboard_text = encode_text("个人账号", &auth).unwrap();
+        assert!(matches!(
+            render_qr_data_url(clipboard_text.as_bytes()),
+            Err(AuthShareError::QrTooLarge)
+        ));
+
+        let payload = encode_qr_payload("个人账号", &auth).unwrap();
+        assert!(payload.starts_with(SHARE_QR_PREFIX));
+        assert!(payload.len() < clipboard_text.len());
+        let data_url = render_qr_data_url(&payload).unwrap();
         let png = STANDARD
             .decode(data_url.strip_prefix("data:image/png;base64,").unwrap())
             .unwrap();
