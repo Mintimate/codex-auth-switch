@@ -436,6 +436,34 @@ button:disabled {
   color: var(--success-text);
 }
 
+.alert-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin: -7px -9px -7px auto;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: currentColor;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.alert-close:hover {
+  background: var(--surface);
+  opacity: 1;
+}
+
+.alert-close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
 .usage-section {
   padding: 28px;
 }

@@ -172,6 +172,13 @@ function App() {
   }, [refreshUsage, status?.supported]);
 
   useEffect(() => {
+    if (!notice) return;
+
+    const timer = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     if (!deviceLogin) return;
 
     let cancelled = false;
@@ -473,7 +480,18 @@ function App() {
           )}
 
           {notice && !error && (
-            <section className="alert success">{notice}</section>
+            <section className="alert success" role="status" aria-live="polite">
+              <span>{notice}</span>
+              <button
+                type="button"
+                className="alert-close"
+                aria-label="关闭提示"
+                title="关闭"
+                onClick={() => setNotice(null)}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </section>
           )}
 
           <div
