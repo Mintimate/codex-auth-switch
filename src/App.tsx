@@ -375,9 +375,9 @@ function App() {
   };
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
+    <main className="app-shell" data-tauri-drag-region>
+      <header className="topbar" data-tauri-drag-region>
+        <div className="brand" data-tauri-drag-region>
           <div className="brand-mark" aria-hidden="true">
             <AppIcon />
           </div>
