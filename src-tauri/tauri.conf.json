@@ -15,6 +15,8 @@
       {
         "label": "main",
         "title": "Codex Auth Switch",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "width": 940,
         "height": 720,
         "minWidth": 760,
