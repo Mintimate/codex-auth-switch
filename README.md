@@ -1,56 +1,148 @@
-# Codex Auth Switch
+<div align="center">
 
-一个非官方、纯本地的 Codex ChatGPT 多账号切换器。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./app-icon-dark.svg">
+  <img src="./app-icon.svg" width="156" height="156" alt="Codex Auth Switch 应用图标">
+</picture>
 
-它解决的不是 OpenAI 订阅或账单管理，而是同一台电脑上多个 Codex ChatGPT 登录之间的保存、切换和用量观察。应用不会代理 Codex 请求；新增账号通过浏览器完成 OpenAI Device Code 授权，无需安装 Codex CLI。
+</div>
 
+<h1 align="center">Codex Auth Switch</h1>
+
+<p align="center">纯本地 · 切换 Auth</p>
+
+<p align="center">
+  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">最新版本下载</a> |
+  <a href="#快速开始">快速使用指南</a> |
+  <a href="#核心功能">功能一览</a> |
+  <a href="#安全模型">数据安全</a> |
+  <a href="https://github.com/Mintimate/codex-auth-switch/releases">版本更新记录</a> |
+  <a href="#开发">研发手册</a> |
+  <a href="https://github.com/Mintimate/codex-auth-switch/issues">反馈问题</a>
+</p>
+
+![Codex Auth Switch 亮色仪表盘](docs/images/dashboard-light.jpg)
+
+> 截图使用内置预览数据，不包含真实账号或认证信息。
+
+Codex Auth Switch 解决的不是 OpenAI 订阅、账单或 API Key 管理，而是本机多个 Codex ChatGPT 登录之间的切换问题。它不代理 Codex 请求、不收集遥测，也不会将认证数据发送到项目自建服务。
+
+> [!IMPORTANT]
 > 本项目与 OpenAI 无隶属、赞助或背书关系。Codex、ChatGPT 和 OpenAI 是其各自权利人的商标。
 
-## 功能
+## 界面预览
 
-- 检测当前 Codex ChatGPT 登录
-- 为当前登录设置本地名称并保存
-- 通过浏览器 Device Code 授权添加账号
-- 一键切换已保存账号
-- 按账号查看订阅额度窗口，单个账号查询失败时独立降级
-- 汇总本机 Codex 会话的今天、近 7 天和近 30 天 Token 用量
-- 展示 14 天趋势、Token 构成和切换后的账号归属
-- 橙色亮色/暗色主题，并支持跟随系统自动切换
-- 切换前自动捕获当前账号可能轮换过的令牌
-- 重命名或移除非当前账号
-- 通过系统剪贴板或二维码在受信任设备之间分享、导入 Auth
-- 检测 `file`、`keyring` 和 `auto` 凭据存储模式
-- 认证数据只写入本机；登录时直接与 `auth.openai.com` 通信，额度查询直接访问 `chatgpt.com`
+| 暗色主题                                                        | Auth 分享                                                             |
+| --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| ![Codex Auth Switch 暗色仪表盘](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth 分享弹窗](docs/images/auth-share-dialog.jpg) |
 
-## 当前支持范围
+## 下载与安装
 
-首版仅支持文件凭据存储：
+前往 [Releases](https://github.com/Mintimate/codex-auth-switch/releases/latest) 下载与系统匹配的安装包。
+
+| 系统    | 架构                  | 格式                          |
+| ------- | --------------------- | ----------------------------- |
+| macOS   | Apple Silicon / Intel | `.dmg`                        |
+| Windows | x64                   | `.exe` / `.msi`               |
+| Linux   | x64                   | `.AppImage` / `.deb` / `.rpm` |
+
+macOS 安装包使用 ad-hoc 签名，首次打开时可能需要在“系统设置 → 隐私与安全性”中确认。部分系统也可能对未使用商业证书签名的开源安装包显示风险提示，请确认下载来自本项目的 GitHub Releases。
+
+## 快速开始
+
+### 1. 启用文件凭据存储
+
+当前版本只管理 Codex 的文件凭据。在 `CODEX_HOME/config.toml`（默认为 `~/.codex/config.toml`）中设置：
 
 ```toml
 cli_auth_credentials_store = "file"
 ```
 
-Codex 的 `keyring` 和 `auto` 模式暂不修改，应用会显示明确提示。API Key 登录也不会被当作 ChatGPT 订阅账号保存。
+`keyring` 和 `auto` 模式不会被修改，应用会显示明确提示。API Key 登录与 ChatGPT 订阅登录也保持分离，不会被当作可切换的订阅账号。
 
-订阅额度使用 ChatGPT 当前的兼容性接口查询，并非 OpenAI 承诺稳定的公开 API；接口变化或账号策略可能使某个账号暂时无法显示额度，但不会影响账号切换和本机 Token 统计。Token 明细只解析 `~/.codex/sessions` 与 `archived_sessions` 中的 `token_count` 元数据，不解析或传递提示词、回复正文。Codex 会话本身没有可靠的历史账号 ID，因此账号归属从本版本开始记录切换时间线，之前的数据会显示为“历史未归属”。
+### 2. 保存当前登录
+
+打开应用，为当前 Codex ChatGPT 登录设置一个本地名称，然后选择“保存当前登录”。
+
+### 3. 添加或导入账号
+
+- **登录新账号**：通过浏览器完成 Device Code 授权，成功后自动保存并切换。
+- **导入 Auth**：读取本应用生成的剪贴板文本或二维码。
+
+### 4. 一键切换
+
+在“已保存账号”中选择“切换到此账号”。应用会先保存当前账号可能已轮换的令牌，再原子替换 Codex 正在使用的认证文件。
+
+## 核心功能
+
+### 账号管理
+
+- 检测当前 Codex ChatGPT 登录
+- 保存、重命名和一键切换本机账号
+- 通过浏览器 Device Code 授权添加账号
+- 移除任意账号的本地保存副本；移除当前账号不会注销或中断当前 Codex 登录
+- 切换前自动捕获当前账号可能轮换过的令牌
+
+### 用量观察
+
+- 汇总今天、近 7 天和近 30 天的本机 Token 用量
+- 展示 14 天趋势、输入/输出 Token 构成和账号归属
+- 按账号查看订阅用量窗口，单个账号查询失败时独立降级
+- 只读取会话中的 `token_count` 元数据，不解析提示词或回复正文
+
+### Auth 分享
+
+- 通过系统剪贴板或二维码在受信任设备间迁移 Auth
+- 分享数据的编解码、剪贴板访问和二维码处理都在 Rust 后端中完成
+- 前端不会获得可复制的原始令牌文本
+
+### 桌面体验
+
+- 亮色、暗色与跟随系统三种外观模式
+- macOS、Windows 和 Linux 桌面安装包
+- 本机账号库路径可见，可直接在文件管理器中定位
+
+## 数据边界
+
+```text
+CODEX_HOME/auth.json
+        ↕ 本机读取 / 原子替换
+Codex Auth Switch (Tauri + Rust)
+        ↕ 本机账号库
+accounts.v1.json
+```
+
+- 应用不代理 Codex 会话请求，也没有自建后端、遥测或分析服务。
+- Device Code 登录时直接与 OpenAI 认证服务通信，仅请求写入本地 Codex 缓存所需的认证数据。
+- 订阅用量查询直接访问 ChatGPT 兼容性接口。该端点和字段并非 OpenAI 承诺稳定的公开 API，变化时可能影响额度显示，但不影响账号切换和本机 Token 统计。
+- 用量页面中的 Token 数字是本机会话元数据的汇总，不是 ChatGPT 官方订阅总额度。
+- Codex 历史会话没有可靠的账号 ID，因此账号归属从应用记录切换时间线后开始生效，更早的数据会显示为“历史未归属”。
 
 ## 安全模型
 
-Codex 官方文件模式将登录缓存保存在 `CODEX_HOME/auth.json`，默认路径为 `~/.codex/auth.json`。该文件包含访问令牌，应当像密码一样保护。
+Codex 文件凭据模式将登录缓存保存在 `CODEX_HOME/auth.json`，默认路径为 `~/.codex/auth.json`。该文件包含访问令牌，应当像密码一样保护。
 
 Codex Auth Switch 会在自己的应用数据目录保存账号快照：
 
-- macOS/Linux 上目录权限设置为 `0700`
+- macOS/Linux 上的应用数据目录权限设置为 `0700`
 - 账号库和临时认证文件权限设置为 `0600`
-- 日常状态接口只向前端返回脱敏账号摘要；分享时也不会返回可复制的原始令牌文本
-- 分享文本由 Rust 后端直接写入或读取系统剪贴板；二维码在后端生成和识别
+- 日常状态接口只向前端返回脱敏账号摘要
 - 本机 Token 解析完全在 Rust 后端完成，前端只接收聚合数字
 - 日志和错误消息不会包含令牌
-- macOS/Linux 切换使用同目录原子替换
+- macOS/Linux 上的凭据切换使用同目录原子替换
 
-如果设备被其他高权限用户控制，本地文件权限无法提供额外保护。系统钥匙串支持列入后续路线图。
+如果设备已被其他高权限用户控制，本地文件权限无法提供额外保护。系统钥匙串模式目前不在支持范围内。
 
-Auth 分享载荷包含可登录凭据，应当像密码一样处理。请只在自己控制或明确受信任的设备之间使用，粘贴完成后清空系统剪贴板，不要把二维码截图发送到聊天软件或上传云盘。导入成功后应用会把账号写入本地账号库并立即切换；若分享内容意外泄露，请重新登录相关账号以更新凭据。
+> [!WARNING]
+> Auth 分享载荷包含可登录凭据，不是加密备份。只应在自己控制或明确受信任的设备之间使用，粘贴完成后建议清空系统剪贴板，不要把二维码截图发送到聊天软件或上传云盘。
+
+## 当前限制
+
+- 仅支持 `cli_auth_credentials_store = "file"`
+- Device Code 登录仍是 Beta，可能需要个人用户或工作区管理员先启用相应权限
+- 订阅用量窗口来自兼容性实现，不是官方承诺的稳定对外 API
+- 本机 Token 数据取决于 Codex 会话文件中可用的 `token_count` 元数据
+- 项目不管理 OpenAI API Key、订阅计费或工作区席位
 
 ## 开发
 
@@ -66,30 +158,40 @@ npm install
 npm run dev
 ```
 
-验证：
+前端校验：
 
 ```bash
+npm run format
 npm run typecheck
 npm run build:web
-cd src-tauri && cargo test
+```
+
+Rust 校验：
+
+```bash
+cd src-tauri
+cargo fmt --all
+cargo test
 ```
 
 ## 项目结构
 
 ```text
-src/                    React 桌面界面
-src-tauri/src/manager.rs 账号库、认证校验与切换核心
-src-tauri/src/usage.rs   本机会话 Token 聚合
-src-tauri/src/lib.rs      Tauri 命令边界
+src/                        React 桌面界面
+src-tauri/src/manager.rs    账号库、认证校验与切换核心
+src-tauri/src/usage.rs      本机会话 Token 聚合
+src-tauri/src/auth_share.rs Auth 分享编码与二维码处理
+src-tauri/src/lib.rs        Tauri 命令边界
+docs/images/                README 预览截图
 ```
 
-## 参考
+## 官方参考
 
-- [OpenAI 官方认证文档](https://learn.chatgpt.com/docs/auth)
+- [OpenAI 认证文档](https://learn.chatgpt.com/docs/auth)
 - [OpenAI Codex 方案与用量说明](https://learn.chatgpt.com/docs/pricing)
 
-官方文档将 Device Code 登录标记为 Beta，并说明可能需要用户或工作区管理员先在 ChatGPT 安全设置中启用。官方用量说明确认订阅限制会随模型、上下文和工具变化，且本地与云端任务共享用量窗口。本文档确认的是这些产品能力；应用使用的具体 HTTP 端点和字段来自兼容性实现，不应视为 OpenAI 对公开 API 稳定性的承诺。
+OpenAI 官方文档将 Device Code 登录标记为 Beta，并说明可能需要用户或工作区管理员先在 ChatGPT 安全设置中启用。官方用量说明也指出，用量取决于模型、上下文和任务复杂度，本地与云端任务会共享相应的用量窗口。本 README 确认的是这些产品能力；应用使用的具体 HTTP 端点和字段属于兼容性实现，不应视为 OpenAI 对公开 API 稳定性的承诺。
 
 ## License
 
-MIT
+[MIT](LICENSE)
