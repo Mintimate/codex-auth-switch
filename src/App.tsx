@@ -170,6 +170,7 @@ function App() {
     null,
   );
   const [importDialog, setImportDialog] = useState(false);
+  const workspaceRef = useRef<HTMLElement>(null);
   const qrFileInput = useRef<HTMLInputElement>(null);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
@@ -213,7 +214,7 @@ function App() {
   }, [defaultTab]);
 
   useEffect(() => {
-    window.scrollTo({ top: 0 });
+    workspaceRef.current?.scrollTo({ top: 0 });
   }, [activeTab]);
 
   useEffect(() => {
@@ -498,7 +499,7 @@ function App() {
         </nav>
       </aside>
 
-      <section className="app-workspace">
+      <section ref={workspaceRef} className="app-workspace">
         <header className="workspace-toolbar" data-tauri-drag-region>
           <div className="topbar-actions">
             <button
