@@ -101,6 +101,8 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 ### Desktop Experience
 
 - Chinese and English interface with a persistent language switcher
+- Separate tabs for accounts, Token usage, and settings, with a configurable startup page
+- Optional automatic refresh when opening the Token usage tab
 - Light, dark, and system appearance modes
 - Desktop installers for macOS, Windows, and Linux
 - Visible local account vault path with direct access from the file manager

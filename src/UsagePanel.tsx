@@ -212,6 +212,14 @@ export function UsagePanel({
         <div className="usage-loading" role="status">
           {t("usageLoading")}
         </div>
+      ) : !usage ? (
+        <div className="usage-empty-state">
+          <strong>{t("usageNotLoaded")}</strong>
+          <p>{t("usageNotLoadedHint")}</p>
+          <button type="button" className="button primary" onClick={onRefresh}>
+            {t("loadUsage")}
+          </button>
+        </div>
       ) : usage ? (
         <>
           <div className="usage-metrics">

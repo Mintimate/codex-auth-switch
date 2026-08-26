@@ -25,6 +25,7 @@ import {
   UsageOverview,
 } from "./api";
 import { localizeBackendError, Locale, useI18n } from "./i18n";
+import { AppTab, SettingsPanel } from "./SettingsPanel";
 import { ThemeMode, useAppearance } from "./theme";
 import { UsagePanel } from "./UsagePanel";
 
@@ -58,6 +59,18 @@ const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
+const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
+const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
+
+const storedDefaultTab = (): AppTab => {
+  const value = window.localStorage.getItem(DEFAULT_TAB_STORAGE_KEY);
+  return value === "accounts" || value === "usage" || value === "settings"
+    ? value
+    : "accounts";
+};
+
+const storedAutoRefreshUsage = () =>
+  window.localStorage.getItem(AUTO_REFRESH_USAGE_STORAGE_KEY) !== "false";
 
 function AppIcon() {
   return (
@@ -88,34 +101,34 @@ function AppIcon() {
   );
 }
 
-function ThemeIcon({ mode }: { mode: ThemeMode }) {
-  if (mode === "light") {
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.82c.85 0 1.71.11 2.51.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
+    </svg>
+  );
+}
+
+function TabIcon({ tab }: { tab: AppTab }) {
+  if (tab === "accounts") {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true">
-        <circle cx="10" cy="10" r="3.1" />
-        <path d="M10 1.8v2M10 16.2v2M1.8 10h2M16.2 10h2M4.2 4.2l1.4 1.4M14.4 14.4l1.4 1.4M15.8 4.2l-1.4 1.4M5.6 14.4l-1.4 1.4" />
+        <circle cx="10" cy="6.2" r="3" />
+        <path d="M4.6 16.5c.5-3.1 2.3-4.8 5.4-4.8s4.9 1.7 5.4 4.8" />
       </svg>
     );
   }
-  if (mode === "dark") {
+  if (tab === "usage") {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M16.4 12.8A7 7 0 0 1 7.2 3.6 7 7 0 1 0 16.4 12.8Z" />
+        <path d="M3 16.5h14M5 14V9.8M10 14V4M15 14V7" />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
-      <rect x="2.5" y="3.5" width="15" height="10.5" rx="2" />
-      <path d="M7 17h6M10 14v3" />
-    </svg>
-  );
-}
-
-function GitHubIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.82c.85 0 1.71.11 2.51.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
+      <circle cx="10" cy="10" r="2.5" />
+      <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" />
     </svg>
   );
 }
@@ -130,12 +143,16 @@ function App() {
   ];
   const languageOptions: {
     label: string;
-    shortLabel: string;
     value: Locale;
   }[] = [
-    { label: t("chinese"), shortLabel: "中", value: "zh-CN" },
-    { label: t("english"), shortLabel: "EN", value: "en" },
+    { label: t("chinese"), value: "zh-CN" },
+    { label: t("english"), value: "en" },
   ];
+  const [defaultTab, setDefaultTab] = useState<AppTab>(storedDefaultTab);
+  const [activeTab, setActiveTab] = useState<AppTab>(storedDefaultTab);
+  const [autoRefreshUsage, setAutoRefreshUsage] = useState(
+    storedAutoRefreshUsage,
+  );
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -185,10 +202,21 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (status?.supported) {
+    if (activeTab === "usage" && autoRefreshUsage && status?.supported) {
       void refreshUsage();
     }
-  }, [refreshUsage, status?.supported]);
+  }, [activeTab, autoRefreshUsage, refreshUsage, status?.supported]);
+
+  useEffect(() => {
+    window.localStorage.setItem(DEFAULT_TAB_STORAGE_KEY, defaultTab);
+  }, [defaultTab]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      AUTO_REFRESH_USAGE_STORAGE_KEY,
+      String(autoRefreshUsage),
+    );
+  }, [autoRefreshUsage]);
 
   useEffect(() => {
     if (!notice) return;
@@ -220,7 +248,7 @@ function App() {
           setStatus(nextStatus);
           setDeviceLogin(null);
           setNotice(t("newAccountSaved"));
-          void refreshUsage();
+          if (activeTab === "usage") void refreshUsage();
           return;
         }
       } catch (reason) {
@@ -244,7 +272,7 @@ function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [deviceLogin, locale, refreshUsage, t]);
+  }, [activeTab, deviceLogin, locale, refreshUsage, t]);
 
   const active = useMemo(
     () => status?.accounts.find((account) => account.active) ?? null,
@@ -258,7 +286,7 @@ function App() {
     try {
       setStatus(await action());
       setNotice(t("operationComplete", { action: description }));
-      void refreshUsage();
+      if (activeTab === "usage") void refreshUsage();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -385,7 +413,7 @@ function App() {
       setStatus(await action());
       setImportDialog(false);
       setNotice(t("operationComplete", { action: description }));
-      void refreshUsage();
+      if (activeTab === "usage") void refreshUsage();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -402,6 +430,17 @@ function App() {
     await importAuth(t("importAndSwitch"), () => importAuthFromQr(image));
   };
 
+  const revealVault = () => {
+    if (!status?.vaultPath) return;
+    void revealItemInDir(status.vaultPath).catch((reason) =>
+      setError(
+        t("revealVaultFailed", {
+          message: messageOf(reason),
+        }),
+      ),
+    );
+  };
+
   return (
     <main className="app-shell" data-tauri-drag-region>
       <header className="topbar" data-tauri-drag-region>
@@ -415,44 +454,6 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <div
-            className="language-switcher"
-            role="group"
-            aria-label={t("language")}
-          >
-            {languageOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={locale === option.value ? "active" : ""}
-                aria-label={option.label}
-                aria-pressed={locale === option.value}
-                title={option.label}
-                onClick={() => setLocale(option.value)}
-              >
-                {option.shortLabel}
-              </button>
-            ))}
-          </div>
-          <div
-            className="theme-switcher"
-            role="group"
-            aria-label={t("appearance")}
-          >
-            {themeOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={theme === option.value ? "active" : ""}
-                aria-label={option.label}
-                aria-pressed={theme === option.value}
-                title={option.label}
-                onClick={() => setTheme(option.value)}
-              >
-                <ThemeIcon mode={option.value} />
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             className="github-link"
@@ -470,69 +471,33 @@ function App() {
         </div>
       </header>
 
+      <nav className="app-tabs" role="tablist" aria-label={t("mainNavigation")}>
+        {(["accounts", "usage", "settings"] as AppTab[]).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            className={activeTab === tab ? "active" : ""}
+            aria-selected={activeTab === tab}
+            aria-controls={`${tab}-panel`}
+            onClick={() => setActiveTab(tab)}
+          >
+            <TabIcon tab={tab} />
+            <span>
+              {tab === "accounts"
+                ? t("accountsTab")
+                : tab === "usage"
+                  ? t("usageTab")
+                  : t("settingsTab")}
+            </span>
+          </button>
+        ))}
+      </nav>
+
       {loading ? (
         <section className="loading-card">{t("loadingStatus")}</section>
       ) : (
         <div className="content-grid">
-          <section className="hero-card">
-            <div className="hero-copy">
-              <span className="eyebrow">{t("currentLogin")}</span>
-              <h2>{active?.label ?? t("currentAccountUnsaved")}</h2>
-              <p>
-                {active?.email ??
-                  (status?.activeAccountId
-                    ? t("accountDetected", {
-                        id: shortId(status.activeAccountId),
-                      })
-                    : t("noChatGptLogin"))}
-              </p>
-            </div>
-            <div
-              className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
-              aria-label={
-                status?.activeAccountId ? t("loggedIn") : t("loggedOut")
-              }
-            />
-            <div className="hero-actions">
-              <button
-                className="button secondary"
-                disabled={
-                  Boolean(busy) || !status?.activeAccountId || !status.supported
-                }
-                onClick={() =>
-                  openDialog("save", active?.label ?? t("workAccount"))
-                }
-              >
-                {t("saveCurrentLogin")}
-              </button>
-              <button
-                className="button primary"
-                disabled={Boolean(busy) || !status?.supported}
-                onClick={() =>
-                  openDialog(
-                    "login",
-                    t("numberedAccount", {
-                      number: (status?.accounts.length ?? 0) + 1,
-                    }),
-                  )
-                }
-              >
-                {t("loginNewAccount")}
-              </button>
-              <button
-                className="button secondary"
-                disabled={Boolean(busy) || !status?.supported}
-                onClick={() => {
-                  setError(null);
-                  setNotice(null);
-                  setImportDialog(true);
-                }}
-              >
-                {t("importAuth")}
-              </button>
-            </div>
-          </section>
-
           {!status?.supported && (
             <section className="alert warning">
               <strong>{t("unsupportedStorageTitle")}</strong>
@@ -568,21 +533,74 @@ function App() {
             </section>
           )}
 
-          <div
-            className={`dashboard-grid${status?.supported ? "" : " accounts-only"}`}
-          >
-            {status?.supported && (
-              <UsagePanel
-                usage={usage}
-                loading={usageLoading}
-                error={usageError}
-                locale={locale}
-                onRefresh={() => void refreshUsage()}
-                t={t}
-              />
-            )}
+          {activeTab === "accounts" && (
+            <div
+              id="accounts-panel"
+              className="accounts-page"
+              role="tabpanel"
+              aria-label={t("accountsTab")}
+            >
+              <section className="hero-card">
+                <div className="hero-copy">
+                  <span className="eyebrow">{t("currentLogin")}</span>
+                  <h2>{active?.label ?? t("currentAccountUnsaved")}</h2>
+                  <p>
+                    {active?.email ??
+                      (status?.activeAccountId
+                        ? t("accountDetected", {
+                            id: shortId(status.activeAccountId),
+                          })
+                        : t("noChatGptLogin"))}
+                  </p>
+                </div>
+                <div
+                  className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
+                  aria-label={
+                    status?.activeAccountId ? t("loggedIn") : t("loggedOut")
+                  }
+                />
+                <div className="hero-actions">
+                  <button
+                    className="button secondary"
+                    disabled={
+                      Boolean(busy) ||
+                      !status?.activeAccountId ||
+                      !status.supported
+                    }
+                    onClick={() =>
+                      openDialog("save", active?.label ?? t("workAccount"))
+                    }
+                  >
+                    {t("saveCurrentLogin")}
+                  </button>
+                  <button
+                    className="button primary"
+                    disabled={Boolean(busy) || !status?.supported}
+                    onClick={() =>
+                      openDialog(
+                        "login",
+                        t("numberedAccount", {
+                          number: (status?.accounts.length ?? 0) + 1,
+                        }),
+                      )
+                    }
+                  >
+                    {t("loginNewAccount")}
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={Boolean(busy) || !status?.supported}
+                    onClick={() => {
+                      setError(null);
+                      setNotice(null);
+                      setImportDialog(true);
+                    }}
+                  >
+                    {t("importAuth")}
+                  </button>
+                </div>
+              </section>
 
-            <div className="account-column">
               <section className="accounts-section">
                 <div className="section-heading">
                   <div>
@@ -592,10 +610,7 @@ function App() {
                   <button
                     className="text-button"
                     disabled={Boolean(busy)}
-                    onClick={() => {
-                      void refresh();
-                      void refreshUsage();
-                    }}
+                    onClick={() => void refresh()}
                   >
                     {t("refresh")}
                   </button>
@@ -687,39 +702,53 @@ function App() {
                   </div>
                 )}
               </section>
-
-              <footer className="paths-card">
-                <div>
-                  <span>{t("codexDirectory")}</span>
-                  <code>{status?.codexHome}</code>
-                </div>
-                <div>
-                  <span>{t("localVaultPath")}</span>
-                  <button
-                    type="button"
-                    className="path-link"
-                    disabled={!status?.vaultPath}
-                    aria-label={t("revealVaultAria")}
-                    title={t("revealVaultTitle")}
-                    onClick={() => {
-                      if (!status?.vaultPath) return;
-                      void revealItemInDir(status.vaultPath).catch((reason) =>
-                        setError(
-                          t("revealVaultFailed", {
-                            message: messageOf(reason),
-                          }),
-                        ),
-                      );
-                    }}
-                  >
-                    <code>{status?.vaultPath}</code>
-                    <strong>{t("openDirectory")}</strong>
-                  </button>
-                </div>
-                <p>{t("credentialPrivacy")}</p>
-              </footer>
             </div>
-          </div>
+          )}
+
+          {activeTab === "usage" && (
+            <div
+              id="usage-panel"
+              className="tab-panel"
+              role="tabpanel"
+              aria-label={t("usageTab")}
+            >
+              {status?.supported ? (
+                <UsagePanel
+                  usage={usage}
+                  loading={usageLoading}
+                  error={usageError}
+                  locale={locale}
+                  onRefresh={() => void refreshUsage()}
+                  t={t}
+                />
+              ) : null}
+            </div>
+          )}
+
+          {activeTab === "settings" && (
+            <div
+              id="settings-panel"
+              className="tab-panel"
+              role="tabpanel"
+              aria-label={t("settingsTab")}
+            >
+              <SettingsPanel
+                autoRefreshUsage={autoRefreshUsage}
+                defaultTab={defaultTab}
+                languageOptions={languageOptions}
+                locale={locale}
+                onAutoRefreshUsageChange={setAutoRefreshUsage}
+                onDefaultTabChange={setDefaultTab}
+                onLocaleChange={setLocale}
+                onRevealVault={revealVault}
+                onThemeChange={setTheme}
+                status={status}
+                t={t}
+                theme={theme}
+                themeOptions={themeOptions}
+              />
+            </div>
+          )}
         </div>
       )}
 
