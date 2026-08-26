@@ -24,6 +24,7 @@ import {
   switchAccount,
   UsageOverview,
 } from "./api";
+import { AccountFlow } from "./AccountFlow";
 import { localizeBackendError, Locale, useI18n } from "./i18n";
 import { AppTab, SettingsPanel } from "./SettingsPanel";
 import { ThemeMode, useAppearance } from "./theme";
@@ -629,6 +630,12 @@ function App() {
                     </button>
                   </div>
                 </section>
+
+                <AccountFlow
+                  activeLabel={active?.label ?? null}
+                  status={status}
+                  t={t}
+                />
 
                 <section className="accounts-section">
                   <div className="section-heading">

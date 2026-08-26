@@ -367,6 +367,7 @@ button:disabled {
 
 .loading-card,
 .hero-card,
+.account-flow-section,
 .usage-section,
 .accounts-section,
 .settings-group,
@@ -453,6 +454,147 @@ button:disabled {
   display: flex;
   grid-column: 1 / -1;
   gap: 10px;
+}
+
+.account-flow-section {
+  padding: 26px 28px 20px;
+}
+
+.account-flow-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.account-flow-heading h2,
+.account-flow-heading p,
+.account-flow-note {
+  margin: 0;
+}
+
+.account-flow-heading h2 {
+  margin-top: 6px;
+  font-size: 21px;
+}
+
+.account-flow-heading p {
+  max-width: 480px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.account-flow {
+  display: flex;
+  align-items: center;
+  margin-top: 25px;
+}
+
+.account-flow-fragment {
+  display: contents;
+}
+
+.flow-step {
+  display: grid;
+  min-width: 112px;
+  flex: 0 1 170px;
+  place-items: center;
+  text-align: center;
+}
+
+.flow-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--accent-deep);
+  box-shadow: inset 0 0 0 4px var(--accent-soft);
+}
+
+.flow-icon.switch {
+  background: var(--surface-active);
+}
+
+.flow-icon.file {
+  color: var(--foreground);
+}
+
+.flow-icon svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.65;
+}
+
+.flow-step strong,
+.flow-step > span {
+  display: block;
+}
+
+.flow-step strong {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.flow-step > span {
+  max-width: 160px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.flow-connector {
+  position: relative;
+  display: grid;
+  min-width: 70px;
+  flex: 1 1 130px;
+  place-items: center;
+  align-self: start;
+  margin-top: 25px;
+  padding: 0 8px;
+}
+
+.flow-line {
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.flow-connector small {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.flow-arrow {
+  position: absolute;
+  top: -9px;
+  right: 3px;
+  color: var(--accent);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.account-flow-note {
+  margin-top: 21px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  color: var(--muted-soft);
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .button {
@@ -1627,6 +1769,58 @@ button:disabled {
   .account-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  .account-flow-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .account-flow-heading p {
+    text-align: left;
+  }
+
+  .account-flow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .flow-step {
+    min-width: 0;
+    flex: none;
+  }
+
+  .flow-connector {
+    width: 2px;
+    min-width: 2px;
+    min-height: 62px;
+    flex: none;
+    align-self: center;
+    margin: 3px 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .flow-line {
+    width: 2px;
+    height: 35px;
+  }
+
+  .flow-connector small {
+    position: absolute;
+    left: 14px;
+    width: 150px;
+    margin: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .flow-arrow {
+    top: auto;
+    right: auto;
+    bottom: -2px;
+    transform: rotate(90deg);
   }
 
   .usage-insights,
