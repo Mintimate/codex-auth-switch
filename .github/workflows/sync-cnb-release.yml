@@ -135,7 +135,15 @@ jobs:
             > "${RUNNER_TEMP}/changelog-plugin.log"
 
           if [[ -s "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md" ]]; then
-            export RELEASE_BODY="$(cat "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md")"
+            export RELEASE_BODY="$(
+              awk '
+                /^#{1,2} [0-9]{4}-/ {
+                  if (started) exit
+                  started = 1
+                }
+                started { print }
+              ' "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md"
+            )"
           else
             export RELEASE_BODY="$(jq -r '.body' "${RUNNER_TEMP}/github-release.json")"
           fi
