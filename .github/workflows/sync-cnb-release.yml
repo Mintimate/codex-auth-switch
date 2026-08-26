@@ -105,9 +105,11 @@ jobs:
         run: |
           mkdir -p "${RUNNER_TEMP}/cnb-release-assets"
           gh release view "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --json name,body,isPrerelease \
             > "${RUNNER_TEMP}/github-release.json"
           gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --dir "${RUNNER_TEMP}/cnb-release-assets"
 
       - name: 创建 CNB Release 并上传附件
