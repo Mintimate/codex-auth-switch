@@ -67,11 +67,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
+      # tauri-action 会读取并合并同一 Release 中的 latest.json，必须避免矩阵任务并发覆盖。
+      max-parallel: 1
       matrix:
         include:
           - name: macOS Apple Silicon
             platform: macos-latest
-            args: --target aarch64-apple-darwin --bundles dmg
+            args: --target aarch64-apple-darwin --bundles app,dmg
             rust_targets: aarch64-apple-darwin
             cache_key: macos-aarch64
             apple_signing_identity: "-"
@@ -79,7 +81,7 @@ jobs:
             asset_arch: arm64
           - name: macOS Intel
             platform: macos-latest
-            args: --target x86_64-apple-darwin --bundles dmg
+            args: --target x86_64-apple-darwin --bundles app,dmg
             rust_targets: x86_64-apple-darwin
             cache_key: macos-x86_64
             apple_signing_identity: "-"
@@ -202,7 +204,8 @@ jobs:
           tagName: ${{ needs.prepare.outputs.release_tag }}
           releaseName: ${{ needs.prepare.outputs.release_tag }}
           releaseBody: ${{ needs.prepare.outputs.release_body }}
-          releaseDraft: false
+          # 所有平台和 updater 清单通过最终校验前，不向现有客户端公开新版本。
+          releaseDraft: true
           prerelease: ${{ contains(needs.prepare.outputs.release_tag, '-') }}
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -211,24 +214,118 @@ jobs:
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: Codex-Auth-Switch-[version]-${{ matrix.asset_os }}-${{ matrix.asset_arch }}-[bundle]
 
-  cleanup:
-    name: 清理旧命名产物
+  publish:
+    name: 验证并发布更新
     needs:
       - prepare
       - build
     runs-on: ubuntu-latest
     steps:
+      - name: 验证 updater 清单与签名产物
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        shell: bash
+        run: |
+          release_pages="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          release_json="$(jq -cer --arg tag "${RELEASE_TAG}" '
+            [.[][] | select(.tag_name == $tag)]
+            | if length == 1 then .[0] else error("没有找到唯一的草稿 Release") end
+          ' <<<"${release_pages}")"
+          jq -e '.draft == true' <<<"${release_json}"
+
+          manifest_dir="${RUNNER_TEMP}/updater-manifest"
+          mkdir -p "${manifest_dir}"
+          manifest="${manifest_dir}/latest.json"
+          manifest_asset_id="$(jq -er '
+            [.assets[] | select(.name == "latest.json")]
+            | if length == 1 then .[0].id else error("没有找到唯一的 latest.json") end
+          ' <<<"${release_json}")"
+          gh api \
+            -H 'Accept: application/octet-stream' \
+            "repos/${GITHUB_REPOSITORY}/releases/assets/${manifest_asset_id}" \
+            > "${manifest}"
+
+          expected_version="${RELEASE_TAG#v}"
+          jq -e --arg version "${expected_version}" \
+            '.version == $version and (.platforms | type == "object")' \
+            "${manifest}"
+
+          required_platforms=(
+            darwin-aarch64
+            darwin-aarch64-app
+            darwin-x86_64
+            darwin-x86_64-app
+            linux-x86_64
+            linux-x86_64-appimage
+            linux-x86_64-deb
+            linux-x86_64-rpm
+            windows-x86_64
+            windows-x86_64-nsis
+            windows-x86_64-msi
+          )
+          for platform in "${required_platforms[@]}"; do
+            jq -e --arg platform "${platform}" '
+              .platforms[$platform] as $entry
+              | ($entry | type == "object")
+                and ($entry.url | type == "string" and length > 0)
+                and ($entry.signature | type == "string" and length > 0)
+            ' "${manifest}"
+          done
+
+          jq -e '
+            ([.assets[].name | select(endswith(".app.tar.gz"))] | length) == 2
+            and ([.assets[].name | select(endswith(".app.tar.gz.sig"))] | length) == 2
+          ' <<<"${release_json}"
+
       - name: 删除旧命名的安装产物
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         shell: bash
         run: |
-          gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' |
-            while IFS= read -r asset_name; do
+          release_pages="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          jq -r --arg tag "${RELEASE_TAG}" '
+            .[][]
+            | select(.tag_name == $tag)
+            | .assets[]
+            | [.id, .name]
+            | @tsv
+          ' <<<"${release_pages}" |
+            while IFS=$'\t' read -r asset_id asset_name; do
               case "${asset_name}" in
                 codex-auth-switch-*)
-                  gh release delete-asset "${RELEASE_TAG}" "${asset_name}" --repo "${GITHUB_REPOSITORY}" --yes
+                  gh api --method DELETE \
+                    "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
                   ;;
               esac
             done
+
+      - name: 公开已验证的 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        shell: bash
+        run: |
+          release_pages="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          release_id="$(jq -er --arg tag "${RELEASE_TAG}" '
+            [.[][] | select(.tag_name == $tag)]
+            | if length == 1 then .[0].id else error("没有找到唯一的草稿 Release") end
+          ' <<<"${release_pages}")"
+
+          if [[ "${RELEASE_TAG}" == *-* ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -F draft=false \
+              -F prerelease=true \
+              -f make_latest=false
+          else
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -F draft=false \
+              -F prerelease=false \
+              -f make_latest=true
+          fi

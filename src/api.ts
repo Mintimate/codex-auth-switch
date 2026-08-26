@@ -227,12 +227,12 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
       return Promise.resolve(previewShareQr as T);
     }
     if (command === "get_app_version") {
-      return Promise.resolve("0.7.0" as T);
+      return Promise.resolve("0.7.1" as T);
     }
     if (command === "check_app_update") {
       return Promise.resolve({
         status: "upToDate",
-        currentVersion: "0.7.0",
+        currentVersion: "0.7.1",
         version: null,
         body: null,
         date: null,
