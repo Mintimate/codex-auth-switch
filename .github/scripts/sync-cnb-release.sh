@@ -62,6 +62,7 @@ release_response="$(
 
 if [[ "$(response_status "$release_response")" == "200" ]]; then
   release_id="$(jq -r '.data.id' <<<"$release_response")"
+  existing_assets="$(jq -c '.data.assets // []' <<<"$release_response")"
   update_payload="$(jq -cn \
     --arg name "$RELEASE_NAME" \
     --arg body "$RELEASE_BODY" \
@@ -91,6 +92,7 @@ else
   )"
   require_status "$create_response" 201
   release_id="$(jq -r '.data.id' <<<"$create_response")"
+  existing_assets="[]"
 fi
 
 shopt -s nullglob
@@ -103,6 +105,16 @@ fi
 for asset in "${assets[@]}"; do
   asset_name="$(basename "$asset")"
   asset_size="$(wc -c <"$asset" | tr -d '[:space:]')"
+  existing_size="$(
+    jq -r --arg name "$asset_name" \
+      '[.[] | select(.name == $name) | .size][0] // 0' \
+      <<<"$existing_assets"
+  )"
+
+  if [[ "$existing_size" == "$asset_size" ]]; then
+    echo "Skipped unchanged asset ${asset_name}"
+    continue
+  fi
 
   upload_response="$(
     cnb_cli releases post-release-asset-upload-url \

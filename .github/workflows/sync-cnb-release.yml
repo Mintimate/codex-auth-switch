@@ -131,7 +131,8 @@ jobs:
             -e PLUGIN_LINK_REFERENCES="false" \
             --entrypoint sh \
             cnbcool/changelog \
-            -c 'git config --global --add safe.directory /workspace && exec node /plugins/lib/index.js'
+            -c 'git config --global --add safe.directory /workspace && exec node /plugins/lib/index.js' \
+            > "${RUNNER_TEMP}/changelog-plugin.log"
 
           if [[ -s "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md" ]]; then
             export RELEASE_BODY="$(cat "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md")"
