@@ -274,12 +274,7 @@ mod tests {
     }
 
     fn assert_compact_auth_matches(decoded: &Value, original: &Value) {
-        for field in [
-            "id_token",
-            "access_token",
-            "refresh_token",
-            "account_id",
-        ] {
+        for field in ["id_token", "access_token", "refresh_token", "account_id"] {
             assert_eq!(
                 decoded.pointer(&format!("/tokens/{field}")),
                 original.pointer(&format!("/tokens/{field}"))

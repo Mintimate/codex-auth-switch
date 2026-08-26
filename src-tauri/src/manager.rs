@@ -806,10 +806,7 @@ fn canonical_chatgpt_auth(auth: &Value) -> Result<Value, ManagerError> {
             normalized_tokens.insert(field.to_string(), value.clone());
         }
     }
-    normalized_tokens.insert(
-        "account_id".to_string(),
-        Value::String(identity.account_id),
-    );
+    normalized_tokens.insert("account_id".to_string(), Value::String(identity.account_id));
     let mut normalized = serde_json::Map::new();
     normalized.insert(
         "auth_mode".to_string(),
