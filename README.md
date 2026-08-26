@@ -9,6 +9,8 @@
 
 <h1 align="center">Codex Auth Switch</h1>
 
+<p align="center"><strong>简体中文</strong> | <a href="./README.en.md">English</a></p>
+
 <p align="center">纯本地 · 切换 Auth</p>
 
 <p align="center">
@@ -98,6 +100,7 @@ cli_auth_credentials_store = "file"
 
 ### 桌面体验
 
+- 简体中文和英文界面，语言选择会在本机持久保存
 - 亮色、暗色与跟随系统三种外观模式
 - macOS、Windows 和 Linux 桌面安装包
 - 本机账号库路径可见，可直接在文件管理器中定位

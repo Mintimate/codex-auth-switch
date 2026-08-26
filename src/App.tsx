@@ -24,6 +24,7 @@ import {
   switchAccount,
   UsageOverview,
 } from "./api";
+import { localizeBackendError, Locale, useI18n } from "./i18n";
 import { ThemeMode, useAppearance } from "./theme";
 import { UsagePanel } from "./UsagePanel";
 
@@ -55,12 +56,6 @@ const shortId = (value: string) =>
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
-
-const themeOptions: { label: string; value: ThemeMode }[] = [
-  { label: "亮色", value: "light" },
-  { label: "暗色", value: "dark" },
-  { label: "跟随系统", value: "system" },
-];
 
 const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
 
@@ -127,6 +122,20 @@ function GitHubIcon() {
 
 function App() {
   const { setTheme, theme } = useAppearance();
+  const { locale, setLocale, t } = useI18n();
+  const themeOptions: { label: string; value: ThemeMode }[] = [
+    { label: t("light"), value: "light" },
+    { label: t("dark"), value: "dark" },
+    { label: t("system"), value: "system" },
+  ];
+  const languageOptions: {
+    label: string;
+    shortLabel: string;
+    value: Locale;
+  }[] = [
+    { label: t("chinese"), shortLabel: "中", value: "zh-CN" },
+    { label: t("english"), shortLabel: "EN", value: "en" },
+  ];
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -154,22 +163,22 @@ function App() {
     try {
       setUsage(await getUsageOverview());
     } catch (reason) {
-      setUsageError(messageOf(reason));
+      setUsageError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setUsageLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   const refresh = useCallback(async () => {
     try {
       setError(null);
       setStatus(await getStatus());
     } catch (reason) {
-      setError(messageOf(reason));
+      setError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     void refresh();
@@ -195,7 +204,7 @@ function App() {
     let timer: number | undefined;
     const poll = async () => {
       if (Date.now() >= deviceLogin.expiresAt) {
-        setError("登录验证码已过期，请重新发起登录");
+        setError(t("loginCodeExpired"));
         setDeviceLogin(null);
         return;
       }
@@ -210,13 +219,13 @@ function App() {
         if (nextStatus) {
           setStatus(nextStatus);
           setDeviceLogin(null);
-          setNotice("新账号登录并保存完成");
+          setNotice(t("newAccountSaved"));
           void refreshUsage();
           return;
         }
       } catch (reason) {
         if (cancelled) return;
-        setError(messageOf(reason));
+        setError(localizeBackendError(messageOf(reason), locale));
         setDeviceLogin(null);
         return;
       }
@@ -235,7 +244,7 @@ function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [deviceLogin, refreshUsage]);
+  }, [deviceLogin, locale, refreshUsage, t]);
 
   const active = useMemo(
     () => status?.accounts.find((account) => account.active) ?? null,
@@ -248,17 +257,17 @@ function App() {
     setNotice(null);
     try {
       setStatus(await action());
-      setNotice(`${description}完成`);
+      setNotice(t("operationComplete", { action: description }));
       void refreshUsage();
     } catch (reason) {
-      setError(messageOf(reason));
+      setError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setBusy(null);
     }
   };
 
   const beginDeviceLogin = async (nextLabel: string) => {
-    setBusy("申请登录验证码");
+    setBusy(t("requestLoginCode"));
     setError(null);
     setNotice(null);
     try {
@@ -276,10 +285,10 @@ function App() {
       try {
         await openUrl(response.verificationUri);
       } catch {
-        setNotice("验证码已生成；如浏览器未自动打开，请点击“打开登录页面”");
+        setNotice(t("loginCodeReady"));
       }
     } catch (reason) {
-      setError(messageOf(reason));
+      setError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setBusy(null);
     }
@@ -302,11 +311,13 @@ function App() {
 
     setDialog(null);
     if (dialog === "save") {
-      await run("保存当前登录", () => saveCurrent(nextLabel));
+      await run(t("saveCurrentLogin"), () => saveCurrent(nextLabel));
     } else if (dialog === "login") {
       await beginDeviceLogin(nextLabel);
     } else if (selectedId) {
-      await run("重命名账号", () => renameAccount(selectedId, nextLabel));
+      await run(t("renameAccountAction"), () =>
+        renameAccount(selectedId, nextLabel),
+      );
     }
   };
 
@@ -314,7 +325,7 @@ function App() {
     if (!removeDialog) return;
     const { profileId } = removeDialog;
     setRemoveDialog(null);
-    await run("移除账号", () => removeAccount(profileId));
+    await run(t("removeAccountAction"), () => removeAccount(profileId));
   };
 
   const openShareDialog = async (profileId: string, accountLabel: string) => {
@@ -334,7 +345,10 @@ function App() {
     } catch (reason) {
       setShareDialog((current) =>
         current?.profileId === profileId
-          ? { ...current, qrError: messageOf(reason) }
+          ? {
+              ...current,
+              qrError: localizeBackendError(messageOf(reason), locale),
+            }
           : current,
       );
     }
@@ -350,7 +364,11 @@ function App() {
     } catch (reason) {
       setShareDialog((current) =>
         current
-          ? { ...current, copied: false, copyError: messageOf(reason) }
+          ? {
+              ...current,
+              copied: false,
+              copyError: localizeBackendError(messageOf(reason), locale),
+            }
           : current,
       );
     }
@@ -366,10 +384,10 @@ function App() {
     try {
       setStatus(await action());
       setImportDialog(false);
-      setNotice(`${description}完成`);
+      setNotice(t("operationComplete", { action: description }));
       void refreshUsage();
     } catch (reason) {
-      setError(messageOf(reason));
+      setError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setBusy(null);
     }
@@ -377,11 +395,11 @@ function App() {
 
   const importQrFile = async (file: File) => {
     if (file.size > 12 * 1024 * 1024) {
-      setError("二维码图片不能超过 12 MB");
+      setError(t("qrTooLarge"));
       return;
     }
     const image = Array.from(new Uint8Array(await file.arrayBuffer()));
-    await importAuth("导入并切换 Auth", () => importAuthFromQr(image));
+    await importAuth(t("importAndSwitch"), () => importAuthFromQr(image));
   };
 
   return (
@@ -393,11 +411,34 @@ function App() {
           </div>
           <div className="brand-copy">
             <h1>Codex Auth Switch</h1>
-            <p>本机 Codex 多账号切换器</p>
+            <p>{t("tagline")}</p>
           </div>
         </div>
         <div className="topbar-actions">
-          <div className="theme-switcher" role="group" aria-label="外观模式">
+          <div
+            className="language-switcher"
+            role="group"
+            aria-label={t("language")}
+          >
+            {languageOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={locale === option.value ? "active" : ""}
+                aria-label={option.label}
+                aria-pressed={locale === option.value}
+                title={option.label}
+                onClick={() => setLocale(option.value)}
+              >
+                {option.shortLabel}
+              </button>
+            ))}
+          </div>
+          <div
+            className="theme-switcher"
+            role="group"
+            aria-label={t("appearance")}
+          >
             {themeOptions.map((option) => (
               <button
                 key={option.value}
@@ -415,38 +456,42 @@ function App() {
           <button
             type="button"
             className="github-link"
-            aria-label="在 GitHub 查看项目仓库"
+            aria-label={t("github")}
             title={GITHUB_REPOSITORY_URL}
             onClick={() =>
               void openUrl(GITHUB_REPOSITORY_URL).catch((reason) =>
-                setError(`无法打开 GitHub：${messageOf(reason)}`),
+                setError(t("githubOpenFailed", { message: messageOf(reason) })),
               )
             }
           >
             <GitHubIcon />
           </button>
-          <span className="unofficial">纯本地 · 切换 Auth</span>
+          <span className="unofficial">{t("localOnly")}</span>
         </div>
       </header>
 
       {loading ? (
-        <section className="loading-card">正在读取本机 Codex 登录状态…</section>
+        <section className="loading-card">{t("loadingStatus")}</section>
       ) : (
         <div className="content-grid">
           <section className="hero-card">
             <div className="hero-copy">
-              <span className="eyebrow">当前登录</span>
-              <h2>{active?.label ?? "尚未保存当前账号"}</h2>
+              <span className="eyebrow">{t("currentLogin")}</span>
+              <h2>{active?.label ?? t("currentAccountUnsaved")}</h2>
               <p>
                 {active?.email ??
                   (status?.activeAccountId
-                    ? `已检测到账号 ${shortId(status.activeAccountId)}`
-                    : "尚未检测到 ChatGPT 登录")}
+                    ? t("accountDetected", {
+                        id: shortId(status.activeAccountId),
+                      })
+                    : t("noChatGptLogin"))}
               </p>
             </div>
             <div
               className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
-              aria-label={status?.activeAccountId ? "已登录" : "未登录"}
+              aria-label={
+                status?.activeAccountId ? t("loggedIn") : t("loggedOut")
+              }
             />
             <div className="hero-actions">
               <button
@@ -454,9 +499,11 @@ function App() {
                 disabled={
                   Boolean(busy) || !status?.activeAccountId || !status.supported
                 }
-                onClick={() => openDialog("save", active?.label ?? "工作账号")}
+                onClick={() =>
+                  openDialog("save", active?.label ?? t("workAccount"))
+                }
               >
-                保存当前登录
+                {t("saveCurrentLogin")}
               </button>
               <button
                 className="button primary"
@@ -464,11 +511,13 @@ function App() {
                 onClick={() =>
                   openDialog(
                     "login",
-                    `账号 ${(status?.accounts.length ?? 0) + 1}`,
+                    t("numberedAccount", {
+                      number: (status?.accounts.length ?? 0) + 1,
+                    }),
                   )
                 }
               >
-                登录新账号
+                {t("loginNewAccount")}
               </button>
               <button
                 className="button secondary"
@@ -479,25 +528,27 @@ function App() {
                   setImportDialog(true);
                 }}
               >
-                导入 Auth
+                {t("importAuth")}
               </button>
             </div>
           </section>
 
           {!status?.supported && (
             <section className="alert warning">
-              <strong>当前凭据存储模式不受支持</strong>
+              <strong>{t("unsupportedStorageTitle")}</strong>
               <span>
-                检测到 {status?.storageMode ?? "未知"}。请在 Codex config.toml
-                中设置
-                <code>cli_auth_credentials_store = &quot;file&quot;</code>。
+                {t("unsupportedStorage", {
+                  mode: status?.storageMode ?? t("unknown"),
+                })}
+                <code>cli_auth_credentials_store = &quot;file&quot;</code>
+                {locale === "zh-CN" ? "。" : "."}
               </span>
             </section>
           )}
 
           {error && (
             <section className="alert error">
-              <strong>操作失败</strong>
+              <strong>{t("operationFailed")}</strong>
               <span>{error}</span>
             </section>
           )}
@@ -508,8 +559,8 @@ function App() {
               <button
                 type="button"
                 className="alert-close"
-                aria-label="关闭提示"
-                title="关闭"
+                aria-label={t("closeNotice")}
+                title={t("close")}
                 onClick={() => setNotice(null)}
               >
                 <span aria-hidden="true">×</span>
@@ -525,7 +576,9 @@ function App() {
                 usage={usage}
                 loading={usageLoading}
                 error={usageError}
+                locale={locale}
                 onRefresh={() => void refreshUsage()}
+                t={t}
               />
             )}
 
@@ -533,8 +586,8 @@ function App() {
               <section className="accounts-section">
                 <div className="section-heading">
                   <div>
-                    <span className="eyebrow">本机账号库</span>
-                    <h2>已保存账号</h2>
+                    <span className="eyebrow">{t("localVault")}</span>
+                    <h2>{t("savedAccounts")}</h2>
                   </div>
                   <button
                     className="text-button"
@@ -544,7 +597,7 @@ function App() {
                       void refreshUsage();
                     }}
                   >
-                    刷新
+                    {t("refresh")}
                   </button>
                 </div>
 
@@ -564,10 +617,12 @@ function App() {
                           <div className="account-title-row">
                             <h3>{account.label}</h3>
                             {account.active && (
-                              <span className="active-badge">当前</span>
+                              <span className="active-badge">
+                                {t("current")}
+                              </span>
                             )}
                           </div>
-                          <p>{account.email ?? "未提供邮箱"}</p>
+                          <p>{account.email ?? t("emailUnavailable")}</p>
                           <span className="account-id">
                             {shortId(account.accountId)}
                           </span>
@@ -578,37 +633,37 @@ function App() {
                               className="account-action primary-action"
                               disabled={Boolean(busy) || !status.supported}
                               onClick={() =>
-                                void run("切换账号", () =>
+                                void run(t("switchAccount"), () =>
                                   switchAccount(account.id),
                                 )
                               }
                             >
-                              切换到此账号
+                              {t("switchToAccount")}
                             </button>
                           )}
                           <button
                             className="account-action"
-                            title="分享 Auth"
+                            title={t("shareAuth")}
                             disabled={Boolean(busy) || !status.supported}
                             onClick={() =>
                               void openShareDialog(account.id, account.label)
                             }
                           >
-                            分享
+                            {t("share")}
                           </button>
                           <button
                             className="account-action"
-                            title="重命名"
+                            title={t("rename")}
                             disabled={Boolean(busy)}
                             onClick={() =>
                               openDialog("rename", account.label, account.id)
                             }
                           >
-                            重命名
+                            {t("rename")}
                           </button>
                           <button
                             className="account-action danger"
-                            title="从本机账号库移除"
+                            title={t("removeFromVault")}
                             disabled={Boolean(busy)}
                             onClick={() =>
                               setRemoveDialog({
@@ -618,7 +673,7 @@ function App() {
                               })
                             }
                           >
-                            移除
+                            {t("remove")}
                           </button>
                         </div>
                       </article>
@@ -627,41 +682,41 @@ function App() {
                 ) : (
                   <div className="empty-state">
                     <div className="empty-icon">+</div>
-                    <h3>还没有保存账号</h3>
-                    <p>
-                      可以保存现有 Codex 登录，也可以通过浏览器授权添加新账号。
-                    </p>
+                    <h3>{t("noSavedAccounts")}</h3>
+                    <p>{t("noSavedAccountsHint")}</p>
                   </div>
                 )}
               </section>
 
               <footer className="paths-card">
                 <div>
-                  <span>Codex 目录</span>
+                  <span>{t("codexDirectory")}</span>
                   <code>{status?.codexHome}</code>
                 </div>
                 <div>
-                  <span>本地账号库</span>
+                  <span>{t("localVaultPath")}</span>
                   <button
                     type="button"
                     className="path-link"
                     disabled={!status?.vaultPath}
-                    aria-label="在文件管理器中打开本地账号库目录"
-                    title="在文件管理器中显示账号库文件"
+                    aria-label={t("revealVaultAria")}
+                    title={t("revealVaultTitle")}
                     onClick={() => {
                       if (!status?.vaultPath) return;
                       void revealItemInDir(status.vaultPath).catch((reason) =>
                         setError(
-                          `无法打开本地账号库目录：${messageOf(reason)}`,
+                          t("revealVaultFailed", {
+                            message: messageOf(reason),
+                          }),
                         ),
                       );
                     }}
                   >
                     <code>{status?.vaultPath}</code>
-                    <strong>打开目录</strong>
+                    <strong>{t("openDirectory")}</strong>
                   </button>
                 </div>
-                <p>认证文件包含敏感令牌。应用不会上传、显示或写入日志。</p>
+                <p>{t("credentialPrivacy")}</p>
               </footer>
             </div>
           </div>
@@ -671,8 +726,8 @@ function App() {
       {busy && (
         <div className="busy-overlay" role="status">
           <div className="spinner" />
-          <strong>{busy}中…</strong>
-          <p>请稍候</p>
+          <strong>{t("busy", { action: busy })}</strong>
+          <p>{t("pleaseWait")}</p>
         </div>
       )}
 
@@ -689,16 +744,19 @@ function App() {
             aria-labelledby="remove-dialog-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="eyebrow">本机账号库</span>
-            <h2 id="remove-dialog-title">移除“{removeDialog.label}”？</h2>
+            <span className="eyebrow">{t("localVault")}</span>
+            <h2 id="remove-dialog-title">
+              {t("removeAccountTitle", { label: removeDialog.label })}
+            </h2>
             <p>
-              这会删除该账号的本地保存副本，不会注销 ChatGPT 账号
-              {removeDialog.active ? "，也不会中断当前 Codex 登录。" : "。"}
+              {t("removeAccountDescription", {
+                activeSuffix: removeDialog.active
+                  ? t("activeRemoveSuffix")
+                  : t("inactiveRemoveSuffix"),
+              })}
             </p>
             {removeDialog.active && (
-              <p className="remove-dialog-note">
-                移除后将不能再从列表切换回该账号，除非重新保存当前登录。
-              </p>
+              <p className="remove-dialog-note">{t("activeRemoveNote")}</p>
             )}
             <div className="dialog-actions">
               <button
@@ -706,14 +764,14 @@ function App() {
                 className="button secondary"
                 onClick={() => setRemoveDialog(null)}
               >
-                取消
+                {t("cancel")}
               </button>
               <button
                 type="button"
                 className="button danger-button"
                 onClick={() => void handleRemove()}
               >
-                仅从本机移除
+                {t("removeLocalOnly")}
               </button>
             </div>
           </section>
@@ -733,34 +791,32 @@ function App() {
             aria-labelledby="share-dialog-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="eyebrow">Auth 分享</span>
-            <h2 id="share-dialog-title">分享“{shareDialog.label}”</h2>
-            <p>在另一台设备打开本应用，扫描此二维码或导入剪贴板内容。</p>
+            <span className="eyebrow">{t("authSharing")}</span>
+            <h2 id="share-dialog-title">
+              {t("shareAccountTitle", { label: shareDialog.label })}
+            </h2>
+            <p>{t("shareDescription")}</p>
             <div className="share-qr" aria-live="polite">
               {shareDialog.qrDataUrl ? (
                 <img
                   src={shareDialog.qrDataUrl}
-                  alt={`${shareDialog.label} 的 Auth 分享二维码`}
+                  alt={t("shareQrAlt", { label: shareDialog.label })}
                 />
               ) : shareDialog.qrError ? (
                 <div className="share-qr-message">
-                  <strong>无法生成二维码</strong>
+                  <strong>{t("qrGenerationFailed")}</strong>
                   <span>{shareDialog.qrError}</span>
                 </div>
               ) : (
                 <div className="share-qr-message">
                   <span className="inline-spinner" />
-                  <span>正在本机生成二维码…</span>
+                  <span>{t("qrGenerating")}</span>
                 </div>
               )}
             </div>
-            <p className="sensitive-warning">
-              紧凑编码不是加密；二维码和剪贴板内容仍包含可登录凭据，请仅分享给你信任的设备，并避免截图留存或发送到聊天软件。
-            </p>
+            <p className="sensitive-warning">{t("shareWarning")}</p>
             {shareDialog.copied && (
-              <p className="share-feedback success-text">
-                已复制。粘贴完成后建议清空系统剪贴板。
-              </p>
+              <p className="share-feedback success-text">{t("copiedHint")}</p>
             )}
             {shareDialog.copyError && (
               <p className="share-feedback error-text">
@@ -773,14 +829,14 @@ function App() {
                 className="button secondary"
                 onClick={() => setShareDialog(null)}
               >
-                完成
+                {t("done")}
               </button>
               <button
                 type="button"
                 className="button primary"
                 onClick={() => void copyShareToClipboard()}
               >
-                {shareDialog.copied ? "重新复制" : "复制到剪贴板"}
+                {shareDialog.copied ? t("copyAgain") : t("copyToClipboard")}
               </button>
             </div>
           </section>
@@ -800,24 +856,24 @@ function App() {
             aria-labelledby="import-dialog-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="eyebrow">Auth 导入</span>
-            <h2 id="import-dialog-title">选择导入方式</h2>
-            <p>导入成功后会保存该账号，并立即切换为当前 Codex 登录。</p>
+            <span className="eyebrow">{t("authImport")}</span>
+            <h2 id="import-dialog-title">{t("chooseImportMethod")}</h2>
+            <p>{t("importDescription")}</p>
             <div className="import-options">
               <button
                 type="button"
                 className="import-option"
                 disabled={Boolean(busy)}
                 onClick={() =>
-                  void importAuth("导入并切换 Auth", importAuthFromClipboard)
+                  void importAuth(t("importAndSwitch"), importAuthFromClipboard)
                 }
               >
                 <span className="import-option-icon" aria-hidden="true">
                   ⎘
                 </span>
                 <span>
-                  <strong>从剪贴板导入</strong>
-                  <small>读取本应用生成的 Auth 分享文本</small>
+                  <strong>{t("importClipboard")}</strong>
+                  <small>{t("importClipboardHint")}</small>
                 </span>
               </button>
               <button
@@ -830,8 +886,8 @@ function App() {
                   ▦
                 </span>
                 <span>
-                  <strong>导入二维码图片</strong>
-                  <small>选择 PNG、JPEG、WebP 或 GIF 图片</small>
+                  <strong>{t("importQr")}</strong>
+                  <small>{t("importQrHint")}</small>
                 </span>
               </button>
               <input
@@ -846,15 +902,19 @@ function App() {
                   event.currentTarget.value = "";
                   if (!file) return;
                   void importQrFile(file).catch((reason) =>
-                    setError(`无法读取二维码图片：${messageOf(reason)}`),
+                    setError(
+                      t("qrReadFailed", {
+                        message: localizeBackendError(
+                          messageOf(reason),
+                          locale,
+                        ),
+                      }),
+                    ),
                   );
                 }}
               />
             </div>
-            <p className="sensitive-warning">
-              只导入来自可信来源的内容。分享载荷会在 Rust
-              后端校验，原始令牌不会显示在界面或写入日志。
-            </p>
+            <p className="sensitive-warning">{t("importWarning")}</p>
             {error && <p className="share-feedback error-text">{error}</p>}
             <div className="dialog-actions">
               <button
@@ -863,7 +923,7 @@ function App() {
                 disabled={Boolean(busy)}
                 onClick={() => setImportDialog(false)}
               >
-                取消
+                {t("cancel")}
               </button>
             </div>
           </section>
@@ -877,52 +937,45 @@ function App() {
             role="dialog"
             aria-modal="true"
           >
-            <span className="eyebrow">Device Code 登录</span>
-            <h2>在浏览器中完成登录</h2>
-            <p>
-              输入下面的验证码并授权“Codex”。完成后本窗口会自动保存并切换到新账号。
-            </p>
+            <span className="eyebrow">{t("deviceCodeLogin")}</span>
+            <h2>{t("completeLoginInBrowser")}</h2>
+            <p>{t("deviceLoginDescription")}</p>
             <button
               className="device-code"
               type="button"
-              title="复制验证码"
+              title={t("copyVerificationCode")}
               onClick={() => {
                 void navigator.clipboard
                   .writeText(deviceLogin.response.userCode)
-                  .then(() => setNotice("验证码已复制"))
-                  .catch(() => setError("无法复制验证码，请手动输入"));
+                  .then(() => setNotice(t("verificationCodeCopied")))
+                  .catch(() => setError(t("verificationCodeCopyFailed")));
               }}
             >
               {deviceLogin.response.userCode}
             </button>
             <div className="polling-state" role="status">
               <span className="polling-dot" />
-              正在等待浏览器授权
+              {t("waitingBrowser")}
             </div>
-            <p className="device-hint">
-              如果页面提示不可用，请先在 ChatGPT 安全设置中启用 Device Code
-              登录；工作区账号可能需要管理员启用。
-            </p>
+            <p className="device-hint">{t("deviceLoginHint")}</p>
             <div className="dialog-actions device-actions">
               <button
                 type="button"
                 className="button secondary"
                 onClick={() => setDeviceLogin(null)}
               >
-                取消
+                {t("cancel")}
               </button>
               <button
                 type="button"
                 className="button primary"
                 onClick={() =>
                   void openUrl(deviceLogin.response.verificationUri).catch(() =>
-                    setError(
-                      "无法打开浏览器，请访问 auth.openai.com/codex/device",
-                    ),
+                    setError(t("browserOpenFailed")),
                   )
                 }
               >
-                打开登录页面
+                {t("openLoginPage")}
               </button>
             </div>
           </section>
@@ -942,44 +995,42 @@ function App() {
           >
             <span className="eyebrow">
               {dialog === "login"
-                ? "浏览器登录"
+                ? t("browserLogin")
                 : dialog === "save"
-                  ? "保存当前登录"
-                  : "账号名称"}
+                  ? t("saveCurrentLogin")
+                  : t("accountName")}
             </span>
             <h2>
               {dialog === "login"
-                ? "为新账号设置名称"
+                ? t("nameNewAccount")
                 : dialog === "save"
-                  ? "保存这个账号"
-                  : "重命名账号"}
+                  ? t("saveThisAccount")
+                  : t("renameAccount")}
             </h2>
-            <label htmlFor="account-label">显示名称</label>
+            <label htmlFor="account-label">{t("displayName")}</label>
             <input
               id="account-label"
               autoFocus
               maxLength={60}
               value={label}
               onChange={(event) => setLabel(event.target.value)}
-              placeholder="例如：个人 Pro"
+              placeholder={t("accountNamePlaceholder")}
             />
-            {dialog === "login" && (
-              <p>下一步会生成一次性验证码，并打开 OpenAI 登录页面。</p>
-            )}
+            {dialog === "login" && <p>{t("deviceLoginNextStep")}</p>}
             <div className="dialog-actions">
               <button
                 type="button"
                 className="button secondary"
                 onClick={() => setDialog(null)}
               >
-                取消
+                {t("cancel")}
               </button>
               <button
                 type="submit"
                 className="button primary"
                 disabled={!label.trim()}
               >
-                继续
+                {t("continue")}
               </button>
             </div>
           </form>
