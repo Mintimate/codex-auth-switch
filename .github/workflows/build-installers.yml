@@ -38,20 +38,15 @@ jobs:
             exit 1
           fi
 
-          previous_tag="$(git describe --tags --abbrev=0 "${release_tag}^" 2>/dev/null || true)"
-          if [[ -n "${previous_tag}" ]]; then
-            release_body="$(git log --format='- %s' "${previous_tag}..HEAD" -- . \
-              ':(exclude)package.json' \
-              ':(exclude)package-lock.json' \
-              ':(exclude)src-tauri/Cargo.toml' \
-              ':(exclude)src-tauri/Cargo.lock' \
-              ':(exclude)src-tauri/tauri.conf.json')"
+          if git rev-parse --verify --quiet "refs/tags/${release_tag}" > /dev/null; then
+            previous_tag="$(git describe --tags --abbrev=0 "${release_tag}^" 2>/dev/null || true)"
           else
-            release_body="$(git log -1 --format='- %s')"
+            previous_tag="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
           fi
-          if [[ -z "${release_body}" ]]; then
-            release_body="- $(git log -1 --format='%s')"
-          fi
+          release_body="$(
+            bash .github/scripts/generate-release-notes.sh \
+              "${release_tag}" "${previous_tag}"
+          )"
 
           delimiter="release-body-${RANDOM}-${RANDOM}"
           {

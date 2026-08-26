@@ -155,30 +155,5 @@ jobs:
         run: |
           export RELEASE_NAME="$(jq -r '.name' "${RUNNER_TEMP}/github-release.json")"
           export RELEASE_PRERELEASE="$(jq -r '.isPrerelease' "${RUNNER_TEMP}/github-release.json")"
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}/source:/workspace" \
-            -w /workspace \
-            -e HOME=/tmp \
-            -e PLUGIN_TAG="${RELEASE_TAG}" \
-            -e PLUGIN_TARGET="RELEASE_NOTES.md" \
-            -e PLUGIN_DRY_RUN="true" \
-            -e PLUGIN_LINK_REFERENCES="false" \
-            --entrypoint sh \
-            cnbcool/changelog \
-            -c 'git config --global --add safe.directory /workspace && exec node /plugins/lib/index.js' \
-            > "${RUNNER_TEMP}/changelog-plugin.log"
-
-          if [[ -s "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md" ]]; then
-            export RELEASE_BODY="$(
-              awk '
-                /^#{1,2} [0-9]{4}-/ {
-                  if (started) exit
-                  started = 1
-                }
-                started { print }
-              ' "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md"
-            )"
-          else
-            export RELEASE_BODY="$(jq -r '.body' "${RUNNER_TEMP}/github-release.json")"
-          fi
+          export RELEASE_BODY="$(jq -r '.body // ""' "${RUNNER_TEMP}/github-release.json")"
           bash automation/.github/scripts/sync-cnb-release.sh
