@@ -212,6 +212,10 @@ function App() {
   }, [defaultTab]);
 
   useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [activeTab]);
+
+  useEffect(() => {
     window.localStorage.setItem(
       AUTO_REFRESH_USAGE_STORAGE_KEY,
       String(autoRefreshUsage),
@@ -443,7 +447,7 @@ function App() {
 
   return (
     <main className="app-shell" data-tauri-drag-region>
-      <header className="topbar" data-tauri-drag-region>
+      <aside className="app-sidebar" data-tauri-drag-region>
         <div className="brand" data-tauri-drag-region>
           <div className="brand-mark" aria-hidden="true">
             <AppIcon />
@@ -453,304 +457,319 @@ function App() {
             <p>{t("tagline")}</p>
           </div>
         </div>
-        <div className="topbar-actions">
-          <button
-            type="button"
-            className="github-link"
-            aria-label={t("github")}
-            title={GITHUB_REPOSITORY_URL}
-            onClick={() =>
-              void openUrl(GITHUB_REPOSITORY_URL).catch((reason) =>
-                setError(t("githubOpenFailed", { message: messageOf(reason) })),
-              )
-            }
-          >
-            <GitHubIcon />
-          </button>
-          <span className="unofficial">{t("localOnly")}</span>
-        </div>
-      </header>
 
-      <nav className="app-tabs" role="tablist" aria-label={t("mainNavigation")}>
-        {(["accounts", "usage", "settings"] as AppTab[]).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            role="tab"
-            className={activeTab === tab ? "active" : ""}
-            aria-selected={activeTab === tab}
-            aria-controls={`${tab}-panel`}
-            onClick={() => setActiveTab(tab)}
-          >
-            <TabIcon tab={tab} />
-            <span>
-              {tab === "accounts"
-                ? t("accountsTab")
-                : tab === "usage"
-                  ? t("usageTab")
-                  : t("settingsTab")}
-            </span>
-          </button>
-        ))}
-      </nav>
-
-      {loading ? (
-        <section className="loading-card">{t("loadingStatus")}</section>
-      ) : (
-        <div className="content-grid">
-          {!status?.supported && (
-            <section className="alert warning">
-              <strong>{t("unsupportedStorageTitle")}</strong>
-              <span>
-                {t("unsupportedStorage", {
-                  mode: status?.storageMode ?? t("unknown"),
-                })}
-                <code>cli_auth_credentials_store = &quot;file&quot;</code>
-                {locale === "zh-CN" ? "。" : "."}
-              </span>
-            </section>
-          )}
-
-          {error && (
-            <section className="alert error">
-              <strong>{t("operationFailed")}</strong>
-              <span>{error}</span>
-            </section>
-          )}
-
-          {notice && !error && (
-            <section className="alert success" role="status" aria-live="polite">
-              <span>{notice}</span>
-              <button
-                type="button"
-                className="alert-close"
-                aria-label={t("closeNotice")}
-                title={t("close")}
-                onClick={() => setNotice(null)}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </section>
-          )}
-
-          {activeTab === "accounts" && (
-            <div
-              id="accounts-panel"
-              className="accounts-page"
-              role="tabpanel"
-              aria-label={t("accountsTab")}
+        <nav
+          className="app-tabs"
+          role="tablist"
+          aria-label={t("mainNavigation")}
+        >
+          {(["accounts", "usage", "settings"] as AppTab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              className={`${activeTab === tab ? "active" : ""}${tab === "settings" ? " settings-tab" : ""}`}
+              aria-selected={activeTab === tab}
+              aria-controls={`${tab}-panel`}
+              onClick={() => setActiveTab(tab)}
             >
-              <section className="hero-card">
-                <div className="hero-copy">
-                  <span className="eyebrow">{t("currentLogin")}</span>
-                  <h2>{active?.label ?? t("currentAccountUnsaved")}</h2>
-                  <p>
-                    {active?.email ??
-                      (status?.activeAccountId
-                        ? t("accountDetected", {
-                            id: shortId(status.activeAccountId),
-                          })
-                        : t("noChatGptLogin"))}
-                  </p>
-                </div>
-                <div
-                  className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
-                  aria-label={
-                    status?.activeAccountId ? t("loggedIn") : t("loggedOut")
-                  }
-                />
-                <div className="hero-actions">
-                  <button
-                    className="button secondary"
-                    disabled={
-                      Boolean(busy) ||
-                      !status?.activeAccountId ||
-                      !status.supported
-                    }
-                    onClick={() =>
-                      openDialog("save", active?.label ?? t("workAccount"))
-                    }
-                  >
-                    {t("saveCurrentLogin")}
-                  </button>
-                  <button
-                    className="button primary"
-                    disabled={Boolean(busy) || !status?.supported}
-                    onClick={() =>
-                      openDialog(
-                        "login",
-                        t("numberedAccount", {
-                          number: (status?.accounts.length ?? 0) + 1,
-                        }),
-                      )
-                    }
-                  >
-                    {t("loginNewAccount")}
-                  </button>
-                  <button
-                    className="button secondary"
-                    disabled={Boolean(busy) || !status?.supported}
-                    onClick={() => {
-                      setError(null);
-                      setNotice(null);
-                      setImportDialog(true);
-                    }}
-                  >
-                    {t("importAuth")}
-                  </button>
-                </div>
+              <TabIcon tab={tab} />
+              <span>
+                {tab === "accounts"
+                  ? t("accountsTab")
+                  : tab === "usage"
+                    ? t("usageTab")
+                    : t("settingsTab")}
+              </span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <section className="app-workspace">
+        <header className="workspace-toolbar" data-tauri-drag-region>
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className="github-link"
+              aria-label={t("github")}
+              title={GITHUB_REPOSITORY_URL}
+              onClick={() =>
+                void openUrl(GITHUB_REPOSITORY_URL).catch((reason) =>
+                  setError(
+                    t("githubOpenFailed", { message: messageOf(reason) }),
+                  ),
+                )
+              }
+            >
+              <GitHubIcon />
+            </button>
+            <span className="unofficial">{t("localOnly")}</span>
+          </div>
+        </header>
+
+        {loading ? (
+          <section className="loading-card">{t("loadingStatus")}</section>
+        ) : (
+          <div className="content-grid">
+            {!status?.supported && (
+              <section className="alert warning">
+                <strong>{t("unsupportedStorageTitle")}</strong>
+                <span>
+                  {t("unsupportedStorage", {
+                    mode: status?.storageMode ?? t("unknown"),
+                  })}
+                  <code>cli_auth_credentials_store = &quot;file&quot;</code>
+                  {locale === "zh-CN" ? "。" : "."}
+                </span>
               </section>
+            )}
 
-              <section className="accounts-section">
-                <div className="section-heading">
-                  <div>
-                    <span className="eyebrow">{t("localVault")}</span>
-                    <h2>{t("savedAccounts")}</h2>
+            {error && (
+              <section className="alert error">
+                <strong>{t("operationFailed")}</strong>
+                <span>{error}</span>
+              </section>
+            )}
+
+            {notice && !error && (
+              <section
+                className="alert success"
+                role="status"
+                aria-live="polite"
+              >
+                <span>{notice}</span>
+                <button
+                  type="button"
+                  className="alert-close"
+                  aria-label={t("closeNotice")}
+                  title={t("close")}
+                  onClick={() => setNotice(null)}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </section>
+            )}
+
+            {activeTab === "accounts" && (
+              <div
+                id="accounts-panel"
+                className="accounts-page"
+                role="tabpanel"
+                aria-label={t("accountsTab")}
+              >
+                <section className="hero-card">
+                  <div className="hero-copy">
+                    <span className="eyebrow">{t("currentLogin")}</span>
+                    <h2>{active?.label ?? t("currentAccountUnsaved")}</h2>
+                    <p>
+                      {active?.email ??
+                        (status?.activeAccountId
+                          ? t("accountDetected", {
+                              id: shortId(status.activeAccountId),
+                            })
+                          : t("noChatGptLogin"))}
+                    </p>
                   </div>
-                  <button
-                    className="text-button"
-                    disabled={Boolean(busy)}
-                    onClick={() => void refresh()}
-                  >
-                    {t("refresh")}
-                  </button>
-                </div>
+                  <div
+                    className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
+                    aria-label={
+                      status?.activeAccountId ? t("loggedIn") : t("loggedOut")
+                    }
+                  />
+                  <div className="hero-actions">
+                    <button
+                      className="button secondary"
+                      disabled={
+                        Boolean(busy) ||
+                        !status?.activeAccountId ||
+                        !status.supported
+                      }
+                      onClick={() =>
+                        openDialog("save", active?.label ?? t("workAccount"))
+                      }
+                    >
+                      {t("saveCurrentLogin")}
+                    </button>
+                    <button
+                      className="button primary"
+                      disabled={Boolean(busy) || !status?.supported}
+                      onClick={() =>
+                        openDialog(
+                          "login",
+                          t("numberedAccount", {
+                            number: (status?.accounts.length ?? 0) + 1,
+                          }),
+                        )
+                      }
+                    >
+                      {t("loginNewAccount")}
+                    </button>
+                    <button
+                      className="button secondary"
+                      disabled={Boolean(busy) || !status?.supported}
+                      onClick={() => {
+                        setError(null);
+                        setNotice(null);
+                        setImportDialog(true);
+                      }}
+                    >
+                      {t("importAuth")}
+                    </button>
+                  </div>
+                </section>
 
-                {status?.accounts.length ? (
-                  <div className="account-list">
-                    {status.accounts.map((account) => (
-                      <article
-                        className={`account-card ${account.active ? "active" : ""}`}
-                        key={account.id}
-                      >
-                        <div className="avatar" aria-hidden="true">
-                          {(account.label || account.email || "C")
-                            .slice(0, 1)
-                            .toUpperCase()}
-                        </div>
-                        <div className="account-main">
-                          <div className="account-title-row">
-                            <h3>{account.label}</h3>
-                            {account.active && (
-                              <span className="active-badge">
-                                {t("current")}
-                              </span>
-                            )}
+                <section className="accounts-section">
+                  <div className="section-heading">
+                    <div>
+                      <span className="eyebrow">{t("localVault")}</span>
+                      <h2>{t("savedAccounts")}</h2>
+                    </div>
+                    <button
+                      className="text-button"
+                      disabled={Boolean(busy)}
+                      onClick={() => void refresh()}
+                    >
+                      {t("refresh")}
+                    </button>
+                  </div>
+
+                  {status?.accounts.length ? (
+                    <div className="account-list">
+                      {status.accounts.map((account) => (
+                        <article
+                          className={`account-card ${account.active ? "active" : ""}`}
+                          key={account.id}
+                        >
+                          <div className="avatar" aria-hidden="true">
+                            {(account.label || account.email || "C")
+                              .slice(0, 1)
+                              .toUpperCase()}
                           </div>
-                          <p>{account.email ?? t("emailUnavailable")}</p>
-                          <span className="account-id">
-                            {shortId(account.accountId)}
-                          </span>
-                        </div>
-                        <div className="account-actions">
-                          {!account.active && (
+                          <div className="account-main">
+                            <div className="account-title-row">
+                              <h3>{account.label}</h3>
+                              {account.active && (
+                                <span className="active-badge">
+                                  {t("current")}
+                                </span>
+                              )}
+                            </div>
+                            <p>{account.email ?? t("emailUnavailable")}</p>
+                            <span className="account-id">
+                              {shortId(account.accountId)}
+                            </span>
+                          </div>
+                          <div className="account-actions">
+                            {!account.active && (
+                              <button
+                                className="account-action primary-action"
+                                disabled={Boolean(busy) || !status.supported}
+                                onClick={() =>
+                                  void run(t("switchAccount"), () =>
+                                    switchAccount(account.id),
+                                  )
+                                }
+                              >
+                                {t("switchToAccount")}
+                              </button>
+                            )}
                             <button
-                              className="account-action primary-action"
+                              className="account-action"
+                              title={t("shareAuth")}
                               disabled={Boolean(busy) || !status.supported}
                               onClick={() =>
-                                void run(t("switchAccount"), () =>
-                                  switchAccount(account.id),
-                                )
+                                void openShareDialog(account.id, account.label)
                               }
                             >
-                              {t("switchToAccount")}
+                              {t("share")}
                             </button>
-                          )}
-                          <button
-                            className="account-action"
-                            title={t("shareAuth")}
-                            disabled={Boolean(busy) || !status.supported}
-                            onClick={() =>
-                              void openShareDialog(account.id, account.label)
-                            }
-                          >
-                            {t("share")}
-                          </button>
-                          <button
-                            className="account-action"
-                            title={t("rename")}
-                            disabled={Boolean(busy)}
-                            onClick={() =>
-                              openDialog("rename", account.label, account.id)
-                            }
-                          >
-                            {t("rename")}
-                          </button>
-                          <button
-                            className="account-action danger"
-                            title={t("removeFromVault")}
-                            disabled={Boolean(busy)}
-                            onClick={() =>
-                              setRemoveDialog({
-                                profileId: account.id,
-                                label: account.label,
-                                active: account.active,
-                              })
-                            }
-                          >
-                            {t("remove")}
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <div className="empty-icon">+</div>
-                    <h3>{t("noSavedAccounts")}</h3>
-                    <p>{t("noSavedAccountsHint")}</p>
-                  </div>
-                )}
-              </section>
-            </div>
-          )}
+                            <button
+                              className="account-action"
+                              title={t("rename")}
+                              disabled={Boolean(busy)}
+                              onClick={() =>
+                                openDialog("rename", account.label, account.id)
+                              }
+                            >
+                              {t("rename")}
+                            </button>
+                            <button
+                              className="account-action danger"
+                              title={t("removeFromVault")}
+                              disabled={Boolean(busy)}
+                              onClick={() =>
+                                setRemoveDialog({
+                                  profileId: account.id,
+                                  label: account.label,
+                                  active: account.active,
+                                })
+                              }
+                            >
+                              {t("remove")}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <div className="empty-icon">+</div>
+                      <h3>{t("noSavedAccounts")}</h3>
+                      <p>{t("noSavedAccountsHint")}</p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
 
-          {activeTab === "usage" && (
-            <div
-              id="usage-panel"
-              className="tab-panel"
-              role="tabpanel"
-              aria-label={t("usageTab")}
-            >
-              {status?.supported ? (
-                <UsagePanel
-                  usage={usage}
-                  loading={usageLoading}
-                  error={usageError}
+            {activeTab === "usage" && (
+              <div
+                id="usage-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("usageTab")}
+              >
+                {status?.supported ? (
+                  <UsagePanel
+                    usage={usage}
+                    loading={usageLoading}
+                    error={usageError}
+                    locale={locale}
+                    onRefresh={() => void refreshUsage()}
+                    t={t}
+                  />
+                ) : null}
+              </div>
+            )}
+
+            {activeTab === "settings" && (
+              <div
+                id="settings-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("settingsTab")}
+              >
+                <SettingsPanel
+                  autoRefreshUsage={autoRefreshUsage}
+                  defaultTab={defaultTab}
+                  languageOptions={languageOptions}
                   locale={locale}
-                  onRefresh={() => void refreshUsage()}
+                  onAutoRefreshUsageChange={setAutoRefreshUsage}
+                  onDefaultTabChange={setDefaultTab}
+                  onLocaleChange={setLocale}
+                  onRevealVault={revealVault}
+                  onThemeChange={setTheme}
+                  status={status}
                   t={t}
+                  theme={theme}
+                  themeOptions={themeOptions}
                 />
-              ) : null}
-            </div>
-          )}
-
-          {activeTab === "settings" && (
-            <div
-              id="settings-panel"
-              className="tab-panel"
-              role="tabpanel"
-              aria-label={t("settingsTab")}
-            >
-              <SettingsPanel
-                autoRefreshUsage={autoRefreshUsage}
-                defaultTab={defaultTab}
-                languageOptions={languageOptions}
-                locale={locale}
-                onAutoRefreshUsageChange={setAutoRefreshUsage}
-                onDefaultTabChange={setDefaultTab}
-                onLocaleChange={setLocale}
-                onRevealVault={revealVault}
-                onThemeChange={setTheme}
-                status={status}
-                t={t}
-                theme={theme}
-                themeOptions={themeOptions}
-              />
-            </div>
-          )}
-        </div>
-      )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {busy && (
         <div className="busy-overlay" role="status">
