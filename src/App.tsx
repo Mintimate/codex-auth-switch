@@ -1,4 +1,4 @@
-import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   FormEvent,
   useCallback,
@@ -445,6 +445,17 @@ function App() {
     );
   };
 
+  const openCodexDirectory = () => {
+    if (!status?.codexHome) return;
+    void openPath(status.codexHome).catch((reason) =>
+      setError(
+        t("openCodexDirectoryFailed", {
+          message: messageOf(reason),
+        }),
+      ),
+    );
+  };
+
   return (
     <main className="app-shell" data-tauri-drag-region>
       <aside className="app-sidebar" data-tauri-drag-region>
@@ -758,6 +769,7 @@ function App() {
                   onAutoRefreshUsageChange={setAutoRefreshUsage}
                   onDefaultTabChange={setDefaultTab}
                   onLocaleChange={setLocale}
+                  onOpenCodexDirectory={openCodexDirectory}
                   onRevealVault={revealVault}
                   onThemeChange={setTheme}
                   status={status}

@@ -73,6 +73,9 @@ const zhCN = {
   revealVaultTitle: "在文件管理器中显示账号库文件",
   revealVaultFailed: "无法打开本地账号库目录：{message}",
   openDirectory: "打开目录",
+  openCodexDirectory: "打开 Codex 目录",
+  openVaultDirectory: "打开账号库目录",
+  openCodexDirectoryFailed: "无法打开 Codex 目录：{message}",
   credentialPrivacy: "认证文件包含敏感令牌。应用不会上传、显示或写入日志。",
   busy: "{action}中…",
   pleaseWait: "请稍候",
@@ -259,6 +262,9 @@ const en: Messages = {
   revealVaultFailed:
     "Could not open the local account vault directory: {message}",
   openDirectory: "Open folder",
+  openCodexDirectory: "Open Codex folder",
+  openVaultDirectory: "Open vault folder",
+  openCodexDirectoryFailed: "Could not open the Codex directory: {message}",
   credentialPrivacy:
     "Authentication files contain sensitive tokens. The app never uploads, displays, or logs them.",
   busy: "{action}…",

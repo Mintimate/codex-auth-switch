@@ -1061,6 +1061,13 @@ button:disabled {
   min-width: 0;
 }
 
+.settings-path-item {
+  display: flex;
+  min-height: 116px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .settings-paths dt {
   margin-bottom: 7px;
   color: var(--muted);
@@ -1078,8 +1085,8 @@ button:disabled {
   line-height: 1.5;
 }
 
-.settings-data-group > .button {
-  margin-left: 24px;
+.settings-path-item .button {
+  margin-top: auto;
 }
 
 .settings-privacy-note {

@@ -17,6 +17,7 @@ type SettingsPanelProps = {
   onAutoRefreshUsageChange: (enabled: boolean) => void;
   onDefaultTabChange: (tab: AppTab) => void;
   onLocaleChange: (locale: Locale) => void;
+  onOpenCodexDirectory: () => void;
   onRevealVault: () => void;
   onThemeChange: (theme: ThemeMode) => void;
   status: AppStatus | null;
@@ -61,6 +62,7 @@ export function SettingsPanel({
   onAutoRefreshUsageChange,
   onDefaultTabChange,
   onLocaleChange,
+  onOpenCodexDirectory,
   onRevealVault,
   onThemeChange,
   status,
@@ -160,24 +162,31 @@ export function SettingsPanel({
           </div>
 
           <dl className="settings-paths">
-            <div>
+            <div className="settings-path-item">
               <dt>{t("codexDirectory")}</dt>
               <dd>{status?.codexHome}</dd>
+              <button
+                type="button"
+                className="button secondary compact"
+                disabled={!status?.codexHome}
+                onClick={onOpenCodexDirectory}
+              >
+                {t("openCodexDirectory")}
+              </button>
             </div>
-            <div>
+            <div className="settings-path-item">
               <dt>{t("localVaultPath")}</dt>
               <dd>{status?.vaultPath}</dd>
+              <button
+                type="button"
+                className="button secondary compact"
+                disabled={!status?.vaultPath}
+                onClick={onRevealVault}
+              >
+                {t("openVaultDirectory")}
+              </button>
             </div>
           </dl>
-
-          <button
-            type="button"
-            className="button secondary compact"
-            disabled={!status?.vaultPath}
-            onClick={onRevealVault}
-          >
-            {t("openDirectory")}
-          </button>
 
           <p className="settings-privacy-note">{t("credentialPrivacy")}</p>
         </section>
