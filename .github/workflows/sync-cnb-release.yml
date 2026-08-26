@@ -116,11 +116,22 @@ jobs:
         env:
           CNB_TOKEN: ${{ secrets.CNB_GIT_PASSWORD }}
           RELEASE_NAME: ${{ env.RELEASE_TAG }}
-          RELEASE_BODY_FILE: ${{ runner.temp }}/cnb-release-body.md
           RELEASE_ASSETS_DIR: ${{ runner.temp }}/cnb-release-assets
         shell: bash
         run: |
-          jq -r '.body' "${RUNNER_TEMP}/github-release.json" > "${RELEASE_BODY_FILE}"
           export RELEASE_NAME="$(jq -r '.name' "${RUNNER_TEMP}/github-release.json")"
           export RELEASE_PRERELEASE="$(jq -r '.isPrerelease' "${RUNNER_TEMP}/github-release.json")"
+          export RELEASE_BODY="$(
+            docker run --rm \
+              -v "${GITHUB_WORKSPACE}/source:/workspace" \
+              -w /workspace \
+              -e PLUGIN_TAG="${RELEASE_TAG}" \
+              -e PLUGIN_DRY_RUN="true" \
+              -e PLUGIN_LINK_REFERENCES="false" \
+              cnbcool/changelog \
+            | awk '/^## / { found = 1 } found'
+          )"
+          if [[ -z "${RELEASE_BODY}" ]]; then
+            export RELEASE_BODY="$(jq -r '.body' "${RUNNER_TEMP}/github-release.json")"
+          fi
           bash automation/.github/scripts/sync-cnb-release.sh

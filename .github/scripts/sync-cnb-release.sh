@@ -6,11 +6,11 @@ set -euo pipefail
 : "${CNB_TOKEN:?CNB_TOKEN is required}"
 : "${RELEASE_TAG:?RELEASE_TAG is required}"
 : "${RELEASE_NAME:?RELEASE_NAME is required}"
-: "${RELEASE_BODY_FILE:?RELEASE_BODY_FILE is required}"
 : "${RELEASE_ASSETS_DIR:?RELEASE_ASSETS_DIR is required}"
 
 CNB_CLI_VERSION="${CNB_CLI_VERSION:-1.10.9}"
 RELEASE_PRERELEASE="${RELEASE_PRERELEASE:-false}"
+RELEASE_BODY="${RELEASE_BODY:-}"
 
 cnb_cli() {
   npx --yes "@cnbcool/cnb-cli@${CNB_CLI_VERSION}" "$@"
@@ -40,7 +40,7 @@ require_status() {
 release_payload="$(jq -cn \
   --arg tag_name "$RELEASE_TAG" \
   --arg name "$RELEASE_NAME" \
-  --arg body "$(cat "$RELEASE_BODY_FILE")" \
+  --arg body "$RELEASE_BODY" \
   --arg target_commitish "$RELEASE_TAG" \
   --argjson prerelease "$RELEASE_PRERELEASE" \
   '{
@@ -64,7 +64,7 @@ if [[ "$(response_status "$release_response")" == "200" ]]; then
   release_id="$(jq -r '.data.id' <<<"$release_response")"
   update_payload="$(jq -cn \
     --arg name "$RELEASE_NAME" \
-    --arg body "$(cat "$RELEASE_BODY_FILE")" \
+    --arg body "$RELEASE_BODY" \
     --argjson prerelease "$RELEASE_PRERELEASE" \
     '{
       name: $name,

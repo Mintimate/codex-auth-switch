@@ -18,6 +18,7 @@ jobs:
     name: 检查发布版本
     runs-on: ubuntu-latest
     outputs:
+      release_body: ${{ steps.version.outputs.release_body }}
       release_tag: ${{ steps.version.outputs.release_tag }}
     steps:
       - name: 检出代码
@@ -35,6 +36,26 @@ jobs:
             exit 1
           fi
 
+          previous_tag="$(git describe --tags --abbrev=0 "${release_tag}^" 2>/dev/null || true)"
+          if [[ -n "${previous_tag}" ]]; then
+            release_body="$(git log --format='- %s' "${previous_tag}..HEAD" -- . \
+              ':(exclude)package.json' \
+              ':(exclude)package-lock.json' \
+              ':(exclude)src-tauri/Cargo.toml' \
+              ':(exclude)src-tauri/Cargo.lock' \
+              ':(exclude)src-tauri/tauri.conf.json')"
+          else
+            release_body="$(git log -1 --format='- %s')"
+          fi
+          if [[ -z "${release_body}" ]]; then
+            release_body="- $(git log -1 --format='%s')"
+          fi
+
+          {
+            echo "release_body<<EOF"
+            echo "${release_body}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
 
   build:
@@ -175,7 +196,7 @@ jobs:
           args: ${{ matrix.args }}
           tagName: ${{ needs.prepare.outputs.release_tag }}
           releaseName: ${{ needs.prepare.outputs.release_tag }}
-          releaseBody: 下载与你的系统和架构对应的安装包。macOS 产物使用 ad-hoc 签名，首次运行时可能需要在“隐私与安全性”中确认打开。
+          releaseBody: ${{ needs.prepare.outputs.release_body }}
           releaseDraft: false
           prerelease: ${{ contains(needs.prepare.outputs.release_tag, '-') }}
           releaseAssetNamePattern: Codex-Auth-Switch_[version]_${{ matrix.asset_os }}_${{ matrix.asset_arch }}[setup][ext]
