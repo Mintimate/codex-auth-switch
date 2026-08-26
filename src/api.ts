@@ -75,6 +75,8 @@ export type UsageOverview = {
 export type AppUpdateStatus =
   "unsupported" | "upToDate" | "available" | "error";
 
+export type AppUpdateSource = "github" | "cnb";
+
 export type AppUpdateCheckResult = {
   status: AppUpdateStatus;
   currentVersion: string;
@@ -256,8 +258,8 @@ export const getUsageOverview = () => call<UsageOverview>("get_usage_overview");
 
 export const getAppVersion = () => call<string>("get_app_version");
 
-export const checkAppUpdate = () =>
-  call<AppUpdateCheckResult>("check_app_update");
+export const checkAppUpdate = (source: AppUpdateSource) =>
+  call<AppUpdateCheckResult>("check_app_update", { source });
 
 export const installAppUpdate = () => call<boolean>("install_app_update");
 

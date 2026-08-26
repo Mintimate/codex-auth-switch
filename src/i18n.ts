@@ -64,7 +64,9 @@ const zhCN = {
   autoRefreshUsage: "进入页面时自动刷新",
   autoRefreshUsageHint: "打开 Token 用量页时自动更新统计和订阅窗口。",
   softwareUpdate: "软件更新",
-  softwareUpdateHint: "从项目 GitHub Releases 检查并安装经过签名的更新。",
+  softwareUpdateHint: "从所选发布源检查并安装经过签名的更新。",
+  updateSource: "更新源",
+  updateSourceHint: "CNB 在 GitHub 发布完成后同步，可能稍有延迟。",
   currentVersion: "当前版本",
   loadingVersion: "正在读取版本…",
   checkForUpdates: "检查更新",
@@ -282,7 +284,10 @@ const en: Messages = {
     "Update statistics and subscription windows when opening Token usage.",
   softwareUpdate: "Software update",
   softwareUpdateHint:
-    "Check for and install signed updates from the project's GitHub Releases.",
+    "Check for and install signed updates from the selected release source.",
+  updateSource: "Update source",
+  updateSourceHint:
+    "CNB syncs after the GitHub release completes and may lag briefly.",
   currentVersion: "Current version",
   loadingVersion: "Loading version…",
   checkForUpdates: "Check for updates",

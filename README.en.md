@@ -106,7 +106,7 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Light, dark, and system appearance modes
 - Desktop installers for macOS, Windows, and Linux
 - Visible local account vault path with direct access from the file manager
-- Signed update checks and installation from GitHub Releases in Settings
+- Signed update checks and installation from either GitHub or CNB Releases in Settings
 
 ## Data Boundaries
 

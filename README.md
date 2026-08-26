@@ -106,7 +106,7 @@ cli_auth_credentials_store = "file"
 - 亮色、暗色与跟随系统三种外观模式
 - macOS、Windows 和 Linux 桌面安装包
 - 本机账号库路径可见，可直接在文件管理器中定位
-- 可从设置页检查并安装 GitHub Releases 发布的签名更新
+- 可在设置页选择 GitHub 或 CNB，检查并安装对应 Release 发布的签名更新
 
 ## 数据边界
 

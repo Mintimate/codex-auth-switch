@@ -108,9 +108,43 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --json name,body,isPrerelease \
             > "${RUNNER_TEMP}/github-release.json"
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            > "${RUNNER_TEMP}/github-release-api.json"
           gh release download "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --dir "${RUNNER_TEMP}/cnb-release-assets"
+
+          manifest="${RUNNER_TEMP}/cnb-release-assets/latest.json"
+          jq \
+            --arg cnb_repo "${CNB_REPO}" \
+            --arg tag "${RELEASE_TAG}" \
+            --slurpfile release "${RUNNER_TEMP}/github-release-api.json" \
+            '
+              ($release[0].assets
+                | map({ key: .url, value: .name })
+                | from_entries) as $asset_names
+              | .platforms |= with_entries(
+                  .value.url as $source_url
+                  | ($asset_names[$source_url]
+                    // error("找不到更新包对应的 GitHub Release 附件：\($source_url)")) as $asset_name
+                  | .value.url = (
+                      "https://cnb.cool/" + $cnb_repo
+                      + "/-/releases/download/" + ($tag | @uri)
+                      + "/" + ($asset_name | @uri)
+                    )
+                )
+            ' \
+            "${manifest}" > "${RUNNER_TEMP}/latest-cnb.json"
+          mv "${RUNNER_TEMP}/latest-cnb.json" "${manifest}"
+
+          jq -e \
+            --arg prefix "https://cnb.cool/${CNB_REPO}/-/releases/download/${RELEASE_TAG}/" \
+            '
+              (.platforms | type == "object" and length > 0)
+              and all(.platforms[].url; startswith($prefix))
+            ' \
+            "${manifest}"
 
       - name: 创建 CNB Release 并上传附件
         env:

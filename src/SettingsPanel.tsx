@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppStatus,
   AppUpdateCheckResult,
+  AppUpdateSource,
   checkAppUpdate,
   getAppVersion,
   installAppUpdate,
@@ -11,6 +12,13 @@ import { Locale, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
 
 export type AppTab = "accounts" | "usage" | "settings";
+
+const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
+
+const storedUpdateSource = (): AppUpdateSource =>
+  window.localStorage.getItem(UPDATE_SOURCE_STORAGE_KEY) === "cnb"
+    ? "cnb"
+    : "github";
 
 type Option<T extends string> = {
   label: string;
@@ -36,11 +44,13 @@ type SettingsPanelProps = {
 
 function SegmentedControl<T extends string>({
   ariaLabel,
+  disabled = false,
   onChange,
   options,
   value,
 }: {
   ariaLabel: string;
+  disabled?: boolean;
   onChange: (value: T) => void;
   options: Option<T>[];
   value: T;
@@ -53,6 +63,7 @@ function SegmentedControl<T extends string>({
           type="button"
           className={value === option.value ? "active" : ""}
           aria-pressed={value === option.value}
+          disabled={disabled}
           onClick={() => onChange(option.value)}
         >
           {option.label}
@@ -79,6 +90,8 @@ export function SettingsPanel({
   themeOptions,
 }: SettingsPanelProps) {
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [updateSource, setUpdateSource] =
+    useState<AppUpdateSource>(storedUpdateSource);
   const [appUpdate, setAppUpdate] = useState<AppUpdateCheckResult | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -96,7 +109,7 @@ export function SettingsPanel({
     setCheckingUpdate(true);
     setUpdateError(null);
     try {
-      const result = await checkAppUpdate();
+      const result = await checkAppUpdate(updateSource);
       setAppUpdate(result);
       setAppVersion(result.currentVersion);
     } catch (error) {
@@ -104,7 +117,11 @@ export function SettingsPanel({
     } finally {
       setCheckingUpdate(false);
     }
-  }, []);
+  }, [updateSource]);
+
+  useEffect(() => {
+    window.localStorage.setItem(UPDATE_SOURCE_STORAGE_KEY, updateSource);
+  }, [updateSource]);
 
   useEffect(() => {
     void getAppVersion()
@@ -291,6 +308,27 @@ export function SettingsPanel({
           <div className="settings-group-heading">
             <h3>{t("softwareUpdate")}</h3>
             <p>{t("softwareUpdateHint")}</p>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <strong>{t("updateSource")}</strong>
+              <span>{t("updateSourceHint")}</span>
+            </div>
+            <SegmentedControl
+              ariaLabel={t("updateSource")}
+              disabled={checkingUpdate || installingUpdate}
+              options={[
+                { label: "GitHub", value: "github" },
+                { label: "CNB", value: "cnb" },
+              ]}
+              value={updateSource}
+              onChange={(source) => {
+                setAppUpdate(null);
+                setUpdateError(null);
+                setUpdateSource(source);
+              }}
+            />
           </div>
 
           <div className="settings-row">

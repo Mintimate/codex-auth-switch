@@ -1,7 +1,28 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
+
+const GITHUB_UPDATE_ENDPOINT: &str =
+    "https://github.com/Mintimate/codex-auth-switch/releases/latest/download/latest.json";
+const CNB_UPDATE_ENDPOINT: &str = "https://cnb.cool/Mintimate/tool-forge/codex-auth-switch/-/releases/latest/download/latest.json";
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum AppUpdateSource {
+    #[serde(rename = "github")]
+    GitHub,
+    #[serde(rename = "cnb")]
+    Cnb,
+}
+
+impl AppUpdateSource {
+    fn endpoint(self) -> &'static str {
+        match self {
+            Self::GitHub => GITHUB_UPDATE_ENDPOINT,
+            Self::Cnb => CNB_UPDATE_ENDPOINT,
+        }
+    }
+}
 
 pub struct AppUpdateState {
     pending: Mutex<Option<Update>>,
@@ -97,6 +118,7 @@ pub fn get_app_version() -> String {
 pub async fn check_app_update(
     app: AppHandle,
     state: State<'_, AppUpdateState>,
+    source: AppUpdateSource,
 ) -> Result<AppUpdateCheckResult, String> {
     let _guard = state.operation_gate.lock().await;
 
@@ -105,10 +127,17 @@ pub async fn check_app_update(
         return Ok(result(AppUpdateStatus::Unsupported, None));
     }
 
+    let endpoint: tauri::Url = match source.endpoint().parse() {
+        Ok(endpoint) => endpoint,
+        Err(error) => {
+            state.clear_pending()?;
+            return Ok(result(AppUpdateStatus::Error, Some(error.to_string())));
+        }
+    };
     let updater = match app
         .updater_builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
+        .endpoints(vec![endpoint])
+        .and_then(|builder| builder.timeout(std::time::Duration::from_secs(30)).build())
     {
         Ok(updater) => updater,
         Err(error) => {
