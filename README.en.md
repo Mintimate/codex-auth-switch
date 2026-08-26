@@ -106,6 +106,7 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Light, dark, and system appearance modes
 - Desktop installers for macOS, Windows, and Linux
 - Visible local account vault path with direct access from the file manager
+- Signed update checks and installation from GitHub Releases in Settings
 
 ## Data Boundaries
 
@@ -178,6 +179,8 @@ cd src-tauri
 cargo fmt --all
 cargo test
 ```
+
+The release workflow requires the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. If the private key has a password, also configure `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is pinned in `src-tauri/tauri.conf.json`; keep the private key for all future releases so installed versions can verify updates.
 
 ## Project Structure
 

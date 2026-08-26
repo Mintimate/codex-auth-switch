@@ -106,6 +106,7 @@ cli_auth_credentials_store = "file"
 - 亮色、暗色与跟随系统三种外观模式
 - macOS、Windows 和 Linux 桌面安装包
 - 本机账号库路径可见，可直接在文件管理器中定位
+- 可从设置页检查并安装 GitHub Releases 发布的签名更新
 
 ## 数据边界
 
@@ -178,6 +179,8 @@ cd src-tauri
 cargo fmt --all
 cargo test
 ```
+
+发布流水线需要配置 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY`；如果私钥设置了密码，同时配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。更新签名公钥已固化在 `src-tauri/tauri.conf.json`，后续发布必须保留对应私钥，否则已安装版本无法验证新更新。
 
 ## 项目结构
 

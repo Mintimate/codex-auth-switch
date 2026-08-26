@@ -1,4 +1,12 @@
-import { AppStatus } from "./api";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AppStatus,
+  AppUpdateCheckResult,
+  checkAppUpdate,
+  getAppVersion,
+  installAppUpdate,
+} from "./api";
 import { Locale, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
 
@@ -70,11 +78,99 @@ export function SettingsPanel({
   theme,
   themeOptions,
 }: SettingsPanelProps) {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [appUpdate, setAppUpdate] = useState<AppUpdateCheckResult | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [updateDownloaded, setUpdateDownloaded] = useState(0);
+  const [updateTotal, setUpdateTotal] = useState<number | null>(null);
+  const updateTotalRef = useRef<number | null>(null);
   const tabOptions: Option<AppTab>[] = [
     { label: t("accountsTab"), value: "accounts" },
     { label: t("usageTab"), value: "usage" },
     { label: t("settingsTab"), value: "settings" },
   ];
+
+  const runUpdateCheck = useCallback(async () => {
+    setCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const result = await checkAppUpdate();
+      setAppUpdate(result);
+      setAppVersion(result.currentVersion);
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void getAppVersion()
+      .then(setAppVersion)
+      .catch(() => undefined);
+    void runUpdateCheck();
+  }, [runUpdateCheck]);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+
+    let unlisten: UnlistenFn | null = null;
+    void listen("app-update-event", (event) => {
+      const payload = event.payload as
+        | { event: "started"; data: { contentLength: number | null } }
+        | { event: "progress"; data: { chunkLength: number } }
+        | { event: "finished"; data: Record<string, never> };
+
+      if (payload.event === "started") {
+        updateTotalRef.current = payload.data.contentLength;
+        setUpdateDownloaded(0);
+        setUpdateTotal(payload.data.contentLength);
+      } else if (payload.event === "progress") {
+        setUpdateDownloaded((current) => current + payload.data.chunkLength);
+      } else {
+        setUpdateDownloaded((current) =>
+          updateTotalRef.current
+            ? Math.max(current, updateTotalRef.current)
+            : current,
+        );
+      }
+    }).then((stopListening) => {
+      unlisten = stopListening;
+    });
+    return () => unlisten?.();
+  }, []);
+
+  const installUpdate = useCallback(async () => {
+    setInstallingUpdate(true);
+    setUpdateError(null);
+    setUpdateDownloaded(0);
+    setUpdateTotal(null);
+    updateTotalRef.current = null;
+    try {
+      await installAppUpdate();
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : String(error));
+      setInstallingUpdate(false);
+    }
+  }, []);
+
+  const updateProgress =
+    updateTotal && updateTotal > 0
+      ? Math.min(100, Math.round((updateDownloaded / updateTotal) * 100))
+      : null;
+  const updateStatus = updateError
+    ? t("appUpdateCheckFailed")
+    : appUpdate?.status === "available"
+      ? t("appUpdateAvailable", { version: appUpdate.version ?? "" })
+      : appUpdate?.status === "upToDate"
+        ? t("appUpdateUpToDate")
+        : appUpdate?.status === "unsupported"
+          ? t("appUpdateUnsupported")
+          : appUpdate?.status === "error"
+            ? t("appUpdateCheckFailed")
+            : t("appUpdateCheckingHint");
 
   return (
     <div className="settings-page">
@@ -189,6 +285,61 @@ export function SettingsPanel({
           </dl>
 
           <p className="settings-privacy-note">{t("credentialPrivacy")}</p>
+        </section>
+
+        <section className="settings-group settings-update-group">
+          <div className="settings-group-heading">
+            <h3>{t("softwareUpdate")}</h3>
+            <p>{t("softwareUpdateHint")}</p>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <strong>{t("currentVersion")}</strong>
+              <span>{appVersion ? `v${appVersion}` : t("loadingVersion")}</span>
+            </div>
+            <button
+              type="button"
+              className="button secondary compact"
+              disabled={checkingUpdate || installingUpdate}
+              onClick={() => void runUpdateCheck()}
+            >
+              {checkingUpdate ? t("checkingUpdate") : t("checkForUpdates")}
+            </button>
+          </div>
+
+          <div
+            className="settings-row settings-update-status"
+            aria-live="polite"
+          >
+            <div>
+              <strong>{updateStatus}</strong>
+              {(updateError || appUpdate?.reason) && (
+                <span>{updateError ?? appUpdate?.reason}</span>
+              )}
+              {installingUpdate && (
+                <span>
+                  {updateProgress === null
+                    ? t("appUpdateDownloading")
+                    : t("appUpdateDownloadingProgress", {
+                        progress: updateProgress,
+                      })}
+                </span>
+              )}
+            </div>
+            {appUpdate?.status === "available" && (
+              <button
+                type="button"
+                className="button primary compact"
+                disabled={installingUpdate}
+                onClick={() => void installUpdate()}
+              >
+                {installingUpdate
+                  ? t("appUpdateInstalling")
+                  : t("installUpdate")}
+              </button>
+            )}
+          </div>
         </section>
       </div>
     </div>

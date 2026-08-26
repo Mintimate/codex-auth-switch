@@ -194,6 +194,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: npm run tauri
           args: ${{ matrix.args }}
@@ -202,6 +204,9 @@ jobs:
           releaseBody: ${{ needs.prepare.outputs.release_body }}
           releaseDraft: false
           prerelease: ${{ contains(needs.prepare.outputs.release_tag, '-') }}
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          uploadUpdaterSignatures: true
           releaseAssetNamePattern: Codex-Auth-Switch_[version]_${{ matrix.asset_os }}_${{ matrix.asset_arch }}[setup][ext]
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: Codex-Auth-Switch-[version]-${{ matrix.asset_os }}-${{ matrix.asset_arch }}-[bundle]

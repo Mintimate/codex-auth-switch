@@ -21,6 +21,7 @@
 .env
 .env.*
 !.env.example
+/.updater/
 
 # Logs
 *.log

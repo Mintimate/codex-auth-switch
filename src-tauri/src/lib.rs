@@ -1,3 +1,4 @@
+mod app_update;
 mod auth_share;
 mod manager;
 mod usage;
@@ -180,10 +181,15 @@ async fn import_auth_from_qr(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             operation_gate: Mutex::new(()),
         })
+        .manage(app_update::AppUpdateState::default())
         .invoke_handler(tauri::generate_handler![
+            app_update::get_app_version,
+            app_update::check_app_update,
+            app_update::install_app_update,
             get_status,
             get_usage_overview,
             save_current,

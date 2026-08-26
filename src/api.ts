@@ -72,6 +72,18 @@ export type UsageOverview = {
   };
 };
 
+export type AppUpdateStatus =
+  "unsupported" | "upToDate" | "available" | "error";
+
+export type AppUpdateCheckResult = {
+  status: AppUpdateStatus;
+  currentVersion: string;
+  version: string | null;
+  body: string | null;
+  date: string | null;
+  reason: string | null;
+};
+
 const previewStatus: AppStatus = {
   codexHome: "/Users/demo/.codex",
   vaultPath:
@@ -214,6 +226,22 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "get_auth_share_qr") {
       return Promise.resolve(previewShareQr as T);
     }
+    if (command === "get_app_version") {
+      return Promise.resolve("0.7.0" as T);
+    }
+    if (command === "check_app_update") {
+      return Promise.resolve({
+        status: "upToDate",
+        currentVersion: "0.7.0",
+        version: null,
+        body: null,
+        date: null,
+        reason: null,
+      } as T);
+    }
+    if (command === "install_app_update") {
+      return Promise.resolve(true as T);
+    }
     if (command === "copy_auth_share") {
       return Promise.resolve(undefined as T);
     }
@@ -225,6 +253,13 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
 export const getStatus = () => call<AppStatus>("get_status");
 
 export const getUsageOverview = () => call<UsageOverview>("get_usage_overview");
+
+export const getAppVersion = () => call<string>("get_app_version");
+
+export const checkAppUpdate = () =>
+  call<AppUpdateCheckResult>("check_app_update");
+
+export const installAppUpdate = () => call<boolean>("install_app_update");
 
 export const saveCurrent = (label: string) =>
   call<AppStatus>("save_current", { label });
