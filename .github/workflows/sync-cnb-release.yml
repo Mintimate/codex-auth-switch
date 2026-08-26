@@ -45,10 +45,16 @@ jobs:
           fi
           echo "sha=${source_sha}" >> "${GITHUB_OUTPUT}"
 
-      - name: 检出同步脚本与完整 Git 历史
+      - name: 检出同步脚本
+        uses: actions/checkout@v7
+        with:
+          path: automation
+
+      - name: 检出发布源码与完整 Git 历史
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          path: source
           ref: ${{ steps.source.outputs.sha }}
 
       - name: 安装 Node.js
@@ -69,7 +75,7 @@ jobs:
             echo "::error::请先配置 Actions Secret：CNB_GIT_PASSWORD"
             exit 1
           fi
-          git fetch --force origin \
+          git -C source fetch --force origin \
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
 
       - name: 同步 Git 标签到 CNB
@@ -88,7 +94,7 @@ jobs:
           chmod 700 "${askpass}"
 
           GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 \
-            git push --force \
+            git -C source push --force \
             "https://cnb.cool/Mintimate/tool-forge/codex-auth-switch.git" \
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
 
@@ -115,4 +121,4 @@ jobs:
           jq -r '.body' "${RUNNER_TEMP}/github-release.json" > "${RELEASE_BODY_FILE}"
           export RELEASE_NAME="$(jq -r '.name' "${RUNNER_TEMP}/github-release.json")"
           export RELEASE_PRERELEASE="$(jq -r '.isPrerelease' "${RUNNER_TEMP}/github-release.json")"
-          bash .github/scripts/sync-cnb-release.sh
+          bash automation/.github/scripts/sync-cnb-release.sh
