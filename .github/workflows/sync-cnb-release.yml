@@ -121,17 +121,21 @@ jobs:
         run: |
           export RELEASE_NAME="$(jq -r '.name' "${RUNNER_TEMP}/github-release.json")"
           export RELEASE_PRERELEASE="$(jq -r '.isPrerelease' "${RUNNER_TEMP}/github-release.json")"
-          export RELEASE_BODY="$(
-            docker run --rm \
-              -v "${GITHUB_WORKSPACE}/source:/workspace" \
-              -w /workspace \
-              -e PLUGIN_TAG="${RELEASE_TAG}" \
-              -e PLUGIN_DRY_RUN="true" \
-              -e PLUGIN_LINK_REFERENCES="false" \
-              cnbcool/changelog \
-            | awk '/^## / { found = 1 } found'
-          )"
-          if [[ -z "${RELEASE_BODY}" ]]; then
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}/source:/workspace" \
+            -w /workspace \
+            -e HOME=/tmp \
+            -e PLUGIN_TAG="${RELEASE_TAG}" \
+            -e PLUGIN_TARGET="RELEASE_NOTES.md" \
+            -e PLUGIN_DRY_RUN="true" \
+            -e PLUGIN_LINK_REFERENCES="false" \
+            --entrypoint sh \
+            cnbcool/changelog \
+            -c 'git config --global --add safe.directory /workspace && exec node /plugins/lib/index.js'
+
+          if [[ -s "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md" ]]; then
+            export RELEASE_BODY="$(cat "${GITHUB_WORKSPACE}/source/RELEASE_NOTES.md")"
+          else
             export RELEASE_BODY="$(jq -r '.body' "${RUNNER_TEMP}/github-release.json")"
           fi
           bash automation/.github/scripts/sync-cnb-release.sh

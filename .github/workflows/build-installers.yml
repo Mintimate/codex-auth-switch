@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: 读取并检查版本
         id: version
@@ -51,10 +53,11 @@ jobs:
             release_body="- $(git log -1 --format='%s')"
           fi
 
+          delimiter="release-body-${RANDOM}-${RANDOM}"
           {
-            echo "release_body<<EOF"
+            echo "release_body<<${delimiter}"
             echo "${release_body}"
-            echo "EOF"
+            echo "${delimiter}"
           } >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
 
