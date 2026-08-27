@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./app-icon-dark.svg">
-  <img src="./app-icon.svg" width="156" height="156" alt="Codex Auth Switch app icon">
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/app-icon-dark.svg">
+  <img src="./docs/images/app-icon.svg" width="156" height="156" alt="Codex Auth Switch app icon">
 </picture>
 
 </div>
