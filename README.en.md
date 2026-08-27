@@ -182,6 +182,27 @@ cargo test
 
 The release workflow requires the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. If the private key has a password, also configure `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is pinned in `src-tauri/tauri.conf.json`; keep the private key for all future releases so installed versions can verify updates.
 
+## Releasing a New Version
+
+The version number lives in three places — `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` — and they must match exactly. Use the script instead of editing each file by hand:
+
+```bash
+npm run bump 0.7.3      # update version files only
+npm run release 0.7.3   # update versions, then create the commit and tag
+```
+
+The script updates `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, then reads the files back to verify all three versions agree. `Cargo.lock` may contain third-party crates that share this project's version number, so the script only edits the `codex-auth-switch` package block.
+
+Once the changes look right, push the tag to start the release:
+
+```bash
+git push origin main --follow-tags
+```
+
+The workflow reads the version from `src-tauri/tauri.conf.json` and fails if the Git tag does not match. After the tag is pushed, building all four platform installers, generating release notes, verifying the updater manifest and signatures, promoting the draft to a published release, and mirroring to CNB all happen automatically.
+
+To write release notes by hand, add `docs/release-notes/vX.Y.Z.md` before tagging. Otherwise notes are generated from Conventional Commits.
+
 ## Project Structure
 
 ```text
@@ -190,7 +211,10 @@ src-tauri/src/manager.rs    Account vault, authentication validation, and switch
 src-tauri/src/usage.rs      Local session token aggregation
 src-tauri/src/auth_share.rs Auth sharing encoding and QR code processing
 src-tauri/src/lib.rs        Tauri command boundary
-docs/images/                README preview screenshots
+src-tauri/icons/            App icons; CI compiles Assets.xcassets into macOS light and dark icons
+scripts/bump-version.mjs    Version synchronization script
+docs/images/                README preview screenshots and app icons
+docs/release-notes/         Hand-written release notes (optional)
 ```
 
 ## Official References

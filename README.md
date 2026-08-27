@@ -182,6 +182,27 @@ cargo test
 
 发布流水线需要配置 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY`；如果私钥设置了密码，同时配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。更新签名公钥已固化在 `src-tauri/tauri.conf.json`，后续发布必须保留对应私钥，否则已安装版本无法验证新更新。
 
+## 发布新版本
+
+版本号分布在 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 三处，必须完全一致。请使用脚本同步，不要手工逐个修改：
+
+```bash
+npm run bump 0.7.3      # 只更新版本号文件
+npm run release 0.7.3   # 更新版本号，并创建提交与标签
+```
+
+脚本会同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`，随后回读校验三处版本号一致。`Cargo.lock` 中可能存在与本项目版本号相同的第三方依赖，脚本只修改 `codex-auth-switch` 所属的包块。
+
+确认无误后推送标签触发发布：
+
+```bash
+git push origin main --follow-tags
+```
+
+流水线以 `src-tauri/tauri.conf.json` 的版本为准，并校验 Git 标签与之一致；不一致会直接失败。标签推送后，构建四个平台安装包、生成版本说明、校验更新清单与签名、将草稿转为正式发布、同步到 CNB 均自动完成。
+
+需要手写版本说明时，在打标签前添加 `docs/release-notes/vX.Y.Z.md`；否则版本说明会依据 Conventional Commits 自动生成。
+
 ## 项目结构
 
 ```text
@@ -190,7 +211,10 @@ src-tauri/src/manager.rs    账号库、认证校验与切换核心
 src-tauri/src/usage.rs      本机会话 Token 聚合
 src-tauri/src/auth_share.rs Auth 分享编码与二维码处理
 src-tauri/src/lib.rs        Tauri 命令边界
-docs/images/                README 预览截图
+src-tauri/icons/            应用图标；Assets.xcassets 由 CI 编译为 macOS 明暗图标
+scripts/bump-version.mjs    版本号同步脚本
+docs/images/                README 预览截图与应用图标
+docs/release-notes/         手写版本说明（可选）
 ```
 
 ## 官方参考
