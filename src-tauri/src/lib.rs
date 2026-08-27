@@ -165,11 +165,13 @@ async fn import_auth_from_clipboard(
         .map_err(|error| error.to_string())
 }
 
+// 图片以 base64 字符串过 IPC：number[] 会让 12MB 图片膨胀成千万级 JSON 数组元素，
+// 序列化与解析的开销都远大于传输本身。
 #[tauri::command]
 async fn import_auth_from_qr(
     app: AppHandle,
     state: State<'_, AppState>,
-    image: Vec<u8>,
+    image: String,
 ) -> Result<AppStatus, String> {
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?

@@ -194,6 +194,21 @@ pub(crate) fn render_qr_data_url(payload: &[u8]) -> Result<String, AuthShareErro
     ))
 }
 
+// 二维码图片通过 IPC 以 base64 字符串传输（number[] 会让 12MB 图片膨胀成千万级 JSON
+// 数组元素）。先按膨胀后的长度卡一道，再交给 decode_qr_image 卡解码后的字节数。
+const MAX_QR_BASE64_BYTES: usize = (MAX_QR_IMAGE_BYTES / 3 + 1) * 4;
+
+pub(crate) fn decode_qr_image_base64(image: &str) -> Result<ImportedAuth, AuthShareError> {
+    let encoded = image.trim();
+    if encoded.is_empty() || encoded.len() > MAX_QR_BASE64_BYTES {
+        return Err(AuthShareError::InvalidQrImage);
+    }
+    let bytes = STANDARD
+        .decode(encoded)
+        .map_err(|_| AuthShareError::InvalidQrImage)?;
+    decode_qr_image(&bytes)
+}
+
 pub(crate) fn decode_qr_image(image_bytes: &[u8]) -> Result<ImportedAuth, AuthShareError> {
     if image_bytes.is_empty() || image_bytes.len() > MAX_QR_IMAGE_BYTES {
         return Err(AuthShareError::InvalidQrImage);

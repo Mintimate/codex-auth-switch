@@ -62,6 +62,20 @@ const messageOf = (error: unknown) =>
 const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
 const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
+// 与后端 auth_share.rs 的 MAX_QR_IMAGE_BYTES 对齐：这里卡文件大小，后端卡解码后字节数。
+const QR_MAX_FILE_BYTES = 12 * 1024 * 1024;
+
+// 分块拼接，避免 String.fromCharCode(...array) 在百万级数组上爆调用栈。
+const toBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(offset, offset + chunkSize),
+    );
+  }
+  return btoa(binary);
+};
 
 const storedDefaultTab = (): AppTab => {
   const value = window.localStorage.getItem(DEFAULT_TAB_STORAGE_KEY);
@@ -428,11 +442,11 @@ function App() {
   };
 
   const importQrFile = async (file: File) => {
-    if (file.size > 12 * 1024 * 1024) {
+    if (file.size > QR_MAX_FILE_BYTES) {
       setError(t("qrTooLarge"));
       return;
     }
-    const image = Array.from(new Uint8Array(await file.arrayBuffer()));
+    const image = toBase64(new Uint8Array(await file.arrayBuffer()));
     await importAuth(t("importAndSwitch"), () => importAuthFromQr(image));
   };
 

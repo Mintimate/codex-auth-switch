@@ -416,8 +416,8 @@ impl AccountManager {
         self.import_shared_auth(imported)
     }
 
-    pub fn import_auth_share_qr(&self, image: &[u8]) -> Result<AppStatus, ManagerError> {
-        let imported = auth_share::decode_qr_image(image)
+    pub fn import_auth_share_qr(&self, image: &str) -> Result<AppStatus, ManagerError> {
+        let imported = auth_share::decode_qr_image_base64(image)
             .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
         self.import_shared_auth(imported)
     }

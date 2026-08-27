@@ -298,5 +298,7 @@ export const getAuthShareQr = (profileId: string) =>
 export const importAuthFromClipboard = () =>
   call<AppStatus>("import_auth_from_clipboard");
 
-export const importAuthFromQr = (image: number[]) =>
+// 二维码图片以 base64 字符串传输，不用 number[]：12MB 图片展开成 JSON 数组会产生
+// 千万级元素，序列化和解析的开销都远大于传输本身。
+export const importAuthFromQr = (image: string) =>
   call<AppStatus>("import_auth_from_qr", { image });
