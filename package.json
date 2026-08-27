@@ -10,6 +10,8 @@
     "build": "tauri build",
     "build:web": "vite build",
     "typecheck": "tsc --noEmit",
+    "bump": "node scripts/bump-version.mjs",
+    "release": "node scripts/bump-version.mjs --release",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\""
   },

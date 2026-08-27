@@ -33,6 +33,7 @@ pnpm-debug.log*
 # Editors
 /.idea/
 /.vscode/
+/.workbuddy/
 *.swp
 *.swo
 *~
