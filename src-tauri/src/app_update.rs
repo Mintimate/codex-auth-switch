@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::{sync::Mutex, time::Duration};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 const GITHUB_UPDATE_ENDPOINT: &str =
     "https://github.com/Mintimate/codex-auth-switch/releases/latest/download/latest.json";
 const CNB_UPDATE_ENDPOINT: &str = "https://cnb.cool/Mintimate/tool-forge/codex-auth-switch/-/releases/latest/download/latest.json";
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub enum AppUpdateSource {
@@ -137,7 +139,7 @@ pub async fn check_app_update(
     let updater = match app
         .updater_builder()
         .endpoints(vec![endpoint])
-        .and_then(|builder| builder.timeout(std::time::Duration::from_secs(30)).build())
+        .and_then(|builder| builder.timeout(UPDATE_CHECK_TIMEOUT).build())
     {
         Ok(updater) => updater,
         Err(error) => {
@@ -154,10 +156,15 @@ pub async fn check_app_update(
         }
     };
 
-    let Some(update) = update else {
+    let Some(mut update) = update else {
         state.clear_pending()?;
         return Ok(result(AppUpdateStatus::UpToDate, None));
     };
+
+    // GitHub Release assets can be much larger than the update manifest and may
+    // be downloaded through a slower redirected CDN. Keep checks responsive,
+    // but allow enough time for the signed application package itself.
+    update.timeout = Some(UPDATE_DOWNLOAD_TIMEOUT);
 
     let check_result = AppUpdateCheckResult {
         status: AppUpdateStatus::Available,

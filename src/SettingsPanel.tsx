@@ -25,6 +25,11 @@ type Option<T extends string> = {
   value: T;
 };
 
+type UpdateError = {
+  phase: "check" | "install";
+  message: string;
+};
+
 type SettingsPanelProps = {
   autoRefreshUsage: boolean;
   defaultTab: AppTab;
@@ -93,7 +98,7 @@ export function SettingsPanel({
   const [updateSource, setUpdateSource] =
     useState<AppUpdateSource>(storedUpdateSource);
   const [appUpdate, setAppUpdate] = useState<AppUpdateCheckResult | null>(null);
-  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<UpdateError | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [installingUpdate, setInstallingUpdate] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(0);
@@ -113,7 +118,10 @@ export function SettingsPanel({
       setAppUpdate(result);
       setAppVersion(result.currentVersion);
     } catch (error) {
-      setUpdateError(error instanceof Error ? error.message : String(error));
+      setUpdateError({
+        phase: "check",
+        message: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       setCheckingUpdate(false);
     }
@@ -168,7 +176,10 @@ export function SettingsPanel({
     try {
       await installAppUpdate();
     } catch (error) {
-      setUpdateError(error instanceof Error ? error.message : String(error));
+      setUpdateError({
+        phase: "install",
+        message: error instanceof Error ? error.message : String(error),
+      });
       setInstallingUpdate(false);
     }
   }, []);
@@ -177,17 +188,20 @@ export function SettingsPanel({
     updateTotal && updateTotal > 0
       ? Math.min(100, Math.round((updateDownloaded / updateTotal) * 100))
       : null;
-  const updateStatus = updateError
-    ? t("appUpdateCheckFailed")
-    : appUpdate?.status === "available"
-      ? t("appUpdateAvailable", { version: appUpdate.version ?? "" })
-      : appUpdate?.status === "upToDate"
-        ? t("appUpdateUpToDate")
-        : appUpdate?.status === "unsupported"
-          ? t("appUpdateUnsupported")
-          : appUpdate?.status === "error"
-            ? t("appUpdateCheckFailed")
-            : t("appUpdateCheckingHint");
+  const updateStatus =
+    updateError?.phase === "install"
+      ? t("appUpdateInstallFailed")
+      : updateError?.phase === "check"
+        ? t("appUpdateCheckFailed")
+        : appUpdate?.status === "available"
+          ? t("appUpdateAvailable", { version: appUpdate.version ?? "" })
+          : appUpdate?.status === "upToDate"
+            ? t("appUpdateUpToDate")
+            : appUpdate?.status === "unsupported"
+              ? t("appUpdateUnsupported")
+              : appUpdate?.status === "error"
+                ? t("appUpdateCheckFailed")
+                : t("appUpdateCheckingHint");
 
   return (
     <div className="settings-page">
@@ -353,8 +367,12 @@ export function SettingsPanel({
             <div>
               <strong>{updateStatus}</strong>
               {(updateError || appUpdate?.reason) && (
-                <span>{updateError ?? appUpdate?.reason}</span>
+                <span>{updateError?.message ?? appUpdate?.reason}</span>
               )}
+              {updateError?.phase === "install" &&
+                updateSource === "github" && (
+                  <span>{t("appUpdateGitHubFallbackHint")}</span>
+                )}
               {installingUpdate && (
                 <span>
                   {updateProgress === null

@@ -76,6 +76,8 @@ const zhCN = {
   appUpdateUpToDate: "Codex Auth Switch 已是最新版本",
   appUpdateUnsupported: "开发构建不支持应用内更新",
   appUpdateCheckFailed: "检查更新失败",
+  appUpdateInstallFailed: "下载或安装更新失败",
+  appUpdateGitHubFallbackHint: "如果 GitHub 下载较慢，可以切换到 CNB 后重试。",
   installUpdate: "安装更新",
   appUpdateInstalling: "安装中…",
   appUpdateDownloading: "正在下载并校验更新…",
@@ -297,6 +299,9 @@ const en: Messages = {
   appUpdateUpToDate: "Codex Auth Switch is up to date",
   appUpdateUnsupported: "In-app updates are unavailable in development builds",
   appUpdateCheckFailed: "Failed to check for updates",
+  appUpdateInstallFailed: "Failed to download or install the update",
+  appUpdateGitHubFallbackHint:
+    "If GitHub is downloading slowly, switch to CNB and try again.",
   installUpdate: "Install update",
   appUpdateInstalling: "Installing…",
   appUpdateDownloading: "Downloading and verifying the update…",
