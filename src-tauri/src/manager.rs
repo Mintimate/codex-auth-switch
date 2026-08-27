@@ -687,7 +687,15 @@ impl AccountManager {
                 label: profile.label.clone(),
             })
             .collect::<Vec<_>>();
-        let local = scan_local_usage(&self.codex_home, &vault.activations, &accounts);
+        // 扫描会遍历整个 sessions 目录并逐行解析 JSONL，必须让出 async 工作线程，
+        // 否则会话文件多时会把 tokio 的 worker 全部占满。
+        let codex_home = self.codex_home.clone();
+        let activations = vault.activations.clone();
+        let local = tauri::async_runtime::spawn_blocking(move || {
+            scan_local_usage(&codex_home, &activations, &accounts)
+        })
+        .await
+        .map_err(|error| ManagerError::Io(format!("读取本地会话用量失败: {error}")))?;
         Ok(UsageOverview { quotas, local })
     }
 
