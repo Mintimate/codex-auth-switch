@@ -4,6 +4,7 @@ use crate::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
+use futures_util::future::join_all;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,9 +13,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::Semaphore;
 
 const VAULT_VERSION: u32 = 1;
 const VAULT_FILE_NAME: &str = "accounts.v1.json";
@@ -30,6 +32,7 @@ const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 const USER_AGENT: &str = "codex-auth-switch";
 const USAGE_QUERY_TIMEOUT_SECS: u64 = 10;
 const MAX_ACTIVATION_RECORDS: usize = 10_000;
+const MAX_CONCURRENT_QUOTA_QUERIES: usize = 4;
 
 // reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
 // 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
@@ -177,6 +180,14 @@ struct CodexUsageResponse {
 enum QuotaQueryError {
     Unauthorized,
     Message(String),
+}
+
+// 并发查询阶段不碰 vault，只把结果和「需要回写的刷新令牌」带回串行阶段统一落盘。
+struct QuotaOutcome {
+    index: usize,
+    queried_at: u64,
+    result: Result<(Option<UsageWindow>, Option<UsageWindow>), QuotaQueryError>,
+    refreshed_auth: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -549,33 +560,92 @@ impl AccountManager {
         }
         self.save_vault(&vault)?;
 
-        let mut quotas = Vec::with_capacity(vault.profiles.len());
-        let mut vault_changed = false;
-        for index in 0..vault.profiles.len() {
-            let profile = vault.profiles[index].clone();
-            let queried_at = unix_timestamp();
-            let mut result = query_account_quota(&profile.auth, &profile.account_id).await;
+        // 先把要查询的凭据取成快照，避免并发任务借用 vault 而锁住后面的回写。
+        let quota_targets = vault
+            .profiles
+            .iter()
+            .map(|profile| (profile.account_id.clone(), profile.auth.clone()))
+            .collect::<Vec<_>>();
 
-            if matches!(result, Err(QuotaQueryError::Unauthorized)) {
-                match refresh_codex_auth(&profile.auth).await {
-                    Ok(refreshed_auth) => {
-                        vault.profiles[index].auth = refreshed_auth.clone();
-                        vault.profiles[index].updated_at = unix_timestamp();
-                        vault_changed = true;
-                        if active_account_id.as_deref() == Some(profile.account_id.as_str()) {
-                            self.write_live_auth(&refreshed_auth)?;
+        let outcomes = {
+            let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_QUOTA_QUERIES));
+            let tasks = quota_targets
+                .into_iter()
+                .enumerate()
+                .map(|(index, (account_id, auth))| {
+                    let semaphore = Arc::clone(&semaphore);
+                    async move {
+                        // acquire_owned 让 permit 自持 Arc，避免 permit 借用外层局部变量的生命周期问题。
+                        let Ok(_permit) = semaphore.acquire_owned().await else {
+                            return QuotaOutcome {
+                                index,
+                                queried_at: unix_timestamp(),
+                                result: Err(QuotaQueryError::Message(
+                                    "额度查询并发控制不可用".to_string(),
+                                )),
+                                refreshed_auth: None,
+                            };
+                        };
+                        let queried_at = unix_timestamp();
+                        let mut result = query_account_quota(&auth, &account_id).await;
+                        let mut refreshed_auth = None;
+
+                        if matches!(result, Err(QuotaQueryError::Unauthorized)) {
+                            match refresh_codex_auth(&auth).await {
+                                Ok(next_auth) => {
+                                    result = query_account_quota(&next_auth, &account_id).await;
+                                    refreshed_auth = Some(next_auth);
+                                }
+                                Err(error) => {
+                                    result = Err(QuotaQueryError::Message(error.to_string()))
+                                }
+                            }
                         }
-                        result = query_account_quota(&refreshed_auth, &profile.account_id).await;
+
+                        QuotaOutcome {
+                            index,
+                            queried_at,
+                            result,
+                            refreshed_auth,
+                        }
                     }
-                    Err(error) => result = Err(QuotaQueryError::Message(error.to_string())),
+                });
+            join_all(tasks).await
+        };
+
+        let mut quotas = Vec::with_capacity(outcomes.len());
+        let mut vault_changed = false;
+        for outcome in outcomes {
+            let QuotaOutcome {
+                index,
+                queried_at,
+                result,
+                refreshed_auth,
+            } = outcome;
+
+            if let Some(auth) = refreshed_auth {
+                let profile = vault
+                    .profiles
+                    .get_mut(index)
+                    .ok_or(ManagerError::ProfileNotFound)?;
+                let account_id = profile.account_id.clone();
+                profile.auth = auth.clone();
+                profile.updated_at = unix_timestamp();
+                vault_changed = true;
+                if active_account_id.as_deref() == Some(account_id.as_str()) {
+                    self.write_live_auth(&auth)?;
                 }
             }
 
+            let profile = vault
+                .profiles
+                .get(index)
+                .ok_or(ManagerError::ProfileNotFound)?;
             let quota = match result {
                 Ok((primary, secondary)) => AccountQuota {
-                    profile_id: profile.id,
-                    account_id: profile.account_id,
-                    label: profile.label,
+                    profile_id: profile.id.clone(),
+                    account_id: profile.account_id.clone(),
+                    label: profile.label.clone(),
                     primary,
                     secondary,
                     success: true,
@@ -583,9 +653,9 @@ impl AccountManager {
                     queried_at,
                 },
                 Err(QuotaQueryError::Unauthorized) => AccountQuota {
-                    profile_id: profile.id,
-                    account_id: profile.account_id,
-                    label: profile.label,
+                    profile_id: profile.id.clone(),
+                    account_id: profile.account_id.clone(),
+                    label: profile.label.clone(),
                     primary: None,
                     secondary: None,
                     success: false,
@@ -593,9 +663,9 @@ impl AccountManager {
                     queried_at,
                 },
                 Err(QuotaQueryError::Message(message)) => AccountQuota {
-                    profile_id: profile.id,
-                    account_id: profile.account_id,
-                    label: profile.label,
+                    profile_id: profile.id.clone(),
+                    account_id: profile.account_id.clone(),
+                    label: profile.label.clone(),
                     primary: None,
                     secondary: None,
                     success: false,

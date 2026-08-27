@@ -541,6 +541,7 @@ dependencies = [
  "chrono",
  "dirs",
  "flate2",
+ "futures-util",
  "image",
  "qrcode",
  "reqwest 0.12.28",
