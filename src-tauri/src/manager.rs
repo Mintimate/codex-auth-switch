@@ -12,6 +12,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
+    sync::OnceLock,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -29,6 +30,12 @@ const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 const USER_AGENT: &str = "codex-auth-switch";
 const USAGE_QUERY_TIMEOUT_SECS: u64 = 10;
 const MAX_ACTIVATION_RECORDS: usize = 10_000;
+
+// reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
+// 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
+// 额度查询单独用一个带超时的客户端，OAuth 流程保持无超时（令牌刷新不能被 10 秒掐断）。
+static OAUTH_CLIENT: OnceLock<Client> = OnceLock::new();
+static QUOTA_CLIENT: OnceLock<Client> = OnceLock::new();
 
 #[derive(Debug)]
 pub enum ManagerError {
@@ -865,11 +872,7 @@ async fn query_account_quota(
         .and_then(Value::as_str)
         .filter(|token| !token.trim().is_empty())
         .ok_or_else(|| QuotaQueryError::Message("账号缺少可用的访问凭据".to_string()))?;
-    let client = Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(USAGE_QUERY_TIMEOUT_SECS))
-        .build()
-        .map_err(|_| QuotaQueryError::Message("无法初始化额度查询".to_string()))?;
+    let client = quota_client()?;
     let response = client
         .get(CODEX_USAGE_URL)
         .bearer_auth(access_token)
@@ -984,11 +987,26 @@ async fn refresh_codex_auth(auth: &Value) -> Result<Value, ManagerError> {
     Ok(next)
 }
 
-fn oauth_client() -> Client {
-    Client::builder()
+fn oauth_client() -> &'static Client {
+    OAUTH_CLIENT.get_or_init(|| {
+        Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
+}
+
+fn quota_client() -> Result<&'static Client, QuotaQueryError> {
+    if let Some(client) = QUOTA_CLIENT.get() {
+        return Ok(client);
+    }
+    let client = Client::builder()
         .user_agent(USER_AGENT)
+        .timeout(Duration::from_secs(USAGE_QUERY_TIMEOUT_SECS))
         .build()
-        .unwrap_or_else(|_| Client::new())
+        .map_err(|_| QuotaQueryError::Message("无法初始化额度查询".to_string()))?;
+    // 并发首次调用可能各建一个客户端，OnceLock 只保留第一个，多余的实例会被安全丢弃。
+    Ok(QUOTA_CLIENT.get_or_init(|| client))
 }
 
 fn network_error(action: &str, error: reqwest::Error) -> ManagerError {
