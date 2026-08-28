@@ -4,11 +4,25 @@ mod manager;
 mod usage;
 
 use manager::{AccountManager, AppStatus, DeviceLoginResponse, UsageOverview};
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
 
 struct AppState {
     operation_gate: Mutex<()>,
+    prepared_auth_transfer: Mutex<Option<PreparedAuthTransferCache>>,
+}
+
+struct PreparedAuthTransferCache {
+    profile_id: String,
+    text: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthTransferPreparation {
+    qr_data_url: Option<String>,
+    qr_error: Option<String>,
 }
 
 fn account_manager(app: &AppHandle) -> Result<AccountManager, String> {
@@ -111,17 +125,38 @@ async fn remove_account(
 }
 
 #[tauri::command]
-async fn copy_auth_share(
+async fn prepare_auth_transfer(
     app: AppHandle,
     state: State<'_, AppState>,
     profile_id: String,
-) -> Result<(), String> {
-    let text = {
-        let _guard = state.operation_gate.lock().await;
-        account_manager(&app)?
-            .auth_share_text(&profile_id)
-            .map_err(|error| error.to_string())?
+) -> Result<AuthTransferPreparation, String> {
+    let _guard = state.operation_gate.lock().await;
+    *state.prepared_auth_transfer.lock().await = None;
+    let prepared = account_manager(&app)?
+        .prepare_auth_transfer(&profile_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let response = AuthTransferPreparation {
+        qr_data_url: prepared.qr_data_url,
+        qr_error: prepared.qr_error,
     };
+    *state.prepared_auth_transfer.lock().await = Some(PreparedAuthTransferCache {
+        profile_id,
+        text: prepared.text,
+    });
+    Ok(response)
+}
+
+#[tauri::command]
+async fn copy_auth_transfer(state: State<'_, AppState>, profile_id: String) -> Result<(), String> {
+    let text = state
+        .prepared_auth_transfer
+        .lock()
+        .await
+        .as_ref()
+        .filter(|prepared| prepared.profile_id == profile_id)
+        .map(|prepared| prepared.text.clone())
+        .ok_or_else(|| "一次性迁移内容尚未准备好，请重新打开迁移窗口".to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         let mut clipboard =
             arboard::Clipboard::new().map_err(|_| "无法访问系统剪贴板".to_string())?;
@@ -131,18 +166,6 @@ async fn copy_auth_share(
     })
     .await
     .map_err(|_| "无法访问系统剪贴板".to_string())?
-}
-
-#[tauri::command]
-async fn get_auth_share_qr(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    profile_id: String,
-) -> Result<String, String> {
-    let _guard = state.operation_gate.lock().await;
-    account_manager(&app)?
-        .auth_share_qr(&profile_id)
-        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -162,6 +185,7 @@ async fn import_auth_from_clipboard(
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .import_auth_share_text(&text)
+        .await
         .map_err(|error| error.to_string())
 }
 
@@ -176,6 +200,7 @@ async fn import_auth_from_qr(
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .import_auth_share_qr(&image)
+        .await
         .map_err(|error| error.to_string())
 }
 
@@ -186,6 +211,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             operation_gate: Mutex::new(()),
+            prepared_auth_transfer: Mutex::new(None),
         })
         .manage(app_update::AppUpdateState::default())
         .invoke_handler(tauri::generate_handler![
@@ -200,8 +226,8 @@ pub fn run() {
             switch_account,
             rename_account,
             remove_account,
-            copy_auth_share,
-            get_auth_share_qr,
+            prepare_auth_transfer,
+            copy_auth_transfer,
             import_auth_from_clipboard,
             import_auth_from_qr,
         ])

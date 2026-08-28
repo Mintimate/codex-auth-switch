@@ -4,7 +4,7 @@
 
 The account vault and Codex `auth.json` contain access and refresh tokens. Never attach either file to an issue, paste it into chat, or commit it to a repository.
 
-OAuth pairing is the recommended way to authorize another device: start pairing on the receiving device and give the browser URL and short-lived code only to the intended account owner. Auth sharing remains available for compatibility, but its text and QR codes contain login credentials; sharing them across devices is not recommended and may lead to 401 errors when credentials are reused.
+OAuth pairing is the recommended way to authorize another device: start pairing on the receiving device and give the browser URL and short-lived code only to the intended account owner. Before a one-time Auth transfer, stop Codex sessions on the sending device. The app then force-refreshes the selected credentials and emits the same compact CAS3 payload through text and QR. CAS3 contains only the ID and refresh tokens required for redemption. The receiver immediately refreshes those credentials, verifies the account identity, and rebuilds a complete local Auth before it writes or switches anything. After import, the sending device must not use that account again; use OAuth pairing instead when both devices need ongoing access.
 
 When reporting a bug:
 
@@ -21,4 +21,4 @@ Local token statistics are calculated by extracting only `token_count` event met
 
 File permissions reduce accidental disclosure but do not protect credentials from another process running as the same user or from an administrator with access to the device.
 
-Normal frontend status calls receive only redacted account summaries. During OAuth pairing, the frontend receives only the browser URL, short-lived user code, expiration, and polling interval. During an explicit Auth share action, Rust writes and reads share text through the system clipboard and returns only a rendered QR image to the WebView. Raw token strings are never returned through Tauri commands, displayed, or logged.
+Normal frontend status calls receive only redacted account summaries. During OAuth pairing, the frontend receives only the browser URL, short-lived user code, expiration, and polling interval. During an explicit one-time Auth transfer, Rust writes and reads transfer text through the system clipboard and returns only a rendered QR image to the WebView. Raw token strings are never returned through Tauri commands, displayed, or logged. New transfers use CAS3; legacy CAS2 text and QR codes remain import-compatible. CAS3 import requires direct network access to the authentication service and leaves the existing local login unchanged if redemption, identity validation, or Auth reconstruction fails.

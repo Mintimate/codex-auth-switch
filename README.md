@@ -34,9 +34,9 @@ Codex Auth Switch 解决的不是 OpenAI 订阅、账单或 API Key 管理，而
 
 ## 界面预览
 
-| 暗色主题                                                        | Auth 分享（不推荐）                                                   |
+| 暗色主题                                                        | 一次性 Auth 迁移                                                      |
 | --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| ![Codex Auth Switch 暗色仪表盘](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth 分享弹窗](docs/images/auth-share-dialog.jpg) |
+| ![Codex Auth Switch 暗色仪表盘](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth 迁移弹窗](docs/images/auth-share-dialog.jpg) |
 
 ## 下载与安装
 
@@ -70,7 +70,7 @@ cli_auth_credentials_store = "file"
 
 选择“OAuth 添加账号”后，应用会显示浏览器地址和一次性配对验证码。你可以在本机浏览器完成授权，也可以把这两项提供给账号持有人；授权成功后，发起配对的设备会自动保存并切换到该账号。
 
-原有的 Auth 二维码和剪贴板分享仍然保留，用于兼容已有迁移流程，但不推荐跨设备使用。复用登录凭据可能导致 401；接收设备应优先发起 OAuth 配对。
+一次性 Auth 迁移支持二维码和剪贴板。开始前应先停止发送端的 Codex 会话；应用随后会强制刷新凭据，并让二维码与剪贴板复用同一份精简 CAS3 内容。接收端导入时会立即联网刷新并重建完整 Auth；成功后发送端不得再次使用该账号。需要两端长期使用时，应在接收设备发起 OAuth 配对。
 
 ### 4. 一键切换
 
@@ -99,12 +99,16 @@ cli_auth_credentials_store = "file"
 - 账号持有人可在其他浏览器中完成授权，无需传递已有 Auth 或 refresh token
 - 授权成功后，仅将认证服务返回的登录数据写入发起配对设备的本地 Codex 缓存
 
-### Auth 分享（不推荐）
+### 一次性 Auth 迁移
 
-- 仍可通过系统剪贴板或二维码在设备间迁移 Auth
-- 分享数据的编解码、剪贴板访问和二维码处理都在 Rust 后端中完成
+- 通过系统剪贴板或二维码把 Auth 一次性迁移到另一台设备
+- 要求先停止发送端会话，再强制刷新凭据；二维码与剪贴板复用同一份 CAS3 迁移内容
+- CAS3 只携带接收端兑换所需的 `id_token` 和 `refresh_token`，不再携带 access token、账号 ID、名称或刷新时间
+- 接收端导入 CAS3 时会立即联网刷新，校验账号一致性并重建完整 Auth；只有全部成功后才写入本地并切换账号
+- 继续兼容导入旧版 CAS2 文本和二维码，但新生成的迁移内容一律使用更短的 CAS3
+- 迁移数据的编解码、剪贴板访问和二维码处理都在 Rust 后端中完成
 - 前端不会获得可复制的原始令牌文本
-- 跨设备复用登录凭据可能导致 401，应优先使用 OAuth 配对
+- 接收端导入成功后，发送端不得继续使用该账号；需要两端长期使用时应改用 OAuth 配对
 
 ### 桌面体验
 
@@ -148,13 +152,13 @@ Codex Auth Switch 会在自己的应用数据目录保存账号快照：
 如果设备已被其他高权限用户控制，本地文件权限无法提供额外保护。系统钥匙串模式目前不在支持范围内。
 
 > [!WARNING]
-> OAuth 配对码在有效期内可授权发起配对的设备，只应提供给预期的账号持有人。Auth 分享载荷则包含长期可登录凭据，不推荐跨设备使用；请勿把二维码截图或剪贴板内容发送给不受信任的人。
+> OAuth 配对码在有效期内可授权发起配对的设备，只应提供给预期的账号持有人。一次性 Auth 迁移载荷包含可登录凭据；接收端会立即刷新并接管更新后的凭据，同一份内容只应导入一次。导入后发送端必须停止使用该账号。请勿把二维码截图或剪贴板内容发送给不受信任的人。
 
 ## 当前限制
 
 - 仅支持 `cli_auth_credentials_store = "file"`
 - Device Code 登录仍是 Beta，可能需要个人用户或工作区管理员先启用相应权限
-- 订阅用量窗口来自兼容性实现，不是官方承诺的稳定对外 API
+- Device Code、令牌刷新和订阅用量接口的具体线协议来自兼容性实现，不是官方承诺的稳定对外 API
 - 本机 Token 数据取决于 Codex 会话文件中可用的 `token_count` 元数据
 - 项目不管理 OpenAI API Key、订阅计费或工作区席位
 
@@ -217,7 +221,7 @@ git push origin main --follow-tags
 src/                        React 桌面界面
 src-tauri/src/manager.rs    账号库、认证校验与切换核心
 src-tauri/src/usage.rs      本机会话 Token 聚合
-src-tauri/src/auth_share.rs Auth 分享编码与二维码处理
+src-tauri/src/auth_share.rs Auth 迁移编码与二维码处理
 src-tauri/src/lib.rs        Tauri 命令边界
 src-tauri/icons/            应用图标；Assets.xcassets 由 CI 编译为 macOS 明暗图标
 scripts/bump-version.mjs    版本号同步脚本

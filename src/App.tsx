@@ -11,9 +11,9 @@ import {
 } from "react";
 import {
   AppStatus,
-  copyAuthShare,
+  copyAuthTransfer,
   DeviceLoginResponse,
-  getAuthShareQr,
+  prepareAuthTransfer,
   getStatus,
   getUsageOverview,
   importAuthFromClipboard,
@@ -45,6 +45,8 @@ type ShareDialogState = {
   label: string;
   qrDataUrl: string | null;
   qrError: string | null;
+  preparing: boolean;
+  prepared: boolean;
   copied: boolean;
   copyError: string | null;
 };
@@ -454,19 +456,49 @@ function App() {
     await run(t("removeAccountAction"), () => removeAccount(profileId));
   };
 
-  const openShareDialog = async (profileId: string, accountLabel: string) => {
+  const openShareDialog = (profileId: string, accountLabel: string) => {
     setShareDialog({
       profileId,
       label: accountLabel,
       qrDataUrl: null,
       qrError: null,
+      preparing: false,
+      prepared: false,
       copied: false,
       copyError: null,
     });
+  };
+
+  const prepareTransfer = async () => {
+    if (!shareDialog || shareDialog.preparing) return;
+    const { profileId } = shareDialog;
+    setShareDialog((current) =>
+      current?.profileId === profileId
+        ? {
+            ...current,
+            qrDataUrl: null,
+            qrError: null,
+            preparing: true,
+            prepared: false,
+            copied: false,
+            copyError: null,
+          }
+        : current,
+    );
     try {
-      const qrDataUrl = await getAuthShareQr(profileId);
+      const preparation = await prepareAuthTransfer(profileId);
       setShareDialog((current) =>
-        current?.profileId === profileId ? { ...current, qrDataUrl } : current,
+        current?.profileId === profileId
+          ? {
+              ...current,
+              qrDataUrl: preparation.qrDataUrl,
+              qrError: preparation.qrError
+                ? localizeBackendError(preparation.qrError, locale)
+                : null,
+              preparing: false,
+              prepared: true,
+            }
+          : current,
       );
     } catch (reason) {
       setShareDialog((current) =>
@@ -474,6 +506,8 @@ function App() {
           ? {
               ...current,
               qrError: localizeBackendError(messageOf(reason), locale),
+              preparing: false,
+              prepared: false,
             }
           : current,
       );
@@ -483,7 +517,7 @@ function App() {
   const copyShareToClipboard = async () => {
     if (!shareDialog) return;
     try {
-      await copyAuthShare(shareDialog.profileId);
+      await copyAuthTransfer(shareDialog.profileId);
       setShareDialog((current) =>
         current ? { ...current, copied: true, copyError: null } : current,
       );
@@ -812,7 +846,7 @@ function App() {
                               title={t("shareAuth")}
                               disabled={Boolean(busy) || !status.supported}
                               onClick={() =>
-                                void openShareDialog(account.id, account.label)
+                                openShareDialog(account.id, account.label)
                               }
                             >
                               {t("share")}
@@ -984,13 +1018,22 @@ function App() {
                 />
               ) : shareDialog.qrError ? (
                 <div className="share-qr-message">
-                  <strong>{t("qrGenerationFailed")}</strong>
+                  <strong>
+                    {shareDialog.prepared
+                      ? t("qrGenerationFailed")
+                      : t("transferPreparationFailed")}
+                  </strong>
                   <span>{shareDialog.qrError}</span>
                 </div>
-              ) : (
+              ) : shareDialog.preparing ? (
                 <div className="share-qr-message">
                   <span className="inline-spinner" />
                   <span>{t("qrGenerating")}</span>
+                </div>
+              ) : (
+                <div className="share-qr-message">
+                  <strong>{t("beforeTransferTitle")}</strong>
+                  <span>{t("beforeTransferHint")}</span>
                 </div>
               )}
             </div>
@@ -1011,13 +1054,26 @@ function App() {
               >
                 {t("done")}
               </button>
-              <button
-                type="button"
-                className="button primary"
-                onClick={() => void copyShareToClipboard()}
-              >
-                {shareDialog.copied ? t("copyAgain") : t("copyToClipboard")}
-              </button>
+              {shareDialog.prepared ? (
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={() => void copyShareToClipboard()}
+                >
+                  {shareDialog.copied ? t("copyAgain") : t("copyToClipboard")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={() => void prepareTransfer()}
+                  disabled={shareDialog.preparing}
+                >
+                  {shareDialog.preparing
+                    ? t("preparingTransfer")
+                    : t("prepareTransfer")}
+                </button>
+              )}
             </div>
           </section>
         ) : null}

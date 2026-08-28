@@ -34,9 +34,9 @@ Codex Auth Switch is built for switching between multiple Codex ChatGPT logins o
 
 ## Interface Preview
 
-| Dark theme                                                          | Auth sharing (not recommended)                                             |
+| Dark theme                                                          | One-time Auth transfer                                                      |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| ![Codex Auth Switch dark dashboard](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth sharing dialog](docs/images/auth-share-dialog.jpg) |
+| ![Codex Auth Switch dark dashboard](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth transfer dialog](docs/images/auth-share-dialog.jpg) |
 
 ## Download and Install
 
@@ -70,7 +70,7 @@ Open the app, give the current Codex ChatGPT login a local name, and select **Sa
 
 Select **Add account with OAuth** to generate a browser URL and one-time pairing code. Complete authorization in a local browser or send both to the account owner. The device that initiated pairing saves and switches to the account after authorization succeeds.
 
-Auth QR-code and clipboard sharing remain available for compatibility with existing migration workflows, but sharing across devices is not recommended. Reusing login credentials may cause 401 errors; prefer starting OAuth pairing on the receiving device.
+One-time Auth transfer is available through a QR code or the clipboard. Stop Codex sessions on the sending device first; the app then force-refreshes credentials and uses the same compact CAS3 content for both formats. The receiver immediately refreshes it and rebuilds a complete Auth; after success, the sending device must not use the account again. Start OAuth pairing on the receiving device when both devices need ongoing access.
 
 ### 4. Switch with one click
 
@@ -99,12 +99,16 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Let the account owner authorize from another browser without transferring existing Auth or refresh tokens
 - Write authentication data returned by the authorization service only to the initiating device's local Codex cache
 
-### Auth Sharing (Not Recommended)
+### One-Time Auth Transfer
 
-- Continue to move Auth between devices through the system clipboard or a QR code
+- Transfer Auth once to another device through the system clipboard or a QR code
+- Require sending-device sessions to stop, then force-refresh credentials and reuse the same CAS3 transfer content for the QR code and clipboard
+- Include only the `id_token` and `refresh_token` needed for receiver-side redemption; CAS3 omits the access token, account ID, label, and refresh timestamp
+- Immediately refresh CAS3 credentials on import, verify account identity, and rebuild a complete Auth before writing or switching anything locally
+- Continue importing legacy CAS2 text and QR codes while generating only the shorter CAS3 format
 - Perform payload encoding, decoding, clipboard access, and QR processing entirely in the Rust backend
 - Keep raw, copyable token text out of the frontend
-- Prefer OAuth pairing because reusing login credentials across devices may cause 401 errors
+- Stop using the account on the sending device after import; use OAuth pairing when both devices need ongoing access
 
 ### Desktop Experience
 
@@ -148,13 +152,13 @@ Codex Auth Switch stores account snapshots in its own application data directory
 Local file permissions cannot provide additional protection if another privileged user already controls the device. System keychain storage is not currently supported.
 
 > [!WARNING]
-> An OAuth pairing code can authorize the initiating device while it remains valid, so send it only to the intended account owner. Auth sharing payloads contain longer-lived login credentials and are not recommended across devices; never send QR screenshots or clipboard contents to untrusted people.
+> An OAuth pairing code can authorize the initiating device while it remains valid, so send it only to the intended account owner. A one-time Auth transfer contains login credentials; the receiver immediately refreshes and takes over the updated credentials, so use the same content only once. After import, the sending device must stop using that account. Never send QR screenshots or clipboard contents to untrusted people.
 
 ## Current Limitations
 
 - Only `cli_auth_credentials_store = "file"` is supported
 - Device Code login is still in beta and may need to be enabled by an individual user or workspace administrator
-- Subscription usage windows come from a compatibility implementation, not a guaranteed stable public API
+- The concrete wire protocols for Device Code, token refresh, and subscription usage come from compatibility implementations, not guaranteed stable public APIs
 - Local token data depends on available `token_count` metadata in Codex session files
 - The project does not manage OpenAI API keys, subscription billing, or workspace seats
 
@@ -217,7 +221,7 @@ To write release notes by hand, add `docs/release-notes/vX.Y.Z.md` before taggin
 src/                        React desktop interface
 src-tauri/src/manager.rs    Account vault, authentication validation, and switching
 src-tauri/src/usage.rs      Local session token aggregation
-src-tauri/src/auth_share.rs Auth sharing encoding and QR code processing
+src-tauri/src/auth_share.rs Auth transfer encoding and QR code processing
 src-tauri/src/lib.rs        Tauri command boundary
 src-tauri/icons/            App icons; CI compiles Assets.xcassets into macOS light and dark icons
 scripts/bump-version.mjs    Version synchronization script

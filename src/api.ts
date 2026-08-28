@@ -27,6 +27,11 @@ export type DeviceLoginResponse = {
   interval: number;
 };
 
+export type AuthTransferPreparation = {
+  qrDataUrl: string | null;
+  qrError: string | null;
+};
+
 export type TokenBreakdown = {
   inputTokens: number;
   cachedInputTokens: number;
@@ -225,8 +230,11 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "get_usage_overview") {
       return Promise.resolve(structuredClone(previewUsage) as T);
     }
-    if (command === "get_auth_share_qr") {
-      return Promise.resolve(previewShareQr as T);
+    if (command === "prepare_auth_transfer") {
+      return Promise.resolve({
+        qrDataUrl: previewShareQr,
+        qrError: null,
+      } as T);
     }
     if (command === "get_app_version") {
       return Promise.resolve("0.7.1" as T);
@@ -244,7 +252,7 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "install_app_update") {
       return Promise.resolve(true as T);
     }
-    if (command === "copy_auth_share") {
+    if (command === "copy_auth_transfer") {
       return Promise.resolve(undefined as T);
     }
     return Promise.resolve(structuredClone(previewStatus) as T);
@@ -289,11 +297,11 @@ export const renameAccount = (profileId: string, label: string) =>
 export const removeAccount = (profileId: string) =>
   call<AppStatus>("remove_account", { profileId });
 
-export const copyAuthShare = (profileId: string) =>
-  call<void>("copy_auth_share", { profileId });
+export const copyAuthTransfer = (profileId: string) =>
+  call<void>("copy_auth_transfer", { profileId });
 
-export const getAuthShareQr = (profileId: string) =>
-  call<string>("get_auth_share_qr", { profileId });
+export const prepareAuthTransfer = (profileId: string) =>
+  call<AuthTransferPreparation>("prepare_auth_transfer", { profileId });
 
 export const importAuthFromClipboard = () =>
   call<AppStatus>("import_auth_from_clipboard");

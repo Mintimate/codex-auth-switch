@@ -135,6 +135,12 @@ pub struct UsageOverview {
     pub local: LocalUsageStats,
 }
 
+pub struct PreparedAuthTransfer {
+    pub text: String,
+    pub qr_data_url: Option<String>,
+    pub qr_error: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct DeviceCodeResponse {
     device_auth_id: String,
@@ -378,21 +384,29 @@ impl AccountManager {
         self.status()
     }
 
-    pub fn auth_share_text(&self, profile_id: &str) -> Result<String, ManagerError> {
-        let (label, auth) = self.auth_share_payload(profile_id)?;
-        auth_share::encode_text(&label, &auth)
-            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
-    }
-
-    pub fn auth_share_qr(&self, profile_id: &str) -> Result<String, ManagerError> {
-        let (label, auth) = self.auth_share_payload(profile_id)?;
-        let payload = auth_share::encode_qr_payload(&label, &auth)
+    pub async fn prepare_auth_transfer(
+        &self,
+        profile_id: &str,
+    ) -> Result<PreparedAuthTransfer, ManagerError> {
+        let (_, auth) = self.auth_transfer_source(profile_id)?;
+        let refreshed_auth = refresh_codex_auth(&auth).await?;
+        let (_, refreshed_auth) = self.persist_refreshed_transfer(profile_id, refreshed_auth)?;
+        let text = auth_share::encode_text(&refreshed_auth)
             .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
-        auth_share::render_qr_data_url(&payload)
-            .map_err(|error| ManagerError::InvalidAuth(error.to_string()))
+        let qr_result = auth_share::encode_qr_payload(&refreshed_auth)
+            .and_then(|payload| auth_share::render_qr_data_url(&payload));
+        let (qr_data_url, qr_error) = match qr_result {
+            Ok(qr_data_url) => (Some(qr_data_url), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
+        Ok(PreparedAuthTransfer {
+            text,
+            qr_data_url,
+            qr_error,
+        })
     }
 
-    fn auth_share_payload(&self, profile_id: &str) -> Result<(String, Value), ManagerError> {
+    fn auth_transfer_source(&self, profile_id: &str) -> Result<(String, Value), ManagerError> {
         self.ensure_file_storage()?;
         let mut vault = self.load_vault()?;
         if let Ok(current_auth) = self.read_live_auth() {
@@ -410,22 +424,84 @@ impl AccountManager {
         Ok((profile.label.clone(), auth))
     }
 
-    pub fn import_auth_share_text(&self, text: &str) -> Result<AppStatus, ManagerError> {
+    fn persist_refreshed_transfer(
+        &self,
+        profile_id: &str,
+        refreshed_auth: Value,
+    ) -> Result<(String, Value), ManagerError> {
+        let refreshed_auth = canonical_chatgpt_auth(&refreshed_auth)?;
+        let identity = validate_chatgpt_auth(&refreshed_auth)?;
+        let mut vault = self.load_vault()?;
+        let profile = vault
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .ok_or(ManagerError::ProfileNotFound)?;
+        if profile.account_id != identity.account_id {
+            return Err(ManagerError::InvalidAuth(
+                "刷新后的凭据与待迁移账号不一致，请重新登录".to_string(),
+            ));
+        }
+        let label = profile.label.clone();
+
+        let selected_account_is_active = self
+            .read_live_auth()
+            .ok()
+            .and_then(|auth| validate_chatgpt_auth(&auth).ok())
+            .is_some_and(|active| active.account_id == identity.account_id);
+        if selected_account_is_active {
+            // refresh_token 已经轮换时，优先更新 Codex 正在读取的缓存，避免它继续使用旧值。
+            self.write_live_auth(&refreshed_auth)?;
+        }
+        upsert_profile(&mut vault, refreshed_auth.clone(), None)?;
+        self.save_vault(&vault)?;
+        Ok((label, refreshed_auth))
+    }
+
+    pub async fn import_auth_share_text(&self, text: &str) -> Result<AppStatus, ManagerError> {
         let imported = auth_share::decode_text(text)
             .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
-        self.import_shared_auth(imported)
+        self.import_shared_auth(imported).await
     }
 
-    pub fn import_auth_share_qr(&self, image: &str) -> Result<AppStatus, ManagerError> {
+    pub async fn import_auth_share_qr(&self, image: &str) -> Result<AppStatus, ManagerError> {
         let imported = auth_share::decode_qr_image_base64(image)
             .map_err(|error| ManagerError::InvalidAuth(error.to_string()))?;
-        self.import_shared_auth(imported)
+        self.import_shared_auth(imported).await
     }
 
-    fn import_shared_auth(&self, imported: ImportedAuth) -> Result<AppStatus, ManagerError> {
+    async fn import_shared_auth(&self, imported: ImportedAuth) -> Result<AppStatus, ManagerError> {
         self.ensure_file_storage()?;
-        let label = validate_label(&imported.label)?.to_string();
-        let auth = canonical_chatgpt_auth(&imported.auth)?;
+        let (label, auth) = match imported {
+            ImportedAuth::RefreshSeed {
+                id_token,
+                refresh_token,
+            } => {
+                let transferred_account_id = account_id_from_transferred_id_token(&id_token)?;
+                let refreshed = exchange_refresh_token(
+                    &refresh_token,
+                    "迁移内容可能已被使用或已失效，请在发送端重新生成",
+                )
+                .await?;
+                (
+                    None,
+                    materialize_transferred_auth(id_token, transferred_account_id, refreshed)?,
+                )
+            }
+            ImportedAuth::LegacySnapshot { label, auth } => (
+                Some(validate_label(&label)?.to_string()),
+                canonical_chatgpt_auth(&auth)?,
+            ),
+        };
+        self.import_materialized_auth(auth, label.as_deref())
+    }
+
+    fn import_materialized_auth(
+        &self,
+        auth: Value,
+        label: Option<&str>,
+    ) -> Result<AppStatus, ManagerError> {
+        let auth = canonical_chatgpt_auth(&auth)?;
         let identity = validate_chatgpt_auth(&auth)?;
         let mut vault = self.load_vault()?;
 
@@ -441,7 +517,7 @@ impl AccountManager {
         upsert_profile(
             &mut vault,
             auth.clone(),
-            (!already_saved).then_some(label.as_str()),
+            (!already_saved).then_some(label).flatten(),
         )?;
         record_activation(&mut vault, &identity.account_id, unix_timestamp());
         self.save_vault(&vault)?;
@@ -1011,31 +1087,7 @@ async fn refresh_codex_auth(auth: &Value) -> Result<Value, ManagerError> {
         .and_then(Value::as_str)
         .filter(|token| !token.trim().is_empty())
         .ok_or_else(|| ManagerError::InvalidAuth("账号缺少 refresh_token".to_string()))?;
-    let response = oauth_client()
-        .post(OAUTH_TOKEN_URL)
-        .form(&[
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token),
-            ("client_id", CODEX_CLIENT_ID),
-        ])
-        .send()
-        .await
-        .map_err(|error| network_error("刷新订阅凭据", error))?;
-    if !response.status().is_success() {
-        return Err(ManagerError::TokenExchange(format!(
-            "刷新订阅凭据失败（HTTP {}），请重新登录",
-            response.status()
-        )));
-    }
-    let refreshed: OAuthTokenResponse = response
-        .json()
-        .await
-        .map_err(|_| ManagerError::TokenExchange("登录服务返回了无法识别的刷新响应".to_string()))?;
-    if refreshed.access_token.trim().is_empty() {
-        return Err(ManagerError::TokenExchange(
-            "刷新响应缺少 access_token，请重新登录".to_string(),
-        ));
-    }
+    let refreshed = exchange_refresh_token(refresh_token, "请重新登录").await?;
 
     let mut next = auth.clone();
     let tokens = next
@@ -1063,6 +1115,40 @@ async fn refresh_codex_auth(auth: &Value) -> Result<Value, ManagerError> {
     }
     validate_chatgpt_auth(&next)?;
     Ok(next)
+}
+
+// OAuth 刷新端点及其响应格式属于 Codex 本地凭据兼容层；业务流程只接收结构化结果，
+// 不记录请求中的 refresh_token，也不把响应正文带入错误信息。
+async fn exchange_refresh_token(
+    refresh_token: &str,
+    failure_hint: &str,
+) -> Result<OAuthTokenResponse, ManagerError> {
+    let response = oauth_client()
+        .post(OAUTH_TOKEN_URL)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", CODEX_CLIENT_ID),
+        ])
+        .send()
+        .await
+        .map_err(|error| network_error("刷新订阅凭据", error))?;
+    if !response.status().is_success() {
+        return Err(ManagerError::TokenExchange(format!(
+            "刷新订阅凭据失败（HTTP {}），{failure_hint}",
+            response.status(),
+        )));
+    }
+    let refreshed: OAuthTokenResponse = response
+        .json()
+        .await
+        .map_err(|_| ManagerError::TokenExchange("登录服务返回了无法识别的刷新响应".to_string()))?;
+    if refreshed.access_token.trim().is_empty() {
+        return Err(ManagerError::TokenExchange(format!(
+            "刷新响应缺少 access_token，{failure_hint}"
+        )));
+    }
+    Ok(refreshed)
 }
 
 fn oauth_client() -> &'static Client {
@@ -1172,6 +1258,78 @@ fn materialize_codex_auth(tokens: OAuthTokenResponse) -> Result<Value, ManagerEr
         },
         "last_refresh": Utc::now().to_rfc3339(),
     }))
+}
+
+fn materialize_transferred_auth(
+    transferred_id_token: String,
+    transferred_account_id: String,
+    refreshed: OAuthTokenResponse,
+) -> Result<Value, ManagerError> {
+    let refresh_token = refreshed
+        .refresh_token
+        .filter(|token| !token.trim().is_empty())
+        .ok_or_else(|| {
+            ManagerError::TokenExchange(
+                "一次性迁移的刷新响应缺少 refresh_token，未导入任何内容".to_string(),
+            )
+        })?;
+    if refreshed.access_token.trim().is_empty() {
+        return Err(ManagerError::TokenExchange(
+            "一次性迁移的刷新响应缺少 access_token，未导入任何内容".to_string(),
+        ));
+    }
+    let id_token = match refreshed.id_token.filter(|token| !token.trim().is_empty()) {
+        Some(id_token) => {
+            let refreshed_account_id =
+                account_id_from_transferred_id_token(&id_token).map_err(|_| {
+                    ManagerError::InvalidAuth(
+                        "刷新响应中的 id_token 无效，未导入任何内容".to_string(),
+                    )
+                })?;
+            if refreshed_account_id != transferred_account_id {
+                return Err(ManagerError::InvalidAuth(
+                    "刷新后的凭据与一次性迁移账号不一致，未导入任何内容".to_string(),
+                ));
+            }
+            id_token
+        }
+        None => transferred_id_token,
+    };
+
+    if let Some(account_id) = parse_claims(&refreshed.access_token)
+        .as_ref()
+        .and_then(|claims| account_id_from_claims(Some(claims)))
+    {
+        if account_id != transferred_account_id {
+            return Err(ManagerError::InvalidAuth(
+                "刷新后的凭据与一次性迁移账号不一致，未导入任何内容".to_string(),
+            ));
+        }
+    }
+
+    let auth = serde_json::json!({
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": null,
+        "tokens": {
+            "id_token": id_token,
+            "access_token": refreshed.access_token,
+            "refresh_token": refresh_token,
+            "account_id": transferred_account_id,
+        },
+        "last_refresh": Utc::now().to_rfc3339(),
+    });
+    validate_chatgpt_auth(&auth)?;
+
+    Ok(auth)
+}
+
+fn account_id_from_transferred_id_token(id_token: &str) -> Result<String, ManagerError> {
+    parse_claims(id_token)
+        .as_ref()
+        .and_then(|claims| account_id_from_claims(Some(claims)))
+        .ok_or_else(|| {
+            ManagerError::InvalidAuth("无法从一次性迁移内容中识别 ChatGPT 账号 ID".to_string())
+        })
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(
@@ -1329,6 +1487,11 @@ mod tests {
         (root, manager)
     }
 
+    fn legacy_transfer_text(manager: &AccountManager, profile_id: &str) -> String {
+        let (label, auth) = manager.auth_transfer_source(profile_id).unwrap();
+        auth_share::encode_legacy_text(&label, &auth).unwrap()
+    }
+
     #[test]
     fn saves_and_switches_profiles_without_losing_rotated_tokens() {
         let (_root, manager) = test_manager();
@@ -1381,20 +1544,20 @@ mod tests {
     }
 
     #[test]
-    fn shares_and_imports_an_account_as_the_active_login() {
+    fn imports_a_legacy_cas2_account_as_the_active_login() {
         let (_source_root, source) = test_manager();
         source
             .write_live_auth(&auth("account-a", "a@example.com", "refresh-a"))
             .unwrap();
         source.save_current("个人账号").unwrap();
-        let share = source.auth_share_text("account-a").unwrap();
+        let share = legacy_transfer_text(&source, "account-a");
 
         let (_target_root, target) = test_manager();
         target
             .write_live_auth(&auth("account-b", "b@example.com", "refresh-b"))
             .unwrap();
         target.save_current("工作账号").unwrap();
-        let status = target.import_auth_share_text(&share).unwrap();
+        let status = tauri::async_runtime::block_on(target.import_auth_share_text(&share)).unwrap();
 
         assert_eq!(status.active_account_id.as_deref(), Some("account-a"));
         assert_eq!(status.accounts.len(), 2);
@@ -1415,14 +1578,14 @@ mod tests {
             .write_live_auth(&auth("account-a", "a@example.com", "refresh-from-source"))
             .unwrap();
         source.save_current("来源名称").unwrap();
-        let share = source.auth_share_text("account-a").unwrap();
+        let share = legacy_transfer_text(&source, "account-a");
 
         let (_target_root, target) = test_manager();
         target
             .write_live_auth(&auth("account-a", "a@example.com", "refresh-from-target"))
             .unwrap();
         target.save_current("本地名称").unwrap();
-        let status = target.import_auth_share_text(&share).unwrap();
+        let status = tauri::async_runtime::block_on(target.import_auth_share_text(&share)).unwrap();
 
         assert_eq!(status.accounts[0].label, "本地名称");
         assert_eq!(
@@ -1436,7 +1599,7 @@ mod tests {
     }
 
     #[test]
-    fn sharing_strips_api_keys_and_unrelated_auth_fields() {
+    fn legacy_cas2_strips_api_keys_and_unrelated_auth_fields() {
         let (_root, manager) = test_manager();
         let mut value = auth("account-a", "a@example.com", "refresh-a");
         value["OPENAI_API_KEY"] = Value::String("must-not-be-shared".to_string());
@@ -1444,11 +1607,92 @@ mod tests {
         manager.write_live_auth(&value).unwrap();
         manager.save_current("个人账号").unwrap();
 
-        let share = manager.auth_share_text("account-a").unwrap();
+        let share = legacy_transfer_text(&manager, "account-a");
         let imported = crate::auth_share::decode_text(&share).unwrap();
+        let ImportedAuth::LegacySnapshot { auth, .. } = imported else {
+            panic!("CAS2 应解码为旧版快照");
+        };
 
-        assert!(imported.auth["OPENAI_API_KEY"].is_null());
-        assert!(imported.auth.get("unrelated_secret").is_none());
+        assert!(auth["OPENAI_API_KEY"].is_null());
+        assert!(auth.get("unrelated_secret").is_none());
+    }
+
+    #[test]
+    fn persists_refreshed_transfer_in_the_vault_and_active_auth_cache() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("account-a", "a@example.com", "refresh-a"))
+            .unwrap();
+        manager.save_current("个人账号").unwrap();
+        let mut refreshed = auth("account-a", "a@example.com", "refresh-a-rotated");
+        refreshed["last_refresh"] = Value::String("2026-08-28T00:00:00Z".to_string());
+
+        manager
+            .persist_refreshed_transfer("account-a", refreshed)
+            .unwrap();
+
+        assert_eq!(
+            manager
+                .read_live_auth()
+                .unwrap()
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str),
+            Some("refresh-a-rotated")
+        );
+        assert_eq!(
+            manager
+                .load_vault()
+                .unwrap()
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "account-a")
+                .unwrap()
+                .auth
+                .get("last_refresh")
+                .and_then(Value::as_str),
+            Some("2026-08-28T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn refreshing_an_inactive_transfer_does_not_switch_the_live_account() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("account-a", "a@example.com", "refresh-a"))
+            .unwrap();
+        manager.save_current("个人账号").unwrap();
+        manager
+            .write_live_auth(&auth("account-b", "b@example.com", "refresh-b"))
+            .unwrap();
+        manager.save_current("工作账号").unwrap();
+
+        manager
+            .persist_refreshed_transfer(
+                "account-a",
+                auth("account-a", "a@example.com", "refresh-a-rotated"),
+            )
+            .unwrap();
+
+        assert_eq!(
+            manager
+                .read_live_auth()
+                .unwrap()
+                .pointer("/tokens/account_id")
+                .and_then(Value::as_str),
+            Some("account-b")
+        );
+        let vault = manager.load_vault().unwrap();
+        assert_eq!(
+            vault
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "account-a")
+                .unwrap()
+                .auth
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str),
+            Some("refresh-a-rotated")
+        );
     }
 
     #[test]
@@ -1518,6 +1762,64 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(error.contains("refresh_token"));
+    }
+
+    #[test]
+    fn materializes_a_cas3_refresh_response_as_complete_codex_auth() {
+        let transferred_id_token = fake_jwt("account-a", "a@example.com");
+        let value = materialize_transferred_auth(
+            transferred_id_token.clone(),
+            "account-a".to_string(),
+            OAuthTokenResponse {
+                access_token: fake_jwt("account-a", "a@example.com"),
+                refresh_token: Some("refresh-a-rotated".to_string()),
+                id_token: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            value.pointer("/tokens/id_token").and_then(Value::as_str),
+            Some(transferred_id_token.as_str())
+        );
+        assert_eq!(
+            value
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str),
+            Some("refresh-a-rotated")
+        );
+        assert_eq!(
+            value.pointer("/tokens/account_id").and_then(Value::as_str),
+            Some("account-a")
+        );
+        assert!(value.get("last_refresh").and_then(Value::as_str).is_some());
+    }
+
+    #[test]
+    fn rejects_a_cas3_refresh_response_for_another_account() {
+        let error = materialize_transferred_auth(
+            fake_jwt("account-a", "a@example.com"),
+            "account-a".to_string(),
+            OAuthTokenResponse {
+                access_token: fake_jwt("account-b", "b@example.com"),
+                refresh_token: Some("refresh-b-rotated".to_string()),
+                id_token: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("迁移账号不一致"));
+    }
+
+    #[test]
+    fn cas3_import_uses_the_account_email_as_the_default_label() {
+        let (_root, manager) = test_manager();
+        let status = manager
+            .import_materialized_auth(auth("account-a", "a@example.com", "refresh-a"), None)
+            .unwrap();
+
+        assert_eq!(status.accounts[0].label, "a@example.com");
     }
 
     #[test]
