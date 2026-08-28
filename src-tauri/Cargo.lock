@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "codex-auth-switch"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "arboard",
  "base64 0.22.1",
