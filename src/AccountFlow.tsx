@@ -7,12 +7,31 @@ type AccountFlowProps = {
   t: Translate;
 };
 
-function FlowIcon({ kind }: { kind: "account" | "switch" | "file" | "codex" }) {
+type FlowIconKind =
+  "account" | "switch" | "pairing" | "browser" | "file" | "codex";
+
+function FlowIcon({ kind }: { kind: FlowIconKind }) {
   if (kind === "account") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="8" r="3.4" />
         <path d="M5.7 19c.7-4 2.8-6 6.3-6s5.6 2 6.3 6" />
+      </svg>
+    );
+  }
+  if (kind === "pairing") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+        <path d="M7 9.2h.1M10.3 9.2h.1M7 13h4M14.5 12l2 1.7-2 1.7" />
+      </svg>
+    );
+  }
+  if (kind === "browser") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2.5" />
+        <path d="M3 8h18M7 6h.1M10 6h.1M8 14l2.3 2.2L16.5 11" />
       </svg>
     );
   }
@@ -36,6 +55,26 @@ function FlowIcon({ kind }: { kind: "account" | "switch" | "file" | "codex" }) {
       <path d="M8.7 4.2a7.8 7.8 0 0 1 9.6 3.1M19.7 9.6a7.8 7.8 0 0 1-2.2 9.1M15.4 20.1a7.8 7.8 0 0 1-9.7-3M4.3 14.7A7.8 7.8 0 0 1 6.5 5.6" />
       <circle cx="12" cy="12" r="3.2" />
     </svg>
+  );
+}
+
+function FlowArrow() {
+  return (
+    <svg className="flow-arrow" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2 8h11M9.5 4.5 13 8l-3.5 3.5" />
+    </svg>
+  );
+}
+
+function FlowConnector({ label }: { label: string }) {
+  return (
+    <div className="flow-connector" aria-hidden="true">
+      <span className="flow-track">
+        <span className="flow-line" />
+        <FlowArrow />
+      </span>
+      <small>{label}</small>
+    </div>
   );
 }
 
@@ -92,17 +131,122 @@ export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
               <span>{step.detail}</span>
             </div>
             {index < connectors.length && (
-              <div className="flow-connector" aria-hidden="true">
-                <span className="flow-line" />
-                <small>{connectors[index]}</small>
-                <span className="flow-arrow">›</span>
-              </div>
+              <FlowConnector label={connectors[index]} />
             )}
           </div>
         ))}
       </div>
 
       <p className="account-flow-note">{t("flowPrivacyNote")}</p>
+    </section>
+  );
+}
+
+function OAuthCatScene({ t }: { t: Translate }) {
+  return (
+    <div className="oauth-scene" role="img" aria-label={t("loginSceneAria")}>
+      <div className="oauth-scene-stage" aria-hidden="true">
+        <div className="oauth-scene-browser">
+          <span className="scene-browser-bar">
+            <i />
+            <i />
+            <i />
+          </span>
+          <strong>{t("loginSceneBrowser")}</strong>
+          <span className="scene-code">ABCD-EFGH</span>
+        </div>
+
+        <div className="oauth-scene-route">
+          <span className="scene-packet">•••</span>
+        </div>
+
+        <div className="oauth-scene-account">
+          <span className="scene-check">✓</span>
+          <strong>{t("loginSceneSaved")}</strong>
+          <small>Codex</small>
+        </div>
+
+        <svg className="oauth-cat" viewBox="0 0 64 54">
+          <path className="oauth-cat-tail" d="M45 39c12 3 14-8 8-14" />
+          <ellipse className="oauth-cat-fur" cx="32" cy="38" rx="15" ry="11" />
+          <circle className="oauth-cat-fur" cx="30" cy="22" r="13" />
+          <path className="oauth-cat-fur" d="M19 16 19 5l9 7M34 11l9-7-1 13" />
+          <circle className="oauth-cat-eye" cx="25.5" cy="21" r="1.4" />
+          <circle className="oauth-cat-eye" cx="34.5" cy="21" r="1.4" />
+          <path className="oauth-cat-face" d="m28 26 2 1.5 2-1.5M30 27.5v2" />
+          <path className="oauth-cat-paw" d="M22 45v5M39 45v5" />
+        </svg>
+      </div>
+
+      <div className="oauth-scene-steps" aria-hidden="true">
+        <span>{t("loginSceneStepCode")}</span>
+        <span>{t("loginSceneStepAuthorize")}</span>
+        <span>{t("loginSceneStepSaved")}</span>
+      </div>
+    </div>
+  );
+}
+
+export function LoginFlow({ t }: { t: Translate }) {
+  const steps: { detail: string; icon: FlowIconKind; label: string }[] = [
+    {
+      detail: t("loginFlowPairingDetail"),
+      icon: "pairing",
+      label: t("loginFlowPairing"),
+    },
+    {
+      detail: t("loginFlowBrowserDetail"),
+      icon: "browser",
+      label: t("loginFlowBrowser"),
+    },
+    {
+      detail: t("loginFlowAuthFileDetail"),
+      icon: "file",
+      label: "auth.json",
+    },
+    {
+      detail: t("loginFlowCodexDetail"),
+      icon: "codex",
+      label: t("loginFlowCodex"),
+    },
+  ];
+  const connectors = [
+    t("loginFlowContinue"),
+    t("loginFlowAuthorized"),
+    t("flowNextRequest"),
+  ];
+
+  return (
+    <section className="login-flow-guide" aria-labelledby="login-flow-title">
+      <div className="login-flow-heading">
+        <span className="eyebrow">{t("loginFlowEyebrow")}</span>
+        <h2 id="login-flow-title">{t("loginFlowTitle")}</h2>
+        <p>{t("loginFlowDescription")}</p>
+      </div>
+
+      <OAuthCatScene t={t} />
+
+      <div className="login-flow" role="list">
+        {steps.map((step, index) => (
+          <div className="login-flow-fragment" key={step.label}>
+            <div className="flow-step" role="listitem">
+              <div className={`flow-icon ${step.icon}`}>
+                <FlowIcon kind={step.icon} />
+              </div>
+              <strong>{step.label}</strong>
+              <span>{step.detail}</span>
+            </div>
+            {index < connectors.length && (
+              <FlowConnector label={connectors[index]} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="login-flow-notes">
+        <strong>{t("loginFlowSharedAuth")}</strong>
+        <span>{t("loginFlowPrivacyNote")}</span>
+      </div>
     </section>
   );
 }

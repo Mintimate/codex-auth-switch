@@ -26,7 +26,7 @@ import {
   switchAccount,
   UsageOverview,
 } from "./api";
-import { AccountFlow } from "./AccountFlow";
+import { AccountFlow, LoginFlow } from "./AccountFlow";
 import { localizeBackendError, Locale, useI18n } from "./i18n";
 import { AppTab, SettingsPanel } from "./SettingsPanel";
 import { ThemeMode, useAppearance } from "./theme";
@@ -153,43 +153,6 @@ function TabIcon({ tab }: { tab: AppTab }) {
   );
 }
 
-type OAuthFlowIconKind = "pairing" | "browser" | "file" | "shared";
-
-function OAuthFlowIcon({ kind }: { kind: OAuthFlowIconKind }) {
-  if (kind === "pairing") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="4" y="5" width="16" height="14" rx="2" />
-        <path d="M8 9h.01M12 9h.01M16 9h.01M8 13h8M8 16h5" />
-      </svg>
-    );
-  }
-  if (kind === "browser") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <path d="M3 8h18M6 6h.01M9 6h.01M9 14l2 2 4-5" />
-      </svg>
-    );
-  }
-  if (kind === "file") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 3.5h7l4 4V20H7zM14 3.5V8h4" />
-        <path d="M10 12h5M10 15.5h5" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="2.5" y="5" width="9" height="13" rx="2" />
-      <path d="m5 9 2 2-2 2M8 14h1" />
-      <circle cx="17.5" cy="11.5" r="3" />
-      <path d="M16 6.2a5.7 5.7 0 0 1 5.7 3.5M19 16.8a5.7 5.7 0 0 1-5.1-1" />
-    </svg>
-  );
-}
-
 function DialogPresence({
   children,
   onBackdropMouseDown,
@@ -261,37 +224,6 @@ function App() {
   }[] = [
     { label: t("chinese"), value: "zh-CN" },
     { label: t("english"), value: "en" },
-  ];
-  const oauthFlowSteps: {
-    detail: string;
-    icon: OAuthFlowIconKind;
-    label: string;
-  }[] = [
-    {
-      detail: t("oauthGuidePairingDescription"),
-      icon: "pairing",
-      label: t("oauthGuidePairingTitle"),
-    },
-    {
-      detail: t("oauthGuideAuthorizeDescription"),
-      icon: "browser",
-      label: t("oauthGuideAuthorizeTitle"),
-    },
-    {
-      detail: t("oauthGuideAuthFileDescription"),
-      icon: "file",
-      label: "auth.json",
-    },
-    {
-      detail: t("oauthGuideSharedDescription"),
-      icon: "shared",
-      label: t("oauthGuideSharedTitle"),
-    },
-  ];
-  const oauthFlowConnectors = [
-    t("oauthGuideGenerateConnector"),
-    t("oauthGuideAuthorizeConnector"),
-    t("oauthGuideEffectiveConnector"),
   ];
   const [defaultTab, setDefaultTab] = useState<AppTab>(storedDefaultTab);
   const [activeTab, setActiveTab] = useState<AppTab>(storedDefaultTab);
@@ -764,7 +696,7 @@ function App() {
                   />
                   <div className="hero-actions">
                     <button
-                      className="button secondary"
+                      className="button secondary hero-action"
                       disabled={
                         Boolean(busy) ||
                         !status?.activeAccountId ||
@@ -774,10 +706,12 @@ function App() {
                         openDialog("save", active?.label ?? t("workAccount"))
                       }
                     >
-                      {t("saveCurrentLogin")}
+                      <strong>{t("saveCurrentLogin")}</strong>
+                      <small>{t("saveCurrentLoginHint")}</small>
                     </button>
                     <button
-                      className="button primary"
+                      className="button primary hero-action"
+                      aria-describedby="add-account-guide"
                       disabled={Boolean(busy) || !status?.supported}
                       onClick={() =>
                         openDialog(
@@ -788,10 +722,11 @@ function App() {
                         )
                       }
                     >
-                      {t("loginNewAccount")}
+                      <strong>{t("loginNewAccount")}</strong>
+                      <small>{t("loginNewAccountHint")}</small>
                     </button>
                     <button
-                      className="button secondary"
+                      className="button secondary hero-action"
                       disabled={Boolean(busy) || !status?.supported}
                       onClick={() => {
                         setError(null);
@@ -799,9 +734,14 @@ function App() {
                         setImportDialog(true);
                       }}
                     >
-                      {t("importAuth")}
+                      <strong>{t("importAuth")}</strong>
+                      <small>{t("importAuthHint")}</small>
                     </button>
                   </div>
+                  <p className="hero-login-guide" id="add-account-guide">
+                    <strong>{t("accountAddGuideLabel")}</strong>
+                    <span>{t("accountAddGuide")}</span>
+                  </p>
                 </section>
 
                 <AccountFlow
@@ -1216,6 +1156,9 @@ function App() {
                 {pairingFeedback.message}
               </p>
             )}
+            <span className="device-code-hint">
+              {t("deviceCodeClickToCopy")}
+            </span>
             <div className="polling-state" role="status">
               <span className="polling-dot" />
               {t("waitingBrowser")}
@@ -1276,131 +1219,71 @@ function App() {
           <form
             className={`dialog${
               dialog === "login"
-                ? ` oauth-intro-dialog${
+                ? ` login-dialog${
                     oauthTransitioning ? " oauth-is-launching" : ""
                   }`
                 : ""
             }`}
+            role="dialog"
+            aria-modal="true"
             onSubmit={(event) => void submitDialog(event)}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            {dialog === "login" ? (
-              <div className="oauth-intro-layout">
-                <section className="oauth-intro-form">
-                  <span className="eyebrow">{t("browserLogin")}</span>
-                  <h2>{t("nameNewAccount")}</h2>
-                  <p className="oauth-name-hint">{t("oauthNameHint")}</p>
-                  <label htmlFor="account-label">{t("displayName")}</label>
-                  <input
-                    id="account-label"
-                    autoFocus
-                    maxLength={60}
-                    value={label}
-                    onChange={(event) => setLabel(event.target.value)}
-                    placeholder={t("accountNamePlaceholder")}
-                  />
-                  <div className="dialog-actions">
-                    <button
-                      type="button"
-                      className="button secondary"
-                      disabled={oauthTransitioning}
-                      onClick={() => setDialog(null)}
-                    >
-                      {t("cancel")}
-                    </button>
-                    <button
-                      type="submit"
-                      className="button primary oauth-launch-button"
-                      disabled={!label.trim() || oauthTransitioning}
-                    >
-                      {t("continue")}
-                      <span className="oauth-pixel-burst" aria-hidden="true">
-                        {Array.from(
-                          { length: OAUTH_PIXEL_COUNT },
-                          (_, index) => (
-                            <i key={index} />
-                          ),
-                        )}
-                      </span>
-                    </button>
-                  </div>
-                </section>
-
-                <section
-                  className="oauth-flow-panel"
-                  aria-labelledby="oauth-guide-title"
-                >
-                  <div className="oauth-flow-heading">
-                    <span className="eyebrow">{t("oauthGuideEyebrow")}</span>
-                    <h3 id="oauth-guide-title">{t("oauthGuideTitle")}</h3>
-                    <p>{t("oauthGuideDescription")}</p>
-                  </div>
-                  <div className="oauth-flow" role="list">
-                    {oauthFlowSteps.map((step, index) => (
-                      <div className="oauth-flow-fragment" key={step.label}>
-                        <div className="oauth-flow-step" role="listitem">
-                          <div className={`oauth-flow-icon ${step.icon}`}>
-                            <OAuthFlowIcon kind={step.icon} />
-                          </div>
-                          <strong>{step.label}</strong>
-                          <span>{step.detail}</span>
-                        </div>
-                        {index < oauthFlowConnectors.length && (
-                          <div
-                            className="oauth-flow-connector"
-                            aria-hidden="true"
-                          >
-                            <span className="oauth-flow-line" />
-                            <small>{oauthFlowConnectors[index]}</small>
-                            <span className="oauth-flow-arrow">›</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="oauth-shared-state-note">
-                    {t("oauthSharedStateNote")}
-                  </p>
-                  <p className="oauth-guide-note">{t("oauthGuideNote")}</p>
-                </section>
-              </div>
-            ) : (
-              <>
-                <span className="eyebrow">
-                  {dialog === "save" ? t("saveCurrentLogin") : t("accountName")}
-                </span>
-                <h2>
-                  {dialog === "save"
+            {dialog === "login" && <LoginFlow t={t} />}
+            <div className={dialog === "login" ? "login-form-pane" : undefined}>
+              <span className="eyebrow">
+                {dialog === "login"
+                  ? t("browserLogin")
+                  : dialog === "save"
+                    ? t("saveCurrentLogin")
+                    : t("accountName")}
+              </span>
+              <h2>
+                {dialog === "login"
+                  ? t("nameNewAccount")
+                  : dialog === "save"
                     ? t("saveThisAccount")
                     : t("renameAccount")}
-                </h2>
-                <label htmlFor="account-label">{t("displayName")}</label>
-                <input
-                  id="account-label"
-                  autoFocus
-                  maxLength={60}
-                  value={label}
-                  onChange={(event) => setLabel(event.target.value)}
-                  placeholder={t("accountNamePlaceholder")}
-                />
-                <div className="dialog-actions">
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={() => setDialog(null)}
-                  >
-                    {t("cancel")}
-                  </button>
-                  <button
-                    type="submit"
-                    className="button primary"
-                    disabled={!label.trim()}
-                  >
-                    {t("continue")}
-                  </button>
-                </div>
-              </>
-            )}
+              </h2>
+              <label htmlFor="account-label">{t("displayName")}</label>
+              <input
+                id="account-label"
+                autoFocus
+                maxLength={60}
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder={t("accountNamePlaceholder")}
+              />
+              {dialog === "login" && <p>{t("deviceLoginNextStep")}</p>}
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={oauthTransitioning}
+                  onClick={() => setDialog(null)}
+                >
+                  {t("cancel")}
+                </button>
+                <button
+                  type="submit"
+                  className={`button primary${
+                    dialog === "login" ? " oauth-launch-button" : ""
+                  }`}
+                  disabled={!label.trim() || oauthTransitioning}
+                >
+                  {dialog === "login"
+                    ? t("requestLoginCodeButton")
+                    : t("continue")}
+                  {dialog === "login" && (
+                    <span className="oauth-pixel-burst" aria-hidden="true">
+                      {Array.from({ length: OAUTH_PIXEL_COUNT }, (_, index) => (
+                        <i key={index} />
+                      ))}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
           </form>
         ) : null}
       </DialogPresence>
