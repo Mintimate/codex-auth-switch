@@ -1363,6 +1363,7 @@ button:disabled {
   display: flex;
   grid-column: 2;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 5px;
   margin-top: -3px;
@@ -1689,10 +1690,39 @@ button:disabled {
   white-space: nowrap;
 }
 
+.pairing-label {
+  display: block;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.device-url {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 11px 12px;
+  color: var(--accent-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.device-url:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
 .device-code {
   display: block;
   width: 100%;
-  margin-top: 22px;
+  margin-top: 7px;
   border: 1px solid var(--border-strong);
   border-radius: 15px;
   background: var(--accent-soft);
@@ -1707,6 +1737,23 @@ button:disabled {
 
 .device-code:hover {
   background: var(--surface-hover);
+}
+
+.dialog .pairing-feedback {
+  margin-top: 10px;
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-weight: 650;
+}
+
+.pairing-feedback.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.pairing-feedback.error {
+  background: var(--error-bg);
+  color: var(--danger);
 }
 
 .polling-state {

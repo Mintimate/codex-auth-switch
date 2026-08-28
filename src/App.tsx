@@ -179,6 +179,10 @@ function App() {
   const [deviceLogin, setDeviceLogin] = useState<PendingDeviceLogin | null>(
     null,
   );
+  const [pairingFeedback, setPairingFeedback] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
   const [shareDialog, setShareDialog] = useState<ShareDialogState | null>(null);
   const [removeDialog, setRemoveDialog] = useState<RemoveDialogState | null>(
     null,
@@ -254,6 +258,7 @@ function App() {
       if (Date.now() >= deviceLogin.expiresAt) {
         setError(t("loginCodeExpired"));
         setDeviceLogin(null);
+        setPairingFeedback(null);
         return;
       }
 
@@ -267,6 +272,7 @@ function App() {
         if (nextStatus) {
           setStatus(nextStatus);
           setDeviceLogin(null);
+          setPairingFeedback(null);
           setNotice(t("newAccountSaved"));
           if (activeTab === "usage") void refreshUsage();
           return;
@@ -275,6 +281,7 @@ function App() {
         if (cancelled) return;
         setError(localizeBackendError(messageOf(reason), locale));
         setDeviceLogin(null);
+        setPairingFeedback(null);
         return;
       }
 
@@ -325,16 +332,7 @@ function App() {
         response,
         expiresAt: Date.now() + response.expiresIn * 1000,
       });
-      try {
-        await navigator.clipboard.writeText(response.userCode);
-      } catch {
-        // Clipboard access can be blocked by system policy; the code remains visible.
-      }
-      try {
-        await openUrl(response.verificationUri);
-      } catch {
-        setNotice(t("loginCodeReady"));
-      }
+      setPairingFeedback(null);
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -448,6 +446,18 @@ function App() {
     }
     const image = toBase64(new Uint8Array(await file.arrayBuffer()));
     await importAuth(t("importAndSwitch"), () => importAuthFromQr(image));
+  };
+
+  const copyPairingText = async (text: string, successMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setPairingFeedback({ kind: "success", message: successMessage });
+    } catch {
+      setPairingFeedback({
+        kind: "error",
+        message: t("pairingCopyFailed"),
+      });
+    }
   };
 
   const revealVault = () => {
@@ -1018,23 +1028,49 @@ function App() {
             className="dialog device-dialog"
             role="dialog"
             aria-modal="true"
+            aria-labelledby="device-login-title"
           >
             <span className="eyebrow">{t("deviceCodeLogin")}</span>
-            <h2>{t("completeLoginInBrowser")}</h2>
+            <h2 id="device-login-title">{t("completeLoginInBrowser")}</h2>
             <p>{t("deviceLoginDescription")}</p>
+            <span className="pairing-label">{t("browserUrl")}</span>
+            <button
+              className="device-url"
+              type="button"
+              title={t("openLoginPage")}
+              onClick={() =>
+                void openUrl(deviceLogin.response.verificationUri).catch(() =>
+                  setPairingFeedback({
+                    kind: "error",
+                    message: t("browserOpenFailed"),
+                  }),
+                )
+              }
+            >
+              {deviceLogin.response.verificationUri}
+            </button>
+            <span className="pairing-label">{t("pairingCode")}</span>
             <button
               className="device-code"
               type="button"
               title={t("copyVerificationCode")}
-              onClick={() => {
-                void navigator.clipboard
-                  .writeText(deviceLogin.response.userCode)
-                  .then(() => setNotice(t("verificationCodeCopied")))
-                  .catch(() => setError(t("verificationCodeCopyFailed")));
-              }}
+              onClick={() =>
+                void copyPairingText(
+                  deviceLogin.response.userCode,
+                  t("verificationCodeCopied"),
+                )
+              }
             >
               {deviceLogin.response.userCode}
             </button>
+            {pairingFeedback && (
+              <p
+                className={`pairing-feedback ${pairingFeedback.kind}`}
+                role="status"
+              >
+                {pairingFeedback.message}
+              </p>
+            )}
             <div className="polling-state" role="status">
               <span className="polling-dot" />
               {t("waitingBrowser")}
@@ -1044,16 +1080,37 @@ function App() {
               <button
                 type="button"
                 className="button secondary"
-                onClick={() => setDeviceLogin(null)}
+                onClick={() => {
+                  setDeviceLogin(null);
+                  setPairingFeedback(null);
+                }}
               >
                 {t("cancel")}
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() =>
+                  void copyPairingText(
+                    t("pairingDetailsText", {
+                      url: deviceLogin.response.verificationUri,
+                      code: deviceLogin.response.userCode,
+                    }),
+                    t("pairingDetailsCopied"),
+                  )
+                }
+              >
+                {t("copyPairingDetails")}
               </button>
               <button
                 type="button"
                 className="button primary"
                 onClick={() =>
                   void openUrl(deviceLogin.response.verificationUri).catch(() =>
-                    setError(t("browserOpenFailed")),
+                    setPairingFeedback({
+                      kind: "error",
+                      message: t("browserOpenFailed"),
+                    }),
                   )
                 }
               >

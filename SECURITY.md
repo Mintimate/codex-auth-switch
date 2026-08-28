@@ -4,7 +4,7 @@
 
 The account vault and Codex `auth.json` contain access and refresh tokens. Never attach either file to an issue, paste it into chat, or commit it to a repository.
 
-Auth share text and QR codes contain equivalent sign-in credentials. Share them only with a device you trust, clear the system clipboard after importing, and do not retain screenshots or upload them to messaging or cloud-storage services. If a share artifact leaks, sign in again to rotate the affected credentials.
+OAuth pairing is the recommended way to authorize another device: start pairing on the receiving device and give the browser URL and short-lived code only to the intended account owner. Auth sharing remains available for compatibility, but its text and QR codes contain login credentials; sharing them across devices is not recommended and may lead to 401 errors when credentials are reused.
 
 When reporting a bug:
 
@@ -21,4 +21,4 @@ Local token statistics are calculated by extracting only `token_count` event met
 
 File permissions reduce accidental disclosure but do not protect credentials from another process running as the same user or from an administrator with access to the device.
 
-Normal frontend status calls receive only redacted account summaries. During an explicit share action, the Rust backend writes and reads share text directly through the system clipboard and returns only a rendered QR image to the WebView; raw token strings are not returned through Tauri commands, displayed, or logged. QR image decoding and Auth validation also run in Rust.
+Normal frontend status calls receive only redacted account summaries. During OAuth pairing, the frontend receives only the browser URL, short-lived user code, expiration, and polling interval. During an explicit Auth share action, Rust writes and reads share text through the system clipboard and returns only a rendered QR image to the WebView. Raw token strings are never returned through Tauri commands, displayed, or logged.
