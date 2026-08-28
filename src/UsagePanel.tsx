@@ -15,6 +15,10 @@ type UsagePanelProps = {
   t: Translate;
 };
 
+const SKELETON_TREND_BARS = Array.from({ length: 14 });
+const SKELETON_QUOTA_CARDS = Array.from({ length: 2 });
+const SKELETON_QUOTA_WINDOWS = Array.from({ length: 2 });
+
 const formatWindow = (minutes: number | null, t: Translate) => {
   if (!minutes) return t("quotaWindow");
   if (minutes % 1440 === 0) {
@@ -161,6 +165,88 @@ function QuotaCard({
   );
 }
 
+function UsageSkeleton({ label }: { label: string }) {
+  return (
+    <div className="usage-skeleton" role="status" aria-live="polite">
+      <span className="visually-hidden">{label}</span>
+      <div className="usage-skeleton-visual" aria-hidden="true">
+        <div className="usage-metrics">
+          {Array.from({ length: 3 }, (_, index) => (
+            <article
+              className={`usage-metric usage-skeleton-metric${index === 0 ? " emphasis" : ""}`}
+              key={index}
+            >
+              <span className="usage-skeleton-block skeleton-metric-label" />
+              <span className="usage-skeleton-block skeleton-metric-value" />
+              <span className="usage-skeleton-block skeleton-metric-unit" />
+            </article>
+          ))}
+        </div>
+
+        <div className="usage-insights">
+          <article className="trend-card usage-skeleton-panel">
+            <div className="usage-skeleton-card-heading">
+              <div>
+                <span className="usage-skeleton-block skeleton-heading" />
+                <span className="usage-skeleton-block skeleton-subheading" />
+              </div>
+              <span className="usage-skeleton-block skeleton-meta" />
+            </div>
+            <div className="usage-skeleton-chart">
+              {SKELETON_TREND_BARS.map((_, index) => (
+                <span className="usage-skeleton-block" key={index} />
+              ))}
+            </div>
+          </article>
+
+          <article className="breakdown-card usage-skeleton-panel">
+            <span className="usage-skeleton-block skeleton-heading" />
+            <span className="usage-skeleton-block skeleton-subheading" />
+            <div className="usage-skeleton-breakdown">
+              {Array.from({ length: 4 }, (_, index) => (
+                <span className="usage-skeleton-block" key={index} />
+              ))}
+            </div>
+          </article>
+        </div>
+
+        <div className="quota-heading usage-skeleton-quota-heading">
+          <div>
+            <span className="usage-skeleton-block skeleton-heading" />
+            <span className="usage-skeleton-block skeleton-subheading" />
+          </div>
+        </div>
+        <div className="quota-list">
+          {SKELETON_QUOTA_CARDS.map((_, index) => (
+            <article className="quota-card usage-skeleton-quota" key={index}>
+              <div className="usage-skeleton-card-heading">
+                <div>
+                  <span className="usage-skeleton-block skeleton-heading" />
+                  <span className="usage-skeleton-block skeleton-subheading" />
+                </div>
+                <span className="usage-skeleton-block skeleton-quota-value" />
+              </div>
+              <div className="usage-skeleton-windows">
+                {SKELETON_QUOTA_WINDOWS.map((_, windowIndex) => (
+                  <div className="usage-skeleton-window" key={windowIndex}>
+                    <div>
+                      <span className="usage-skeleton-block skeleton-window-label" />
+                      <span className="usage-skeleton-block skeleton-window-value" />
+                    </div>
+                    <span className="usage-skeleton-block skeleton-track" />
+                    <span className="usage-skeleton-block skeleton-reset" />
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+        <span className="usage-skeleton-block skeleton-privacy" />
+      </div>
+    </div>
+  );
+}
+
 export function UsagePanel({
   usage,
   loading,
@@ -209,9 +295,7 @@ export function UsagePanel({
       )}
 
       {!usage && loading ? (
-        <div className="usage-loading" role="status">
-          {t("usageLoading")}
-        </div>
+        <UsageSkeleton label={t("usageLoading")} />
       ) : !usage ? (
         <div className="usage-empty-state">
           <strong>{t("usageNotLoaded")}</strong>
@@ -221,7 +305,7 @@ export function UsagePanel({
           </button>
         </div>
       ) : usage ? (
-        <>
+        <div className="usage-loaded-content">
           <div className="usage-metrics">
             <MetricCard
               label={t("today")}
@@ -340,7 +424,7 @@ export function UsagePanel({
           )}
 
           <p className="usage-privacy-note">{t("usagePrivacy")}</p>
-        </>
+        </div>
       ) : null}
     </section>
   );

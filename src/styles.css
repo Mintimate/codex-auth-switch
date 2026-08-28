@@ -37,6 +37,8 @@
   --offline: #9b9b95;
   --danger: #9d5149;
   --hint: #eeece6;
+  --skeleton-base: rgba(47, 49, 45, 0.08);
+  --skeleton-highlight: rgba(255, 255, 255, 0.7);
   --content-max: 1480px;
   font-family:
     Inter,
@@ -90,6 +92,8 @@
   --offline: #777772;
   --danger: #e09a92;
   --hint: #393936;
+  --skeleton-base: rgba(249, 249, 247, 0.08);
+  --skeleton-highlight: rgba(249, 249, 247, 0.13);
 }
 
 * {
@@ -281,6 +285,7 @@ button:disabled {
   padding: 0;
   color: var(--muted);
   transition:
+    transform 120ms ease,
     border-color 120ms ease,
     background 120ms ease,
     color 120ms ease;
@@ -290,6 +295,11 @@ button:disabled {
   border-color: var(--border-strong);
   background: var(--surface-hover);
   color: var(--foreground);
+  transform: translateY(-1px);
+}
+
+.github-link:active {
+  transform: translateY(0) scale(0.96);
 }
 
 .github-link:focus-visible {
@@ -331,6 +341,7 @@ button:disabled {
   font-size: 12px;
   font-weight: 680;
   transition:
+    transform 120ms ease,
     background 120ms ease,
     color 120ms ease,
     box-shadow 120ms ease;
@@ -339,6 +350,11 @@ button:disabled {
 .app-tabs button:hover:not(.active) {
   background: var(--surface-hover);
   color: var(--foreground);
+  transform: translateX(2px);
+}
+
+.app-tabs button:active {
+  transform: translateX(1px) scale(0.99);
 }
 
 .app-tabs button.active {
@@ -384,6 +400,19 @@ button:disabled {
   min-width: 0;
   align-items: start;
   gap: 18px;
+  animation: page-content-enter 220ms cubic-bezier(0.2, 0.75, 0.3, 1) both;
+}
+
+@keyframes page-content-enter {
+  from {
+    transform: translateY(5px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .loading-card,
@@ -626,12 +655,25 @@ button:disabled {
   font-weight: 680;
   transition:
     transform 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    filter 120ms ease,
+    opacity 120ms ease,
     box-shadow 120ms ease,
     background 120ms ease;
 }
 
+.button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
 .button:not(:disabled):active {
-  transform: translateY(1px);
+  transform: translateY(0) scale(0.98);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .button.primary {
@@ -644,11 +686,21 @@ button:disabled {
   background: var(--accent-hover);
 }
 
-.button.secondary,
-.button.compact {
+.button.secondary {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--accent-deep);
+}
+
+.button.secondary:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  box-shadow: 0 5px 14px var(--accent-shadow);
+}
+
+.button.danger-button:hover:not(:disabled) {
+  filter: brightness(0.94);
+  box-shadow: 0 7px 18px var(--accent-shadow);
 }
 
 .button.compact {
@@ -709,11 +761,19 @@ button:disabled {
   line-height: 1;
   cursor: pointer;
   opacity: 0.72;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    opacity 120ms ease;
 }
 
 .alert-close:hover {
   background: var(--surface);
   opacity: 1;
+}
+
+.alert-close:active {
+  transform: scale(0.9);
 }
 
 .alert-close:focus-visible {
@@ -735,8 +795,7 @@ button:disabled {
   font-size: 11px;
 }
 
-.usage-inline-error,
-.usage-loading {
+.usage-inline-error {
   border: 1px solid var(--error-border);
   border-radius: 14px;
   background: var(--error-bg);
@@ -785,18 +844,230 @@ button:disabled {
   color: var(--accent-deep);
   font-size: 11px;
   font-weight: 700;
+  transition:
+    transform 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
 }
 
-.usage-loading {
-  border-color: var(--border);
-  background: var(--surface);
-  text-align: center;
+.usage-inline-error button:hover {
+  color: var(--foreground);
+}
+
+.usage-inline-error button:active {
+  transform: scale(0.96);
+}
+
+.usage-inline-error button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .usage-metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+}
+
+.usage-skeleton-visual {
+  display: grid;
+  min-width: 0;
+}
+
+.usage-loaded-content {
+  display: grid;
+  min-width: 0;
+  animation: usage-content-reveal 200ms ease-out both;
+}
+
+.usage-skeleton-block {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--skeleton-base);
+}
+
+.usage-skeleton-block::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--skeleton-highlight) 50%,
+    transparent 80%
+  );
+  content: "";
+  transform: translateX(-100%);
+  animation: usage-skeleton-shimmer 1.45s ease-in-out infinite;
+}
+
+.usage-skeleton-metric {
+  min-height: 89px;
+}
+
+.skeleton-metric-label {
+  width: 42%;
+  height: 9px;
+}
+
+.skeleton-metric-value {
+  width: 52%;
+  height: 27px;
+  margin-top: 11px;
+}
+
+.skeleton-metric-unit {
+  width: 20%;
+  height: 7px;
+  margin-top: 7px;
+}
+
+.usage-skeleton-panel {
+  min-height: 208px;
+}
+
+.usage-skeleton-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.usage-skeleton-card-heading > div,
+.usage-skeleton-quota-heading > div {
+  width: min(62%, 220px);
+}
+
+.skeleton-heading {
+  width: 58%;
+  height: 10px;
+}
+
+.skeleton-subheading {
+  width: 82%;
+  height: 7px;
+  margin-top: 7px;
+}
+
+.skeleton-meta {
+  width: 54px;
+  height: 8px;
+}
+
+.usage-skeleton-chart {
+  display: flex;
+  height: 111px;
+  align-items: flex-end;
+  gap: 5px;
+  margin-top: 16px;
+}
+
+.usage-skeleton-chart span {
+  height: 44%;
+  flex: 1;
+  border-radius: 4px 4px 2px 2px;
+}
+
+.usage-skeleton-chart span:nth-child(3n + 1) {
+  height: 64%;
+}
+
+.usage-skeleton-chart span:nth-child(4n + 2) {
+  height: 82%;
+}
+
+.usage-skeleton-chart span:nth-child(5n) {
+  height: 30%;
+}
+
+.usage-skeleton-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 21px;
+}
+
+.usage-skeleton-breakdown span {
+  height: 48px;
+  border-radius: 11px;
+}
+
+.usage-skeleton-quota-heading {
+  min-height: 35px;
+}
+
+.skeleton-quota-value {
+  width: 70px;
+  height: 16px;
+}
+
+.usage-skeleton-quota {
+  min-height: 188px;
+}
+
+.usage-skeleton-windows,
+.usage-skeleton-window {
+  display: grid;
+}
+
+.usage-skeleton-windows {
+  gap: 14px;
+  margin-top: 17px;
+}
+
+.usage-skeleton-window {
+  gap: 8px;
+}
+
+.usage-skeleton-window > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.skeleton-window-label {
+  width: 72px;
+  height: 8px;
+}
+
+.skeleton-window-value {
+  width: 28px;
+  height: 8px;
+}
+
+.skeleton-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.skeleton-reset {
+  width: 45%;
+  height: 7px;
+}
+
+.skeleton-privacy {
+  width: min(62%, 460px);
+  height: 7px;
+  margin: 16px 2px 0;
+}
+
+@keyframes usage-skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes usage-content-reveal {
+  from {
+    transform: translateY(3px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .usage-metric {
@@ -1157,6 +1428,12 @@ button:disabled {
   font-size: 10px;
   font-weight: 680;
   white-space: nowrap;
+  transition:
+    transform 120ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    opacity 120ms ease,
+    box-shadow 140ms ease;
 }
 
 .settings-segmented button:hover:not(.active) {
@@ -1168,6 +1445,10 @@ button:disabled {
   background: var(--card-solid);
   color: var(--accent-deep);
   box-shadow: 0 1px 5px var(--accent-shadow);
+}
+
+.settings-segmented button:active {
+  transform: scale(0.96);
 }
 
 .settings-segmented button:focus-visible,
@@ -1185,7 +1466,10 @@ button:disabled {
   border-radius: 999px;
   background: var(--muted-soft);
   padding: 0;
-  transition: background 140ms ease;
+  transition:
+    transform 120ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .toggle span {
@@ -1206,6 +1490,14 @@ button:disabled {
 
 .toggle.active span {
   transform: translateX(18px);
+}
+
+.toggle:hover {
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+
+.toggle:active {
+  transform: scale(0.94);
 }
 
 .settings-data-group {
@@ -1284,14 +1576,31 @@ button:disabled {
 
 .text-button {
   border: 0;
+  border-radius: 8px;
   background: transparent;
+  padding: 8px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 650;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    opacity 120ms ease,
+    color 120ms ease;
 }
 
-.text-button {
-  padding: 8px;
+.text-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+
+.text-button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.text-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .account-list {
@@ -1379,12 +1688,41 @@ button:disabled {
   font-weight: 680;
   line-height: 1;
   white-space: nowrap;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .account-action:hover:not(:disabled) {
   border-color: var(--border);
   background: var(--surface-hover);
   color: var(--foreground);
+}
+
+.account-action.primary-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-active);
+  box-shadow: 0 4px 12px var(--accent-ring);
+  color: var(--accent-deep);
+}
+
+.account-action.danger:hover:not(:disabled) {
+  border-color: var(--error-border);
+  background: var(--error-bg);
+  color: var(--danger);
+}
+
+.account-action:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.account-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .account-action.primary-action {
@@ -1446,6 +1784,9 @@ button:disabled {
   display: grid;
   place-items: center;
   background: var(--overlay);
+}
+
+.busy-overlay {
   backdrop-filter: blur(7px);
 }
 
@@ -1454,6 +1795,21 @@ button:disabled {
   align-content: center;
   color: white;
   text-align: center;
+}
+
+.dialog-backdrop {
+  pointer-events: none;
+  opacity: 0;
+  backdrop-filter: blur(0);
+  transition:
+    opacity 160ms ease,
+    backdrop-filter 180ms ease;
+}
+
+.dialog-backdrop.is-visible {
+  pointer-events: auto;
+  opacity: 1;
+  backdrop-filter: blur(7px);
 }
 
 .busy-overlay strong {
@@ -1488,6 +1844,22 @@ button:disabled {
   background: var(--card-solid);
   box-shadow: var(--shadow-strong);
   padding: 26px;
+  transform: translateY(10px) scale(0.985);
+  opacity: 0;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.75, 0.3, 1),
+    opacity 150ms ease;
+  will-change: transform, opacity;
+}
+
+.dialog-backdrop.is-visible > .dialog {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.dialog-backdrop.is-closing > .dialog {
+  transform: translateY(5px) scale(0.99);
+  transition-duration: 160ms;
 }
 
 .dialog h2 {
@@ -2076,13 +2448,22 @@ button:disabled {
   color: var(--foreground);
   text-align: left;
   transition:
+    transform 120ms ease,
     border-color 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    opacity 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .import-option:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px var(--accent-shadow);
+}
+
+.import-option:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
 }
 
 .import-option:focus-visible {
@@ -2153,11 +2534,21 @@ button:disabled {
   font-size: 11px;
   line-height: 1.5;
   text-align: left;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .device-url:hover {
   border-color: var(--border-strong);
   background: var(--surface-hover);
+  box-shadow: 0 5px 14px var(--accent-shadow);
+}
+
+.device-url:active {
+  transform: scale(0.99);
 }
 
 .device-code {
@@ -2174,10 +2565,26 @@ button:disabled {
   font-weight: 760;
   letter-spacing: 0.13em;
   text-align: center;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .device-code:hover {
   background: var(--surface-hover);
+  box-shadow: 0 6px 16px var(--accent-ring);
+}
+
+.device-code:active {
+  transform: scale(0.985);
+}
+
+.device-url:focus-visible,
+.device-code:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .dialog .pairing-feedback {
@@ -2409,6 +2816,37 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .github-link,
+  .app-tabs button,
+  .button,
+  .alert-close,
+  .usage-inline-error button,
+  .settings-segmented button,
+  .toggle,
+  .toggle span,
+  .text-button,
+  .account-action,
+  .import-option,
+  .device-url,
+  .device-code {
+    transition: none;
+  }
+
+  .accounts-page,
+  .tab-panel,
+  .usage-loaded-content {
+    animation: none;
+  }
+
+  .usage-skeleton-block::after {
+    display: none;
+  }
+
+  .dialog-backdrop,
+  .dialog {
+    transition: none;
+  }
+
   .oauth-flow-step,
   .oauth-flow-icon {
     transition: none;

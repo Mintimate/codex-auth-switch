@@ -1,6 +1,8 @@
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   FormEvent,
+  MouseEventHandler,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -62,6 +64,7 @@ const messageOf = (error: unknown) =>
 const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
 const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
+const DIALOG_EXIT_ANIMATION_MS = 180;
 const OAUTH_LAUNCH_ANIMATION_MS = 560;
 const OAUTH_PIXEL_COUNT = 14;
 // 与后端 auth_share.rs 的 MAX_QR_IMAGE_BYTES 对齐：这里卡文件大小，后端卡解码后字节数。
@@ -184,6 +187,63 @@ function OAuthFlowIcon({ kind }: { kind: OAuthFlowIconKind }) {
       <circle cx="17.5" cy="11.5" r="3" />
       <path d="M16 6.2a5.7 5.7 0 0 1 5.7 3.5M19 16.8a5.7 5.7 0 0 1-5.1-1" />
     </svg>
+  );
+}
+
+function DialogPresence({
+  children,
+  onBackdropMouseDown,
+  open,
+}: {
+  children: ReactNode;
+  onBackdropMouseDown?: MouseEventHandler<HTMLDivElement>;
+  open: boolean;
+}) {
+  const [rendered, setRendered] = useState(open);
+  const [visible, setVisible] = useState(false);
+  const contentRef = useRef(children);
+
+  if (open) contentRef.current = children;
+
+  useEffect(() => {
+    let frame: number | undefined;
+    let revealFrame: number | undefined;
+    let timer: number | undefined;
+
+    if (open) {
+      setRendered(true);
+      frame = window.requestAnimationFrame(() => {
+        revealFrame = window.requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      setVisible(false);
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      timer = window.setTimeout(
+        () => setRendered(false),
+        reducedMotion ? 0 : DIALOG_EXIT_ANIMATION_MS,
+      );
+    }
+
+    return () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      if (revealFrame !== undefined) window.cancelAnimationFrame(revealFrame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [open]);
+
+  if (!rendered) return null;
+
+  return (
+    <div
+      className={`dialog-backdrop ${visible ? "is-visible" : "is-closing"}`}
+      role="presentation"
+      aria-hidden={!open}
+      onMouseDown={onBackdropMouseDown}
+    >
+      {contentRef.current}
+    </div>
   );
 }
 
@@ -911,12 +971,11 @@ function App() {
         </div>
       )}
 
-      {removeDialog && (
-        <div
-          className="dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => setRemoveDialog(null)}
-        >
+      <DialogPresence
+        open={Boolean(removeDialog)}
+        onBackdropMouseDown={() => setRemoveDialog(null)}
+      >
+        {removeDialog ? (
           <section
             className="dialog"
             role="dialog"
@@ -955,15 +1014,14 @@ function App() {
               </button>
             </div>
           </section>
-        </div>
-      )}
+        ) : null}
+      </DialogPresence>
 
-      {shareDialog && (
-        <div
-          className="dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => setShareDialog(null)}
-        >
+      <DialogPresence
+        open={Boolean(shareDialog)}
+        onBackdropMouseDown={() => setShareDialog(null)}
+      >
+        {shareDialog ? (
           <section
             className="dialog share-dialog"
             role="dialog"
@@ -1020,15 +1078,14 @@ function App() {
               </button>
             </div>
           </section>
-        </div>
-      )}
+        ) : null}
+      </DialogPresence>
 
-      {importDialog && (
-        <div
-          className="dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => setImportDialog(false)}
-        >
+      <DialogPresence
+        open={importDialog}
+        onBackdropMouseDown={() => setImportDialog(false)}
+      >
+        {importDialog ? (
           <section
             className="dialog import-dialog"
             role="dialog"
@@ -1107,11 +1164,11 @@ function App() {
               </button>
             </div>
           </section>
-        </div>
-      )}
+        ) : null}
+      </DialogPresence>
 
-      {deviceLogin && (
-        <div className="dialog-backdrop">
+      <DialogPresence open={Boolean(deviceLogin)}>
+        {deviceLogin ? (
           <section
             className="dialog device-dialog"
             role="dialog"
@@ -1206,17 +1263,16 @@ function App() {
               </button>
             </div>
           </section>
-        </div>
-      )}
+        ) : null}
+      </DialogPresence>
 
-      {dialog && (
-        <div
-          className="dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => {
-            if (!oauthTransitioning) setDialog(null);
-          }}
-        >
+      <DialogPresence
+        open={Boolean(dialog)}
+        onBackdropMouseDown={() => {
+          if (!oauthTransitioning) setDialog(null);
+        }}
+      >
+        {dialog ? (
           <form
             className={`dialog${
               dialog === "login"
@@ -1346,8 +1402,8 @@ function App() {
               </>
             )}
           </form>
-        </div>
-      )}
+        ) : null}
+      </DialogPresence>
     </main>
   );
 }
