@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
+  workflow_run:
+    workflows:
+      - 发布安装包
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -17,13 +20,17 @@ concurrency:
 
 jobs:
   sync:
-    name: 推送镜像仓库
+    name: 同步源码或已发布标签
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: 检出完整仓库
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
 
       - name: 检查 CNB 凭据
         env:
@@ -35,23 +42,41 @@ jobs:
             exit 1
           fi
 
-      - name: 同步 main 与版本标签
+      - name: 同步 main
+        if: github.event_name != 'workflow_run'
         env:
           CNB_GIT_PASSWORD: ${{ secrets.CNB_GIT_PASSWORD }}
         shell: bash
         run: |
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
-            -w "${GITHUB_WORKSPACE}" \
-            -e PLUGIN_TARGET_URL="https://cnb.cool/Mintimate/tool-forge/codex-auth-switch.git" \
-            -e PLUGIN_AUTH_TYPE="https" \
-            -e PLUGIN_USERNAME="cnb" \
-            -e PLUGIN_PASSWORD="${CNB_GIT_PASSWORD}" \
-            -e PLUGIN_BRANCH="main" \
-            -e PLUGIN_GIT_USER="cnb" \
-            -e PLUGIN_GIT_EMAIL="cnb@cnb.cool" \
-            -e PLUGIN_FORCE="true" \
-            tencentcom/git-sync
+          askpass="${RUNNER_TEMP}/cnb-git-askpass.sh"
+          cat > "${askpass}" <<'EOF'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' 'cnb' ;;
+            *Password*) printf '%s\n' "${CNB_GIT_PASSWORD}" ;;
+          esac
+          EOF
+          chmod 700 "${askpass}"
+
+          GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 \
+            git push --force \
+            "https://cnb.cool/Mintimate/tool-forge/codex-auth-switch.git" \
+            "HEAD:refs/heads/main"
+
+      - name: 同步已发布标签并触发 CNB 拉取
+        if: github.event_name == 'workflow_run'
+        env:
+          CNB_GIT_PASSWORD: ${{ secrets.CNB_GIT_PASSWORD }}
+        shell: bash
+        run: |
+          RELEASE_TAG="v$(jq -r '.version' src-tauri/tauri.conf.json)"
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::无法从已发布源码读取有效版本标签：${RELEASE_TAG}"
+            exit 1
+          fi
+
+          git fetch --force origin \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
 
           askpass="${RUNNER_TEMP}/cnb-git-askpass.sh"
           cat > "${askpass}" <<'EOF'
@@ -64,5 +89,6 @@ jobs:
           chmod 700 "${askpass}"
 
           GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 \
-            git push --force --tags \
-            "https://cnb.cool/Mintimate/tool-forge/codex-auth-switch.git"
+            git push --force \
+            "https://cnb.cool/Mintimate/tool-forge/codex-auth-switch.git" \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"

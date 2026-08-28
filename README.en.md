@@ -207,7 +207,7 @@ Once the changes look right, push the tag to start the release:
 git push origin main --follow-tags
 ```
 
-The workflow reads the version from `src-tauri/tauri.conf.json` and fails if the Git tag does not match. After the tag is pushed, building all four platform installers, generating release notes, verifying the updater manifest and signatures, promoting the draft to a published release, and mirroring to CNB all happen automatically.
+The workflow reads the version from `src-tauri/tauri.conf.json` and fails if the Git tag does not match. After the tag is pushed, GitHub Actions builds all four platform installers, generates release notes, verifies the updater manifest and signatures, and promotes the draft to a published release. Only after the GitHub Release succeeds is its tag mirrored to CNB; the CNB `tag_push` pipeline then pulls the updater manifest and assets directly from GitHub, uses the same release-note generator, rewrites the CNB update URLs, and creates the mirrored Release.
 
 To write release notes by hand, add `docs/release-notes/vX.Y.Z.md` before tagging. Otherwise notes are generated from Conventional Commits.
 
@@ -221,6 +221,8 @@ src-tauri/src/auth_share.rs Auth sharing encoding and QR code processing
 src-tauri/src/lib.rs        Tauri command boundary
 src-tauri/icons/            App icons; CI compiles Assets.xcassets into macOS light and dark icons
 scripts/bump-version.mjs    Version synchronization script
+.cnb.yml                    CNB pipeline that pulls and mirrors GitHub Releases
+.cnb/scripts/               GitHub Release download and CNB publishing scripts
 docs/images/                README preview screenshots and app icons
 docs/release-notes/         Hand-written release notes (optional)
 ```

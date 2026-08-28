@@ -207,7 +207,7 @@ npm run release 0.7.3   # 更新版本号，并创建提交与标签
 git push origin main --follow-tags
 ```
 
-流水线以 `src-tauri/tauri.conf.json` 的版本为准，并校验 Git 标签与之一致；不一致会直接失败。标签推送后，构建四个平台安装包、生成版本说明、校验更新清单与签名、将草稿转为正式发布、同步到 CNB 均自动完成。
+流水线以 `src-tauri/tauri.conf.json` 的版本为准，并校验 Git 标签与之一致；不一致会直接失败。标签推送后，GitHub Actions 会构建四个平台安装包、生成版本说明、校验更新清单与签名，并将草稿转为正式发布。GitHub Release 成功后，对应标签才会同步到 CNB；CNB 的 `tag_push` 流水线随后直接从 GitHub 拉取更新清单与附件，使用同一版本说明生成逻辑，改写 CNB 更新地址并创建镜像 Release。
 
 需要手写版本说明时，在打标签前添加 `docs/release-notes/vX.Y.Z.md`；否则版本说明会依据 Conventional Commits 自动生成。
 
@@ -221,6 +221,8 @@ src-tauri/src/auth_share.rs Auth 分享编码与二维码处理
 src-tauri/src/lib.rs        Tauri 命令边界
 src-tauri/icons/            应用图标；Assets.xcassets 由 CI 编译为 macOS 明暗图标
 scripts/bump-version.mjs    版本号同步脚本
+.cnb.yml                    CNB 从 GitHub 拉取并镜像 Release 的流水线
+.cnb/scripts/               GitHub Release 拉取与 CNB 发布脚本
 docs/images/                README 预览截图与应用图标
 docs/release-notes/         手写版本说明（可选）
 ```
