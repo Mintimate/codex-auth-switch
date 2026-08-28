@@ -612,13 +612,14 @@ button:disabled {
   animation: guide-in 360ms 100ms ease-out both;
 }
 
-.hero-login-guide strong {
-  flex: 0 0 auto;
-  color: var(--accent-deep);
-}
-
 .hero-login-guide span {
   color: var(--muted);
+}
+
+.hero-login-guide .hero-login-guide-label {
+  flex: 0 0 auto;
+  color: var(--accent-deep);
+  font-weight: 400;
 }
 
 .account-flow-section {
@@ -649,6 +650,207 @@ button:disabled {
   font-size: 10px;
   line-height: 1.5;
   text-align: right;
+}
+
+.account-switch-scene {
+  margin-top: 18px;
+}
+
+.account-switch-stage {
+  position: relative;
+  height: 138px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 19% 18%, var(--accent-soft), transparent 34%),
+    var(--surface);
+}
+
+.account-switch-source,
+.account-switch-target {
+  position: absolute;
+  top: 16px;
+  display: grid;
+  width: 25%;
+  height: 76px;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--card-solid);
+  box-shadow: 0 6px 16px var(--accent-shadow);
+  color: var(--muted);
+}
+
+.account-switch-source {
+  left: 4%;
+  animation: switch-scene-source-cycle 8.4s ease-in-out infinite;
+}
+
+.account-switch-target {
+  right: 4%;
+  animation: switch-scene-target-success 8.4s ease-in-out infinite;
+}
+
+.account-switch-source strong,
+.account-switch-source small,
+.account-switch-target strong,
+.account-switch-target small {
+  display: block;
+  max-width: calc(100% - 18px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-switch-source strong,
+.account-switch-target strong {
+  margin-top: 4px;
+  color: var(--foreground);
+  font-size: 9px;
+}
+
+.account-switch-source small,
+.account-switch-target small {
+  margin-top: 2px;
+  font-size: 7px;
+}
+
+.account-switch-scene-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.account-switch-scene-icon svg,
+.account-switch-hub svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.account-switch-route {
+  position: absolute;
+  top: 53px;
+  right: 28%;
+  left: 28%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.account-switch-route::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: switch-scene-route-progress 8.4s ease-in-out infinite;
+}
+
+.account-switch-hub {
+  position: absolute;
+  z-index: 2;
+  top: 35px;
+  left: 50%;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--card-solid);
+  box-shadow: 0 6px 16px var(--accent-shadow);
+  color: var(--accent-deep);
+  transform: translateX(-50%);
+  animation: switch-scene-hub-pulse 8.4s ease-in-out infinite;
+}
+
+.account-switch-hub small {
+  position: absolute;
+  top: 43px;
+  width: 72px;
+  color: var(--muted);
+  font-size: 7px;
+  text-align: center;
+}
+
+.account-switch-runner {
+  position: absolute;
+  z-index: 3;
+  bottom: 1px;
+  left: 18%;
+  width: 72px;
+  height: 56px;
+  animation: switch-scene-cat-journey 8.4s ease-in-out infinite;
+}
+
+.account-switch-cat {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 50px;
+  height: 43px;
+  overflow: visible;
+  color: var(--accent-deep);
+}
+
+.account-switch-file {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 33px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--card-solid);
+  box-shadow: 0 4px 10px var(--accent-shadow);
+  padding: 3px 5px;
+  color: var(--accent-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 6px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: switch-scene-file-swap 8.4s ease-in-out infinite;
+}
+
+.account-switch-scene-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.account-switch-scene-steps span {
+  border-radius: 7px;
+  background: var(--hint);
+  padding: 5px 7px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 680;
+  text-align: center;
+}
+
+.account-switch-scene-steps span:nth-child(1) {
+  animation: switch-scene-step-select 8.4s ease-in-out infinite;
+}
+
+.account-switch-scene-steps span:nth-child(2) {
+  animation: switch-scene-step-replace 8.4s ease-in-out infinite;
+}
+
+.account-switch-scene-steps span:nth-child(3) {
+  animation: switch-scene-step-ready 8.4s ease-in-out infinite;
 }
 
 .account-flow {
@@ -704,6 +906,7 @@ button:disabled {
 }
 
 .flow-icon {
+  position: relative;
   display: grid;
   width: 52px;
   height: 52px;
@@ -777,6 +980,7 @@ button:disabled {
 }
 
 .flow-track {
+  position: relative;
   display: flex;
   width: 100%;
   align-items: center;
@@ -2190,12 +2394,6 @@ button:disabled {
   }
 }
 
-@keyframes oauth-cat-tail-wag {
-  to {
-    transform: rotate(13deg);
-  }
-}
-
 @keyframes scene-step-code {
   0%,
   28% {
@@ -2460,33 +2658,6 @@ button:disabled {
   overflow: visible;
   color: var(--accent-deep);
   animation: oauth-cat-journey 7.2s ease-in-out infinite;
-}
-
-.oauth-cat-fur {
-  fill: var(--accent-soft);
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.6;
-}
-
-.oauth-cat-tail,
-.oauth-cat-face,
-.oauth-cat-paw {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-}
-
-.oauth-cat-tail {
-  transform-origin: 45px 39px;
-  animation: oauth-cat-tail-wag 620ms ease-in-out infinite alternate;
-}
-
-.oauth-cat-eye {
-  fill: currentColor;
 }
 
 .oauth-scene-steps {
@@ -3103,6 +3274,212 @@ button:disabled {
   }
 }
 
+@keyframes switch-scene-source-cycle {
+  0%,
+  24% {
+    border-color: var(--accent);
+    box-shadow: 0 8px 22px var(--accent-shadow);
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+
+  36%,
+  100% {
+    border-color: var(--border);
+    box-shadow: 0 6px 16px var(--accent-shadow);
+    opacity: 0.7;
+    transform: none;
+  }
+}
+
+@keyframes switch-scene-route-progress {
+  0%,
+  16% {
+    transform: scaleX(0);
+  }
+
+  42% {
+    transform: scaleX(0.48);
+  }
+
+  58% {
+    transform: scaleX(0.52);
+  }
+
+  82%,
+  94% {
+    transform: scaleX(1);
+  }
+
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes switch-scene-hub-pulse {
+  0%,
+  36%,
+  70%,
+  100% {
+    border-color: var(--border-strong);
+    background: var(--card-solid);
+    box-shadow: 0 6px 16px var(--accent-shadow);
+    transform: translateX(-50%) scale(1);
+  }
+
+  46%,
+  60% {
+    border-color: var(--accent);
+    background: var(--surface-active);
+    box-shadow: 0 0 0 5px var(--accent-pulse);
+    transform: translateX(-50%) scale(1.08);
+  }
+}
+
+@keyframes switch-scene-cat-journey {
+  0%,
+  14% {
+    left: 18%;
+    opacity: 1;
+    transform: translateY(0) rotate(-2deg);
+  }
+
+  30% {
+    left: 33%;
+    transform: translateY(-5px) rotate(2deg);
+  }
+
+  43% {
+    left: 45%;
+    transform: translateY(0) rotate(-2deg);
+  }
+
+  50%,
+  59% {
+    left: 47%;
+    transform: translateY(-2px) rotate(1deg);
+  }
+
+  74% {
+    left: 63%;
+    transform: translateY(-5px) rotate(-2deg);
+  }
+
+  87%,
+  93% {
+    left: 74%;
+    opacity: 1;
+    transform: translateY(0) rotate(2deg);
+  }
+
+  96% {
+    left: 74%;
+    opacity: 0;
+  }
+
+  97% {
+    left: 18%;
+    opacity: 0;
+  }
+
+  100% {
+    left: 18%;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes switch-scene-file-swap {
+  0%,
+  40%,
+  68%,
+  100% {
+    border-color: var(--border-strong);
+    background: var(--card-solid);
+    transform: rotate(0) scale(1);
+  }
+
+  48% {
+    transform: rotate(-8deg) scale(0.92);
+  }
+
+  56% {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    transform: rotate(7deg) scale(1.08);
+  }
+}
+
+@keyframes switch-scene-target-success {
+  0%,
+  72%,
+  100% {
+    border-color: var(--border);
+    opacity: 0.58;
+    transform: scale(0.97);
+  }
+
+  82%,
+  94% {
+    border-color: var(--success-border);
+    color: var(--foreground);
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes switch-scene-step-select {
+  0%,
+  28% {
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    transform: translateY(-1px);
+  }
+
+  38%,
+  100% {
+    background: var(--hint);
+    color: var(--muted);
+    transform: none;
+  }
+}
+
+@keyframes switch-scene-step-replace {
+  0%,
+  31%,
+  68%,
+  100% {
+    background: var(--hint);
+    color: var(--muted);
+    transform: none;
+  }
+
+  41%,
+  60% {
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes switch-scene-step-ready {
+  0%,
+  66%,
+  98%,
+  100% {
+    background: var(--hint);
+    color: var(--muted);
+    transform: none;
+  }
+
+  76%,
+  92% {
+    background: var(--success-bg);
+    color: var(--success-text);
+    transform: translateY(-1px);
+  }
+}
+
 @media (min-width: 1000px) {
   .account-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3299,7 +3676,9 @@ button:disabled {
   .dialog-backdrop,
   .dialog-backdrop > .dialog,
   .oauth-scene *,
-  .oauth-scene-route::after {
+  .oauth-scene-route::after,
+  .account-switch-scene *,
+  .account-switch-route::after {
     animation: none;
   }
 

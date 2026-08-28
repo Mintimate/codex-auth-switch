@@ -739,7 +739,9 @@ function App() {
                     </button>
                   </div>
                   <p className="hero-login-guide" id="add-account-guide">
-                    <strong>{t("accountAddGuideLabel")}</strong>
+                    <span className="hero-login-guide-label">
+                      {t("accountAddGuideLabel")}
+                    </span>
                     <span>{t("accountAddGuide")}</span>
                   </p>
                 </section>

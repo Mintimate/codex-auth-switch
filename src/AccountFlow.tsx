@@ -1,5 +1,6 @@
 import { AppStatus } from "./api";
 import { Translate } from "./i18n";
+import { SceneCat } from "./SceneCat";
 
 type AccountFlowProps = {
   activeLabel: string | null;
@@ -78,6 +79,56 @@ function FlowConnector({ label }: { label: string }) {
   );
 }
 
+function AccountSwitchScene({
+  activeLabel,
+  t,
+}: {
+  activeLabel: string | null;
+  t: Translate;
+}) {
+  return (
+    <div
+      className="account-switch-scene"
+      role="img"
+      aria-label={t("switchSceneAria")}
+    >
+      <div className="account-switch-stage" aria-hidden="true">
+        <div className="account-switch-source">
+          <span className="account-switch-scene-icon">
+            <FlowIcon kind="account" />
+          </span>
+          <strong>{t("switchSceneSaved")}</strong>
+          <small>{activeLabel ?? t("flowSavedAccounts")}</small>
+        </div>
+
+        <div className="account-switch-route" />
+
+        <span className="account-switch-hub">
+          <FlowIcon kind="switch" />
+          <small>{t("switchSceneSwitching")}</small>
+        </span>
+
+        <div className="account-switch-target">
+          <span className="scene-check">✓</span>
+          <strong>Codex</strong>
+          <small>{t("switchSceneComplete")}</small>
+        </div>
+
+        <div className="account-switch-runner">
+          <span className="account-switch-file">auth.json</span>
+          <SceneCat className="account-switch-cat" />
+        </div>
+      </div>
+
+      <div className="account-switch-scene-steps" aria-hidden="true">
+        <span>{t("switchSceneStepSelect")}</span>
+        <span>{t("switchSceneStepReplace")}</span>
+        <span>{t("switchSceneStepReady")}</span>
+      </div>
+    </div>
+  );
+}
+
 export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
   const steps = [
     {
@@ -119,6 +170,8 @@ export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
         </div>
         <p>{t("flowDescription")}</p>
       </div>
+
+      <AccountSwitchScene activeLabel={activeLabel} t={t} />
 
       <div className="account-flow" role="list">
         {steps.map((step, index) => (
@@ -166,16 +219,7 @@ function OAuthCatScene({ t }: { t: Translate }) {
           <small>Codex</small>
         </div>
 
-        <svg className="oauth-cat" viewBox="0 0 64 54">
-          <path className="oauth-cat-tail" d="M45 39c12 3 14-8 8-14" />
-          <ellipse className="oauth-cat-fur" cx="32" cy="38" rx="15" ry="11" />
-          <circle className="oauth-cat-fur" cx="30" cy="22" r="13" />
-          <path className="oauth-cat-fur" d="M19 16 19 5l9 7M34 11l9-7-1 13" />
-          <circle className="oauth-cat-eye" cx="25.5" cy="21" r="1.4" />
-          <circle className="oauth-cat-eye" cx="34.5" cy="21" r="1.4" />
-          <path className="oauth-cat-face" d="m28 26 2 1.5 2-1.5M30 27.5v2" />
-          <path className="oauth-cat-paw" d="M22 45v5M39 45v5" />
-        </svg>
+        <SceneCat className="oauth-cat" />
       </div>
 
       <div className="oauth-scene-steps" aria-hidden="true">

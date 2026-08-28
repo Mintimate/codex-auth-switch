@@ -1,0 +1,67 @@
+.scene-cat {
+  display: block;
+  overflow: visible;
+}
+
+.scene-cat-fur {
+  fill: var(--accent-soft);
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.scene-cat-tail,
+.scene-cat-face,
+.scene-cat-paw,
+.scene-cat-whisker,
+.scene-cat-stripe,
+.scene-cat-chest {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.scene-cat-tail {
+  transform-origin: 48px 45px;
+  animation: scene-cat-tail-wag 620ms ease-in-out infinite alternate;
+}
+
+.scene-cat-eye,
+.scene-cat-nose {
+  fill: currentColor;
+}
+
+.scene-cat-inner-ear {
+  fill: var(--accent);
+  opacity: 0.34;
+}
+
+.scene-cat-whisker {
+  opacity: 0.72;
+  stroke-width: 1.25;
+}
+
+.scene-cat-stripe,
+.scene-cat-chest {
+  opacity: 0.48;
+  stroke-width: 1.25;
+}
+
+.scene-cat-paw {
+  stroke-width: 1.5;
+}
+
+@keyframes scene-cat-tail-wag {
+  to {
+    transform: rotate(13deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-cat-tail {
+    animation: none;
+  }
+}
