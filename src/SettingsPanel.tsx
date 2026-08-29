@@ -39,12 +39,14 @@ type SettingsPanelProps = {
   onDefaultTabChange: (tab: AppTab) => void;
   onLocaleChange: (locale: Locale) => void;
   onOpenCodexDirectory: () => void;
+  onPrivateModeChange: (enabled: boolean) => void;
   onRevealVault: () => void;
   onThemeChange: (theme: ThemeMode) => void;
   status: AppStatus | null;
   t: Translate;
   theme: ThemeMode;
   themeOptions: Option<ThemeMode>[];
+  privateMode: boolean;
 };
 
 function SegmentedControl<T extends string>({
@@ -87,12 +89,14 @@ export function SettingsPanel({
   onDefaultTabChange,
   onLocaleChange,
   onOpenCodexDirectory,
+  onPrivateModeChange,
   onRevealVault,
   onThemeChange,
   status,
   t,
   theme,
   themeOptions,
+  privateMode,
 }: SettingsPanelProps) {
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [updateSource, setUpdateSource] =
@@ -229,6 +233,23 @@ export function SettingsPanel({
               value={locale}
               onChange={onLocaleChange}
             />
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <strong>{t("privacyMode")}</strong>
+              <span>{t("privacyModeHint")}</span>
+            </div>
+            <button
+              type="button"
+              className={`toggle${privateMode ? " active" : ""}`}
+              role="switch"
+              aria-checked={privateMode}
+              aria-label={t("privacyMode")}
+              onClick={() => onPrivateModeChange(!privateMode)}
+            >
+              <span />
+            </button>
           </div>
 
           <div className="settings-row">

@@ -5,6 +5,7 @@ import {
   UsageWindow,
 } from "./api";
 import { Locale, localizeBackendError, Translate } from "./i18n";
+import { redactEmails } from "./privacy";
 
 type UsagePanelProps = {
   usage: UsageOverview | null;
@@ -12,6 +13,7 @@ type UsagePanelProps = {
   error: string | null;
   locale: Locale;
   onRefresh: () => void;
+  privateMode: boolean;
   t: Translate;
 };
 
@@ -107,6 +109,7 @@ function QuotaCard({
   compactNumber,
   fullNumber,
   locale,
+  privateMode,
   t,
 }: {
   quota: AccountQuota;
@@ -114,13 +117,18 @@ function QuotaCard({
   compactNumber: Intl.NumberFormat;
   fullNumber: Intl.NumberFormat;
   locale: Locale;
+  privateMode: boolean;
   t: Translate;
 }) {
   return (
     <article className="quota-card">
       <div className="quota-account">
         <div>
-          <strong>{quota.label}</strong>
+          <strong>
+            {privateMode
+              ? redactEmails(quota.label, t("emailHidden"))
+              : quota.label}
+          </strong>
           <span>
             {accountTokens ? t("localUsage30Days") : t("noLocalUsage")}
           </span>
@@ -253,6 +261,7 @@ export function UsagePanel({
   error,
   locale,
   onRefresh,
+  privateMode,
   t,
 }: UsagePanelProps) {
   const compactNumber = new Intl.NumberFormat(locale, {
@@ -415,6 +424,7 @@ export function UsagePanel({
                   compactNumber={compactNumber}
                   fullNumber={fullNumber}
                   locale={locale}
+                  privateMode={privateMode}
                   t={t}
                 />
               ))}

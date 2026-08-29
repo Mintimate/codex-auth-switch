@@ -28,6 +28,7 @@ import {
 } from "./api";
 import { AccountFlow, LoginFlow } from "./AccountFlow";
 import { localizeBackendError, Locale, useI18n } from "./i18n";
+import { containsEmail, redactEmails } from "./privacy";
 import { AppTab, SettingsPanel } from "./SettingsPanel";
 import { ThemeMode, useAppearance } from "./theme";
 import { UsagePanel } from "./UsagePanel";
@@ -66,6 +67,7 @@ const messageOf = (error: unknown) =>
 const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
 const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
+const PRIVATE_MODE_STORAGE_KEY = "codex-auth-switch-private-mode";
 const DIALOG_EXIT_ANIMATION_MS = 180;
 const OAUTH_LAUNCH_ANIMATION_MS = 560;
 const OAUTH_PIXEL_COUNT = 14;
@@ -93,6 +95,9 @@ const storedDefaultTab = (): AppTab => {
 
 const storedAutoRefreshUsage = () =>
   window.localStorage.getItem(AUTO_REFRESH_USAGE_STORAGE_KEY) !== "false";
+
+const storedPrivateMode = () =>
+  window.localStorage.getItem(PRIVATE_MODE_STORAGE_KEY) === "true";
 
 function AppIcon() {
   return (
@@ -127,6 +132,16 @@ function GitHubIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.82c.85 0 1.71.11 2.51.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
+    </svg>
+  );
+}
+
+function PrivacyModeIcon({ enabled }: { enabled: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M2.3 10s2.8-4.4 7.7-4.4 7.7 4.4 7.7 4.4-2.8 4.4-7.7 4.4S2.3 10 2.3 10Z" />
+      <circle cx="10" cy="10" r="2.2" />
+      {enabled && <path d="m3.3 3.3 13.4 13.4" />}
     </svg>
   );
 }
@@ -232,6 +247,7 @@ function App() {
   const [autoRefreshUsage, setAutoRefreshUsage] = useState(
     storedAutoRefreshUsage,
   );
+  const [privateMode, setPrivateMode] = useState(storedPrivateMode);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -309,6 +325,10 @@ function App() {
   }, [autoRefreshUsage]);
 
   useEffect(() => {
+    window.localStorage.setItem(PRIVATE_MODE_STORAGE_KEY, String(privateMode));
+  }, [privateMode]);
+
+  useEffect(() => {
     if (!notice) return;
 
     const timer = window.setTimeout(() => setNotice(null), 5000);
@@ -371,6 +391,9 @@ function App() {
     () => status?.accounts.find((account) => account.active) ?? null,
     [status],
   );
+
+  const displayAccountLabel = (value: string) =>
+    privateMode ? redactEmails(value, t("emailHidden")) : value;
 
   const run = async (description: string, action: () => Promise<AppStatus>) => {
     setBusy(description);
@@ -642,6 +665,21 @@ function App() {
           <div className="topbar-actions">
             <button
               type="button"
+              className={`privacy-mode-button${privateMode ? " active" : ""}`}
+              aria-label={t(
+                privateMode ? "disablePrivateMode" : "enablePrivateMode",
+              )}
+              aria-pressed={privateMode}
+              title={t(
+                privateMode ? "disablePrivateMode" : "enablePrivateMode",
+              )}
+              onClick={() => setPrivateMode((enabled) => !enabled)}
+            >
+              <PrivacyModeIcon enabled={privateMode} />
+              <span>{t("privacyMode")}</span>
+            </button>
+            <button
+              type="button"
               className="github-link"
               aria-label={t("github")}
               title={GITHUB_REPOSITORY_URL}
@@ -712,14 +750,21 @@ function App() {
                 <section className="hero-card">
                   <div className="hero-copy">
                     <span className="eyebrow">{t("currentLogin")}</span>
-                    <h2>{active?.label ?? t("currentAccountUnsaved")}</h2>
+                    <h2>
+                      {active
+                        ? displayAccountLabel(active.label)
+                        : t("currentAccountUnsaved")}
+                    </h2>
                     <p>
-                      {active?.email ??
-                        (status?.activeAccountId
+                      {active?.email
+                        ? privateMode
+                          ? t("emailHidden")
+                          : active.email
+                        : status?.activeAccountId
                           ? t("accountDetected", {
                               id: shortId(status.activeAccountId),
                             })
-                          : t("noChatGptLogin"))}
+                          : t("noChatGptLogin")}
                     </p>
                   </div>
                   <div
@@ -781,7 +826,9 @@ function App() {
                 </section>
 
                 <AccountFlow
-                  activeLabel={active?.label ?? null}
+                  activeLabel={
+                    active ? displayAccountLabel(active.label) : null
+                  }
                   status={status}
                   t={t}
                 />
@@ -809,20 +856,30 @@ function App() {
                           key={account.id}
                         >
                           <div className="avatar" aria-hidden="true">
-                            {(account.label || account.email || "C")
+                            {(
+                              displayAccountLabel(account.label) ||
+                              (privateMode ? "" : account.email) ||
+                              "C"
+                            )
                               .slice(0, 1)
                               .toUpperCase()}
                           </div>
                           <div className="account-main">
                             <div className="account-title-row">
-                              <h3>{account.label}</h3>
+                              <h3>{displayAccountLabel(account.label)}</h3>
                               {account.active && (
                                 <span className="active-badge">
                                   {t("current")}
                                 </span>
                               )}
                             </div>
-                            <p>{account.email ?? t("emailUnavailable")}</p>
+                            <p>
+                              {account.email
+                                ? privateMode
+                                  ? t("emailHidden")
+                                  : account.email
+                                : t("emailUnavailable")}
+                            </p>
                             <span className="account-id">
                               {shortId(account.accountId)}
                             </span>
@@ -846,7 +903,10 @@ function App() {
                               title={t("shareAuth")}
                               disabled={Boolean(busy) || !status.supported}
                               onClick={() =>
-                                openShareDialog(account.id, account.label)
+                                openShareDialog(
+                                  account.id,
+                                  displayAccountLabel(account.label),
+                                )
                               }
                             >
                               {t("share")}
@@ -868,7 +928,7 @@ function App() {
                               onClick={() =>
                                 setRemoveDialog({
                                   profileId: account.id,
-                                  label: account.label,
+                                  label: displayAccountLabel(account.label),
                                   active: account.active,
                                 })
                               }
@@ -904,6 +964,7 @@ function App() {
                     error={usageError}
                     locale={locale}
                     onRefresh={() => void refreshUsage()}
+                    privateMode={privateMode}
                     t={t}
                   />
                 ) : null}
@@ -926,12 +987,14 @@ function App() {
                   onDefaultTabChange={setDefaultTab}
                   onLocaleChange={setLocale}
                   onOpenCodexDirectory={openCodexDirectory}
+                  onPrivateModeChange={setPrivateMode}
                   onRevealVault={revealVault}
                   onThemeChange={setTheme}
                   status={status}
                   t={t}
                   theme={theme}
                   themeOptions={themeOptions}
+                  privateMode={privateMode}
                 />
               </div>
             )}
@@ -1307,7 +1370,9 @@ function App() {
               <input
                 id="account-label"
                 autoFocus
+                autoComplete="off"
                 maxLength={60}
+                type={privateMode && containsEmail(label) ? "password" : "text"}
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder={t("accountNamePlaceholder")}

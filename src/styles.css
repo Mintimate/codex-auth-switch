@@ -313,6 +313,57 @@ button:disabled {
   fill: currentColor;
 }
 
+.privacy-mode-button {
+  display: flex;
+  height: 35px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 0 11px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.privacy-mode-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.privacy-mode-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--foreground);
+  transform: translateY(-1px);
+}
+
+.privacy-mode-button.active {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.privacy-mode-button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.privacy-mode-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .app-tabs {
   display: flex;
   width: 100%;
@@ -3646,6 +3697,7 @@ button:disabled {
 
 @media (prefers-reduced-motion: reduce) {
   .github-link,
+  .privacy-mode-button,
   .app-tabs button,
   .button,
   .alert-close,
