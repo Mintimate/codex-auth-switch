@@ -117,6 +117,55 @@ const zhCN = {
   openVaultDirectory: "打开账号库目录",
   openCodexDirectoryFailed: "无法打开 Codex 目录：{message}",
   credentialPrivacy: "认证文件包含敏感令牌。应用不会上传、显示或写入日志。",
+  localDiagnostics: "本地环境体检",
+  localDiagnosticsHint:
+    "由 Rust 在本机校验 Codex 配置、认证文件、账号库和切换安全状态。",
+  runLocalDiagnostics: "重新体检",
+  runningLocalDiagnostics: "体检中…",
+  localDiagnosticsFailed: "无法完成本地环境体检",
+  diagnosticsHealthy: "本地环境状态良好",
+  diagnosticsAttention: "发现需要留意的项目",
+  diagnosticsError: "发现需要处理的问题",
+  diagnosticsSummary: "{pass} 项通过 · {warning} 项提醒 · {error} 项异常",
+  diagnosticsCheckedAt: "检查于 {date}",
+  diagnosticsPrivacy:
+    "体检完全在本机进行，只返回检查状态和计数，不返回令牌、账号 ID 或文件内容。",
+  diagnosticCodexHome: "Codex 目录",
+  diagnosticConfig: "凭据存储配置",
+  diagnosticLiveAuth: "当前认证文件",
+  diagnosticCredentialPermissions: "认证文件权限",
+  diagnosticVault: "本机账号库",
+  diagnosticActivationHistory: "账号切换历史",
+  diagnosticActiveProfile: "当前账号匹配",
+  diagnosticAtomicResidue: "原子替换残留",
+  diagnosticReady: "检查通过。",
+  diagnosticReadyCount: "检查通过，共 {count} 项记录。",
+  diagnosticMissingHome: "Codex 目录不存在。",
+  diagnosticNotDirectory: "配置路径不是目录。",
+  diagnosticUnreadable: "本机文件无法读取或超过安全检查大小限制。",
+  diagnosticDefaultConfig: "未显式设置，当前使用兼容的 file 默认模式。",
+  diagnosticInvalidConfig: "config.toml 格式无效。",
+  diagnosticUnsupportedConfig: "当前凭据存储模式不支持本地切换。",
+  diagnosticMissingAuth: "尚未发现当前认证文件。",
+  diagnosticApiKeyAuth: "当前为 API Key 登录，不会加入订阅账号库。",
+  diagnosticInvalidAuth: "认证结构无效或缺少必要字段。",
+  diagnosticNotApplicable: "当前没有需要检查的数据。",
+  diagnosticPermissionUnavailable: "无法确认认证文件权限。",
+  diagnosticPermissionTooOpen: "发现 {count} 个权限范围过宽或符号链接路径。",
+  diagnosticPlatformPermissions: "文件访问权限由当前平台管理。",
+  diagnosticMissingVault: "账号库尚未创建。",
+  diagnosticInvalidVault: "账号库格式无效。",
+  diagnosticUnsupportedVault: "账号库版本 {value} 暂不受支持。",
+  diagnosticInconsistentVault: "发现 {count} 个账号记录身份不一致。",
+  diagnosticEmptyVault: "账号库为空。",
+  diagnosticUnavailable: "依赖数据不可用，已跳过此项。",
+  diagnosticEmptyHistory: "尚未记录账号切换历史。",
+  diagnosticInconsistentHistory: "发现 {count} 个顺序或账号引用异常。",
+  diagnosticActiveMatched: "当前登录与账号库记录一致。",
+  diagnosticActiveUnsaved: "当前订阅账号尚未保存到本机账号库。",
+  diagnosticAtomicClean: "未发现中断写入留下的临时文件。",
+  diagnosticAtomicFound: "发现 {count} 个原子替换残留文件。",
+  diagnosticUnknown: "返回了无法识别的检查状态。",
   busy: "{action}中…",
   pleaseWait: "请稍候",
   removeAccountTitle: "移除“{label}”？",
@@ -318,7 +367,7 @@ const zhCN = {
     "订阅额度直接从 ChatGPT 兼容性接口查询，只返回窗口、重置次数与时间；认证令牌不会进入前端或日志。",
 } as const;
 
-type MessageKey = keyof typeof zhCN;
+export type MessageKey = keyof typeof zhCN;
 type Messages = Record<MessageKey, string>;
 
 const en: Messages = {
@@ -448,6 +497,70 @@ const en: Messages = {
   openCodexDirectoryFailed: "Could not open the Codex directory: {message}",
   credentialPrivacy:
     "Authentication files contain sensitive tokens. The app never uploads, displays, or logs them.",
+  localDiagnostics: "Local environment health",
+  localDiagnosticsHint:
+    "Rust checks Codex configuration, authentication files, the account vault, and switch safety locally.",
+  runLocalDiagnostics: "Run again",
+  runningLocalDiagnostics: "Checking…",
+  localDiagnosticsFailed: "Could not complete the local environment check",
+  diagnosticsHealthy: "Local environment is healthy",
+  diagnosticsAttention: "Some items need attention",
+  diagnosticsError: "Some problems need to be resolved",
+  diagnosticsSummary: "{pass} passed · {warning} warnings · {error} errors",
+  diagnosticsCheckedAt: "Checked {date}",
+  diagnosticsPrivacy:
+    "The check runs entirely on this device and returns only statuses and counts—never tokens, account IDs, or file contents.",
+  diagnosticCodexHome: "Codex directory",
+  diagnosticConfig: "Credential storage configuration",
+  diagnosticLiveAuth: "Current authentication file",
+  diagnosticCredentialPermissions: "Authentication file permissions",
+  diagnosticVault: "Local account vault",
+  diagnosticActivationHistory: "Account switch history",
+  diagnosticActiveProfile: "Current account match",
+  diagnosticAtomicResidue: "Atomic replacement residue",
+  diagnosticReady: "Check passed.",
+  diagnosticReadyCount: "Check passed with {count} records.",
+  diagnosticMissingHome: "The Codex directory does not exist.",
+  diagnosticNotDirectory: "The configured path is not a directory.",
+  diagnosticUnreadable:
+    "The local file could not be read or exceeds the safe inspection size limit.",
+  diagnosticDefaultConfig:
+    "No explicit setting; the compatible file mode default is active.",
+  diagnosticInvalidConfig: "config.toml is invalid.",
+  diagnosticUnsupportedConfig:
+    "The current credential storage mode does not support local switching.",
+  diagnosticMissingAuth: "No current authentication file was found.",
+  diagnosticApiKeyAuth:
+    "The current login uses an API key and is kept separate from the subscription account vault.",
+  diagnosticInvalidAuth:
+    "The authentication structure is invalid or missing required fields.",
+  diagnosticNotApplicable: "There is currently no data to inspect.",
+  diagnosticPermissionUnavailable:
+    "Authentication file permissions could not be verified.",
+  diagnosticPermissionTooOpen:
+    "Found {count} paths with broad permissions or symbolic links.",
+  diagnosticPlatformPermissions:
+    "File access permissions are managed by this platform.",
+  diagnosticMissingVault: "The account vault has not been created yet.",
+  diagnosticInvalidVault: "The account vault format is invalid.",
+  diagnosticUnsupportedVault: "Account vault version {value} is not supported.",
+  diagnosticInconsistentVault:
+    "Found {count} account records with inconsistent identities.",
+  diagnosticEmptyVault: "The account vault is empty.",
+  diagnosticUnavailable:
+    "Required data is unavailable; this check was skipped.",
+  diagnosticEmptyHistory: "No account switch history has been recorded yet.",
+  diagnosticInconsistentHistory:
+    "Found {count} ordering or account-reference problems.",
+  diagnosticActiveMatched:
+    "The current login matches a record in the account vault.",
+  diagnosticActiveUnsaved:
+    "The current subscription account has not been saved to the local vault.",
+  diagnosticAtomicClean:
+    "No temporary files from interrupted writes were found.",
+  diagnosticAtomicFound:
+    "Found {count} files left behind by atomic replacement.",
+  diagnosticUnknown: "The check returned an unrecognized status.",
   busy: "{action}…",
   pleaseWait: "Please wait",
   removeAccountTitle: "Remove “{label}”?",

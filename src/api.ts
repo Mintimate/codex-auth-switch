@@ -19,6 +19,34 @@ export type AppStatus = {
   accounts: AccountSummary[];
 };
 
+export type LocalDiagnosticId =
+  | "codexHome"
+  | "config"
+  | "liveAuth"
+  | "credentialPermissions"
+  | "vault"
+  | "activationHistory"
+  | "activeProfile"
+  | "atomicResidue";
+
+export type LocalDiagnosticCheck = {
+  id: LocalDiagnosticId;
+  outcome: string;
+  level: "pass" | "info" | "warning" | "error";
+  count?: number;
+  value?: string;
+};
+
+export type LocalDiagnostics = {
+  health: "healthy" | "attention" | "error";
+  passCount: number;
+  infoCount: number;
+  warningCount: number;
+  errorCount: number;
+  generatedAt: number;
+  checks: LocalDiagnosticCheck[];
+};
+
 export type DeviceLoginResponse = {
   deviceCode: string;
   userCode: string;
@@ -219,6 +247,25 @@ const previewLocalUsage: LocalUsageStats = {
   generatedAt: Math.floor(Date.now() / 1000),
 };
 
+const previewDiagnostics: LocalDiagnostics = {
+  health: "healthy",
+  passCount: 8,
+  infoCount: 0,
+  warningCount: 0,
+  errorCount: 0,
+  generatedAt: Math.floor(Date.now() / 1000),
+  checks: [
+    { id: "codexHome", outcome: "ready", level: "pass" },
+    { id: "config", outcome: "ready", level: "pass" },
+    { id: "liveAuth", outcome: "ready", level: "pass" },
+    { id: "credentialPermissions", outcome: "ready", level: "pass" },
+    { id: "vault", outcome: "ready", level: "pass", count: 2 },
+    { id: "activationHistory", outcome: "ready", level: "pass", count: 6 },
+    { id: "activeProfile", outcome: "matched", level: "pass" },
+    { id: "atomicResidue", outcome: "clean", level: "pass" },
+  ],
+};
+
 const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges">
     <rect width="29" height="29" fill="white"/>
@@ -256,6 +303,9 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
         }) as T,
       );
     }
+    if (command === "get_local_diagnostics") {
+      return Promise.resolve(structuredClone(previewDiagnostics) as T);
+    }
     if (command === "prepare_auth_transfer") {
       return Promise.resolve({
         qrDataUrl: previewShareQr,
@@ -287,6 +337,9 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
 };
 
 export const getStatus = () => call<AppStatus>("get_status");
+
+export const getLocalDiagnostics = () =>
+  call<LocalDiagnostics>("get_local_diagnostics");
 
 const isMissingCommand = (error: unknown, command: string) => {
   const message = error instanceof Error ? error.message : String(error);

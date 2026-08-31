@@ -258,9 +258,9 @@ impl Default for Vault {
 }
 
 #[derive(Debug, Clone)]
-struct AuthIdentity {
-    account_id: String,
-    email: Option<String>,
+pub(crate) struct AuthIdentity {
+    pub(crate) account_id: String,
+    pub(crate) email: Option<String>,
 }
 
 #[derive(Debug)]
@@ -317,6 +317,14 @@ impl AccountManager {
             codex_home,
             vault_path: app_data_dir.join(VAULT_FILE_NAME),
         }
+    }
+
+    pub(crate) fn codex_home_path(&self) -> &Path {
+        &self.codex_home
+    }
+
+    pub(crate) fn vault_path(&self) -> &Path {
+        &self.vault_path
     }
 
     pub fn status(&self) -> Result<AppStatus, ManagerError> {
@@ -963,7 +971,7 @@ fn record_activation(vault: &mut Vault, account_id: &str, activated_at: u64) -> 
     true
 }
 
-fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
+pub(crate) fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
     if auth.get("auth_mode").and_then(Value::as_str) != Some("chatgpt") {
         return Err(ManagerError::InvalidAuth(
             "当前不是 ChatGPT 订阅登录，API Key 登录不会被保存".to_string(),

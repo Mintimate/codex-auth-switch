@@ -85,6 +85,7 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Add accounts through browser-based Device Code authorization
 - Remove the locally saved copy of any account; removing the current account does not sign out or interrupt the active Codex login
 - Capture potentially rotated tokens for the current account before switching
+- Run a Rust-powered local environment check from Settings for configuration, authentication structure, file permissions, vault consistency, switch history, and atomic-write residue
 
 ### Usage and Quotas
 

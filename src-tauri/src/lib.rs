@@ -1,8 +1,10 @@
 mod app_update;
 mod auth_share;
+mod diagnostics;
 mod manager;
 mod usage;
 
+use diagnostics::LocalDiagnostics;
 use manager::{AccountManager, AccountQuota, AppStatus, DeviceLoginResponse};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -47,6 +49,15 @@ fn get_status(app: AppHandle) -> Result<AppStatus, String> {
     account_manager(&app)?
         .status()
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_local_diagnostics(app: AppHandle) -> Result<LocalDiagnostics, String> {
+    let manager = account_manager(&app)?;
+    Ok(diagnostics::run_local_diagnostics(
+        manager.codex_home_path(),
+        manager.vault_path(),
+    ))
 }
 
 #[tauri::command]
@@ -258,6 +269,7 @@ pub fn run() {
             app_update::check_app_update,
             app_update::install_app_update,
             get_status,
+            get_local_diagnostics,
             get_local_usage,
             get_account_quotas,
             get_usage_overview,

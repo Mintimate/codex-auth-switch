@@ -4,12 +4,16 @@ import {
   AppStatus,
   AppUpdateCheckResult,
   AppUpdateSource,
+  LocalDiagnosticCheck,
+  LocalDiagnosticId,
+  LocalDiagnostics,
   checkAppUpdate,
   getAppVersion,
+  getLocalDiagnostics,
   installAppUpdate,
 } from "./api";
 import type { AppTab } from "./appTypes";
-import { Locale, Translate } from "./i18n";
+import { Locale, MessageKey, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
@@ -28,6 +32,64 @@ type UpdateError = {
   phase: "check" | "install";
   message: string;
 };
+
+const diagnosticTitleKeys: Record<LocalDiagnosticId, MessageKey> = {
+  codexHome: "diagnosticCodexHome",
+  config: "diagnosticConfig",
+  liveAuth: "diagnosticLiveAuth",
+  credentialPermissions: "diagnosticCredentialPermissions",
+  vault: "diagnosticVault",
+  activationHistory: "diagnosticActivationHistory",
+  activeProfile: "diagnosticActiveProfile",
+  atomicResidue: "diagnosticAtomicResidue",
+};
+
+const diagnosticDetailKeys: Record<string, MessageKey> = {
+  "codexHome:ready": "diagnosticReady",
+  "codexHome:missing": "diagnosticMissingHome",
+  "codexHome:notDirectory": "diagnosticNotDirectory",
+  "codexHome:unreadable": "diagnosticUnreadable",
+  "config:ready": "diagnosticReady",
+  "config:default": "diagnosticDefaultConfig",
+  "config:unreadable": "diagnosticUnreadable",
+  "config:invalid": "diagnosticInvalidConfig",
+  "config:unsupported": "diagnosticUnsupportedConfig",
+  "liveAuth:ready": "diagnosticReady",
+  "liveAuth:missing": "diagnosticMissingAuth",
+  "liveAuth:apiKey": "diagnosticApiKeyAuth",
+  "liveAuth:invalid": "diagnosticInvalidAuth",
+  "credentialPermissions:ready": "diagnosticReady",
+  "credentialPermissions:notApplicable": "diagnosticNotApplicable",
+  "credentialPermissions:unavailable": "diagnosticPermissionUnavailable",
+  "credentialPermissions:tooOpen": "diagnosticPermissionTooOpen",
+  "credentialPermissions:platformManaged": "diagnosticPlatformPermissions",
+  "vault:ready": "diagnosticReadyCount",
+  "vault:missing": "diagnosticMissingVault",
+  "vault:invalid": "diagnosticInvalidVault",
+  "vault:unsupportedVersion": "diagnosticUnsupportedVault",
+  "vault:inconsistent": "diagnosticInconsistentVault",
+  "vault:empty": "diagnosticEmptyVault",
+  "activationHistory:ready": "diagnosticReadyCount",
+  "activationHistory:notApplicable": "diagnosticNotApplicable",
+  "activationHistory:unavailable": "diagnosticUnavailable",
+  "activationHistory:empty": "diagnosticEmptyHistory",
+  "activationHistory:inconsistent": "diagnosticInconsistentHistory",
+  "activeProfile:matched": "diagnosticActiveMatched",
+  "activeProfile:unsaved": "diagnosticActiveUnsaved",
+  "activeProfile:notApplicable": "diagnosticNotApplicable",
+  "atomicResidue:clean": "diagnosticAtomicClean",
+  "atomicResidue:found": "diagnosticAtomicFound",
+  "atomicResidue:unavailable": "diagnosticUnavailable",
+};
+
+const diagnosticDetail = (check: LocalDiagnosticCheck, t: Translate) =>
+  t(
+    diagnosticDetailKeys[`${check.id}:${check.outcome}`] ?? "diagnosticUnknown",
+    {
+      count: check.count ?? 0,
+      value: check.value ?? "—",
+    },
+  );
 
 type SettingsPanelProps = {
   autoRefreshUsage: boolean;
@@ -106,6 +168,9 @@ export function SettingsPanel({
   const [installingUpdate, setInstallingUpdate] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(0);
   const [updateTotal, setUpdateTotal] = useState<number | null>(null);
+  const [diagnostics, setDiagnostics] = useState<LocalDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const updateTotalRef = useRef<number | null>(null);
   const tabOptions: Option<AppTab>[] = [
     { label: t("accountsTab"), value: "accounts" },
@@ -131,9 +196,25 @@ export function SettingsPanel({
     }
   }, [updateSource]);
 
+  const runDiagnostics = useCallback(async () => {
+    setDiagnosticsLoading(true);
+    setDiagnosticsError(null);
+    try {
+      setDiagnostics(await getLocalDiagnostics());
+    } catch {
+      setDiagnosticsError(t("localDiagnosticsFailed"));
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  }, [t]);
+
   useEffect(() => {
     window.localStorage.setItem(UPDATE_SOURCE_STORAGE_KEY, updateSource);
   }, [updateSource]);
+
+  useEffect(() => {
+    void runDiagnostics();
+  }, [runDiagnostics]);
 
   useEffect(() => {
     void getAppVersion()
@@ -216,6 +297,23 @@ export function SettingsPanel({
               : appUpdate?.status === "error"
                 ? t("appUpdateCheckFailed")
                 : t("appUpdateCheckingHint");
+  const diagnosticsStatus = diagnostics
+    ? diagnostics.health === "healthy"
+      ? t("diagnosticsHealthy")
+      : diagnostics.health === "attention"
+        ? t("diagnosticsAttention")
+        : t("diagnosticsError")
+    : diagnosticsLoading
+      ? t("runningLocalDiagnostics")
+      : t("localDiagnosticsFailed");
+  const diagnosticsDate = diagnostics
+    ? new Intl.DateTimeFormat(locale, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(diagnostics.generatedAt * 1000)
+    : null;
 
   return (
     <div className="settings-page">
@@ -347,6 +445,72 @@ export function SettingsPanel({
           </dl>
 
           <p className="settings-privacy-note">{t("credentialPrivacy")}</p>
+        </section>
+
+        <section className="settings-group settings-diagnostics-group">
+          <div className="settings-group-heading">
+            <h3>{t("localDiagnostics")}</h3>
+            <p>{t("localDiagnosticsHint")}</p>
+          </div>
+
+          <div className="diagnostics-overview">
+            <div
+              className={`diagnostics-health ${diagnostics?.health ?? "pending"}`}
+              aria-live="polite"
+            >
+              <i aria-hidden="true" />
+              <div>
+                <strong>{diagnosticsStatus}</strong>
+                {diagnostics && (
+                  <span>
+                    {t("diagnosticsSummary", {
+                      pass: diagnostics.passCount,
+                      warning: diagnostics.warningCount,
+                      error: diagnostics.errorCount,
+                    })}
+                  </span>
+                )}
+                {diagnosticsDate && (
+                  <small>
+                    {t("diagnosticsCheckedAt", { date: diagnosticsDate })}
+                  </small>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="button secondary compact"
+              disabled={diagnosticsLoading}
+              onClick={() => void runDiagnostics()}
+            >
+              {diagnosticsLoading
+                ? t("runningLocalDiagnostics")
+                : t("runLocalDiagnostics")}
+            </button>
+          </div>
+
+          {diagnosticsError && (
+            <p className="diagnostics-error">{diagnosticsError}</p>
+          )}
+
+          {diagnostics && (
+            <div className="diagnostics-list">
+              {diagnostics.checks.map((check) => (
+                <article
+                  className={`diagnostic-item level-${check.level}`}
+                  key={check.id}
+                >
+                  <span className="diagnostic-level" aria-hidden="true" />
+                  <div>
+                    <strong>{t(diagnosticTitleKeys[check.id])}</strong>
+                    <p>{diagnosticDetail(check, t)}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <p className="diagnostics-privacy-note">{t("diagnosticsPrivacy")}</p>
         </section>
 
         <section className="settings-group settings-update-group">
