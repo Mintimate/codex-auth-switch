@@ -86,11 +86,13 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Remove the locally saved copy of any account; removing the current account does not sign out or interrupt the active Codex login
 - Capture potentially rotated tokens for the current account before switching
 
-### Usage Insights
+### Usage and Quotas
 
 - Summarize local token usage for today, the last 7 days, and the last 30 days
 - Show a 14-day trend, input/output token composition, and account attribution
-- Display subscription usage windows, available full resets, and the earliest reset-credit expiry per account, with isolated fallback when one account query fails
+- Use a dedicated Subscription quotas page for account health, recovery timelines, available full resets, and the earliest reset-credit expiry
+- Keep local Token scans and online subscription quota queries on separate commands, so opening Token usage does not query the online endpoint
+- Isolate individual account query failures without affecting other accounts
 - Read only `token_count` metadata from sessions without parsing prompts or response text
 
 ### OAuth Pairing
@@ -113,8 +115,8 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 ### Desktop Experience
 
 - Chinese and English interface with a persistent language switcher
-- Separate tabs for accounts, Token usage, and settings, with a configurable startup page
-- Optional automatic refresh when opening the Token usage tab
+- Separate tabs for accounts, Token usage, subscription quotas, and settings, with a configurable startup page
+- Optional automatic refresh for the corresponding data when opening Token usage or subscription quotas
 - Light, dark, and system appearance modes
 - Desktop installers for macOS, Windows, and Linux
 - Visible local account vault path with direct access from the file manager

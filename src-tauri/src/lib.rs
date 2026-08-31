@@ -3,10 +3,11 @@ mod auth_share;
 mod manager;
 mod usage;
 
-use manager::{AccountManager, AppStatus, DeviceLoginResponse, UsageOverview};
+use manager::{AccountManager, AccountQuota, AppStatus, DeviceLoginResponse};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
+use usage::LocalUsageStats;
 
 struct AppState {
     operation_gate: Mutex<()>,
@@ -25,6 +26,14 @@ struct AuthTransferPreparation {
     qr_error: Option<String>,
 }
 
+// 保留旧聚合命令，避免开发期间 WebView 热更新早于 Rust 进程重启时刷新失败。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UsageOverview {
+    quotas: Vec<AccountQuota>,
+    local: LocalUsageStats,
+}
+
 fn account_manager(app: &AppHandle) -> Result<AccountManager, String> {
     let app_data_dir = app
         .path()
@@ -41,15 +50,45 @@ fn get_status(app: AppHandle) -> Result<AppStatus, String> {
 }
 
 #[tauri::command]
+async fn get_local_usage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LocalUsageStats, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .local_usage()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_account_quotas(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<AccountQuota>, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .account_quotas()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn get_usage_overview(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<UsageOverview, String> {
     let _guard = state.operation_gate.lock().await;
-    account_manager(&app)?
-        .usage_overview()
+    let manager = account_manager(&app)?;
+    let local = manager
+        .local_usage()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    let quotas = manager
+        .account_quotas()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(UsageOverview { quotas, local })
 }
 
 #[tauri::command]
@@ -219,6 +258,8 @@ pub fn run() {
             app_update::check_app_update,
             app_update::install_app_update,
             get_status,
+            get_local_usage,
+            get_account_quotas,
             get_usage_overview,
             save_current,
             start_device_login,

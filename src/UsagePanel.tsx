@@ -1,14 +1,9 @@
-import {
-  AccountQuota,
-  TokenBreakdown,
-  UsageOverview,
-  UsageWindow,
-} from "./api";
-import { Locale, localizeBackendError, Translate } from "./i18n";
+import { LocalUsageStats, TokenBreakdown } from "./api";
+import { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
 
 type UsagePanelProps = {
-  usage: UsageOverview | null;
+  usage: LocalUsageStats | null;
   loading: boolean;
   error: string | null;
   locale: Locale;
@@ -18,50 +13,6 @@ type UsagePanelProps = {
 };
 
 const SKELETON_TREND_BARS = Array.from({ length: 14 });
-const SKELETON_QUOTA_CARDS = Array.from({ length: 2 });
-const SKELETON_QUOTA_WINDOWS = Array.from({ length: 2 });
-
-const formatWindow = (minutes: number | null, t: Translate) => {
-  if (!minutes) return t("quotaWindow");
-  if (minutes % 1440 === 0) {
-    return t("daysWindow", { count: minutes / 1440 });
-  }
-  if (minutes % 60 === 0) {
-    return t("hoursWindow", { count: minutes / 60 });
-  }
-  return t("minutesWindow", { count: minutes });
-};
-
-const formatReset = (
-  timestamp: number | null,
-  locale: Locale,
-  t: Translate,
-) => {
-  if (!timestamp) return t("resetUnknown");
-  const date = new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(timestamp * 1000);
-  return t("resetsAt", { date });
-};
-
-const formatResetCreditExpiry = (
-  timestamp: number | undefined,
-  locale: Locale,
-  t: Translate,
-) => {
-  if (!timestamp) return t("resetCreditExpiryUnknown");
-  const date = new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(timestamp * 1000);
-  return t("resetCreditExpiresAt", { date });
-};
 
 function MetricCard({
   label,
@@ -83,131 +34,6 @@ function MetricCard({
         {compactNumber.format(tokens.totalTokens)}
       </strong>
       <small>tokens</small>
-    </article>
-  );
-}
-
-function QuotaWindow({
-  window,
-  locale,
-  t,
-}: {
-  window: UsageWindow;
-  locale: Locale;
-  t: Translate;
-}) {
-  const percent = Math.round(window.usedPercent * 10) / 10;
-  const windowLabel = formatWindow(window.windowMinutes, t);
-  return (
-    <div className="quota-window">
-      <div className="quota-window-copy">
-        <span>{windowLabel}</span>
-        <strong>{percent}%</strong>
-      </div>
-      <div
-        className="quota-track"
-        role="progressbar"
-        aria-label={t("quotaUsed", { window: windowLabel })}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-      >
-        <span style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
-      </div>
-      <small>{formatReset(window.resetsAt, locale, t)}</small>
-    </div>
-  );
-}
-
-function QuotaCard({
-  quota,
-  accountTokens,
-  compactNumber,
-  fullNumber,
-  locale,
-  privateMode,
-  t,
-}: {
-  quota: AccountQuota;
-  accountTokens: TokenBreakdown | undefined;
-  compactNumber: Intl.NumberFormat;
-  fullNumber: Intl.NumberFormat;
-  locale: Locale;
-  privateMode: boolean;
-  t: Translate;
-}) {
-  return (
-    <article className="quota-card">
-      <div className="quota-account">
-        <div>
-          <strong>
-            {privateMode
-              ? redactEmails(quota.label, t("emailHidden"))
-              : quota.label}
-          </strong>
-          <span>
-            {accountTokens ? t("localUsage30Days") : t("noLocalUsage")}
-          </span>
-        </div>
-        <b
-          title={
-            accountTokens
-              ? fullNumber.format(accountTokens.totalTokens)
-              : undefined
-          }
-        >
-          {accountTokens ? (
-            <>
-              {compactNumber.format(accountTokens.totalTokens)}
-              <small>tokens</small>
-            </>
-          ) : (
-            "—"
-          )}
-        </b>
-      </div>
-      {quota.success ? (
-        <>
-          {quota.resetCredits && (
-            <div className="reset-credits">
-              <div>
-                <span>{t("availableResetCredits")}</span>
-                <strong>
-                  {t("resetCreditCount", {
-                    count: quota.resetCredits.availableCount,
-                  })}
-                </strong>
-              </div>
-              {quota.resetCredits.availableCount > 0 && (
-                <small>
-                  {formatResetCreditExpiry(
-                    quota.resetCredits.expiresAt[0],
-                    locale,
-                    t,
-                  )}
-                </small>
-              )}
-            </div>
-          )}
-          <div className="quota-windows">
-            {quota.primary && (
-              <QuotaWindow window={quota.primary} locale={locale} t={t} />
-            )}
-            {quota.secondary && (
-              <QuotaWindow window={quota.secondary} locale={locale} t={t} />
-            )}
-            {!quota.primary && !quota.secondary && (
-              <p className="quota-empty">{t("noQuotaWindows")}</p>
-            )}
-          </div>
-        </>
-      ) : (
-        <p className="quota-error">
-          {quota.error
-            ? localizeBackendError(quota.error, locale)
-            : t("quotaQueryFailed")}
-        </p>
-      )}
     </article>
   );
 }
@@ -257,35 +83,18 @@ function UsageSkeleton({ label }: { label: string }) {
           </article>
         </div>
 
-        <div className="quota-heading usage-skeleton-quota-heading">
+        <div className="local-attribution-heading usage-skeleton-quota-heading">
           <div>
             <span className="usage-skeleton-block skeleton-heading" />
             <span className="usage-skeleton-block skeleton-subheading" />
           </div>
         </div>
-        <div className="quota-list">
-          {SKELETON_QUOTA_CARDS.map((_, index) => (
-            <article className="quota-card usage-skeleton-quota" key={index}>
-              <div className="usage-skeleton-card-heading">
-                <div>
-                  <span className="usage-skeleton-block skeleton-heading" />
-                  <span className="usage-skeleton-block skeleton-subheading" />
-                </div>
-                <span className="usage-skeleton-block skeleton-quota-value" />
-              </div>
-              <div className="usage-skeleton-windows">
-                {SKELETON_QUOTA_WINDOWS.map((_, windowIndex) => (
-                  <div className="usage-skeleton-window" key={windowIndex}>
-                    <div>
-                      <span className="usage-skeleton-block skeleton-window-label" />
-                      <span className="usage-skeleton-block skeleton-window-value" />
-                    </div>
-                    <span className="usage-skeleton-block skeleton-track" />
-                    <span className="usage-skeleton-block skeleton-reset" />
-                  </div>
-                ))}
-              </div>
-            </article>
+        <div className="local-attribution-list">
+          {Array.from({ length: 3 }, (_, index) => (
+            <span
+              className="usage-skeleton-block local-attribution-skeleton"
+              key={index}
+            />
           ))}
         </div>
         <span className="usage-skeleton-block skeleton-privacy" />
@@ -310,15 +119,9 @@ export function UsagePanel({
   const fullNumber = new Intl.NumberFormat(locale);
   const maxDaily = Math.max(
     1,
-    ...(usage?.local.daily.map((day) => day.tokens.totalTokens) ?? []),
+    ...(usage?.daily.map((day) => day.tokens.totalTokens) ?? []),
   );
-  const byAccount = new Map(
-    usage?.local.byAccount.map((account) => [
-      account.accountId,
-      account.tokens,
-    ]),
-  );
-  const breakdown = usage?.local.thirtyDays;
+  const breakdown = usage?.thirtyDays;
 
   return (
     <section className="usage-section">
@@ -357,20 +160,20 @@ export function UsagePanel({
           <div className="usage-metrics">
             <MetricCard
               label={t("today")}
-              tokens={usage.local.today}
+              tokens={usage.today}
               compactNumber={compactNumber}
               fullNumber={fullNumber}
               emphasis
             />
             <MetricCard
               label={t("last7Days")}
-              tokens={usage.local.sevenDays}
+              tokens={usage.sevenDays}
               compactNumber={compactNumber}
               fullNumber={fullNumber}
             />
             <MetricCard
               label={t("last30Days")}
-              tokens={usage.local.thirtyDays}
+              tokens={usage.thirtyDays}
               compactNumber={compactNumber}
               fullNumber={fullNumber}
             />
@@ -381,16 +184,14 @@ export function UsagePanel({
               <div className="usage-card-title">
                 <div>
                   <strong>{t("trend14Days")}</strong>
-                  <span>
-                    {t("usageEvents", { count: usage.local.eventsCount })}
-                  </span>
+                  <span>{t("usageEvents", { count: usage.eventsCount })}</span>
                 </div>
                 <small>
-                  {t("sessionFiles", { count: usage.local.filesScanned })}
+                  {t("sessionFiles", { count: usage.filesScanned })}
                 </small>
               </div>
               <div className="trend-bars" aria-label={t("trendAria")}>
-                {usage.local.daily.map((day) => (
+                {usage.daily.map((day) => (
                   <div className="trend-column" key={day.date}>
                     <span
                       title={`${day.date} · ${fullNumber.format(day.tokens.totalTokens)} tokens`}
@@ -436,40 +237,65 @@ export function UsagePanel({
             )}
           </div>
 
-          <div className="quota-heading">
+          <div className="local-attribution-heading">
             <div>
-              <strong>{t("accountUsageAndQuota")}</strong>
-              <span>{t("accountUsageHint")}</span>
+              <strong>{t("accountAttribution")}</strong>
+              <span>{t("accountAttributionHint")}</span>
             </div>
-            {usage.local.unassigned.totalTokens > 0 && (
+            {usage.unassigned.totalTokens > 0 && (
               <small
-                title={`${fullNumber.format(usage.local.unassigned.totalTokens)} tokens`}
+                title={`${fullNumber.format(usage.unassigned.totalTokens)} tokens`}
               >
                 {t("unassignedHistory", {
-                  tokens: compactNumber.format(
-                    usage.local.unassigned.totalTokens,
-                  ),
+                  tokens: compactNumber.format(usage.unassigned.totalTokens),
                 })}
               </small>
             )}
           </div>
-          {usage.quotas.length ? (
-            <div className="quota-list">
-              {usage.quotas.map((quota) => (
-                <QuotaCard
-                  key={quota.profileId}
-                  quota={quota}
-                  accountTokens={byAccount.get(quota.accountId)}
-                  compactNumber={compactNumber}
-                  fullNumber={fullNumber}
-                  locale={locale}
-                  privateMode={privateMode}
-                  t={t}
-                />
-              ))}
+          {usage.byAccount.length ? (
+            <div className="local-attribution-list">
+              {usage.byAccount.map((account) => {
+                const share =
+                  usage.thirtyDays.totalTokens > 0
+                    ? (account.tokens.totalTokens /
+                        usage.thirtyDays.totalTokens) *
+                      100
+                    : 0;
+                return (
+                  <article
+                    className="local-attribution-row"
+                    key={account.accountId}
+                  >
+                    <div>
+                      <strong>
+                        {privateMode
+                          ? redactEmails(account.label, t("emailHidden"))
+                          : account.label}
+                      </strong>
+                      <span>{t("localUsage30Days")}</span>
+                    </div>
+                    <div className="local-attribution-value">
+                      <b
+                        title={`${fullNumber.format(account.tokens.totalTokens)} tokens`}
+                      >
+                        {compactNumber.format(account.tokens.totalTokens)}
+                      </b>
+                      <small>
+                        {t("usageShare", { percent: Math.round(share) })}
+                      </small>
+                    </div>
+                    <span
+                      className="local-attribution-track"
+                      aria-hidden="true"
+                    >
+                      <i style={{ width: `${Math.min(100, share)}%` }} />
+                    </span>
+                  </article>
+                );
+              })}
             </div>
           ) : (
-            <div className="quota-empty standalone">{t("saveForQuota")}</div>
+            <div className="quota-empty standalone">{t("noLocalUsage")}</div>
           )}
 
           <p className="usage-privacy-note">{t("usagePrivacy")}</p>

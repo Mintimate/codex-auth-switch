@@ -11,7 +11,7 @@ import {
 import { Locale, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
 
-export type AppTab = "accounts" | "usage" | "settings";
+export type AppTab = "accounts" | "usage" | "quota" | "settings";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
 
@@ -111,6 +111,7 @@ export function SettingsPanel({
   const tabOptions: Option<AppTab>[] = [
     { label: t("accountsTab"), value: "accounts" },
     { label: t("usageTab"), value: "usage" },
+    { label: t("quotaTab"), value: "quota" },
     { label: t("settingsTab"), value: "settings" },
   ];
 

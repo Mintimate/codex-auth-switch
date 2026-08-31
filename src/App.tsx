@@ -11,11 +11,13 @@ import {
 } from "react";
 import {
   AppStatus,
+  AccountQuota,
   copyAuthTransfer,
   DeviceLoginResponse,
+  getAccountQuotas,
+  getLocalUsage,
   prepareAuthTransfer,
   getStatus,
-  getUsageOverview,
   importAuthFromClipboard,
   importAuthFromQr,
   pollDeviceLogin,
@@ -24,13 +26,14 @@ import {
   saveCurrent,
   startDeviceLogin,
   switchAccount,
-  UsageOverview,
+  LocalUsageStats,
 } from "./api";
 import { AccountFlow, LoginFlow } from "./AccountFlow";
 import { localizeBackendError, Locale, useI18n } from "./i18n";
 import { containsEmail, redactEmails } from "./privacy";
 import { AppTab, SettingsPanel } from "./SettingsPanel";
 import { ThemeMode, useAppearance } from "./theme";
+import { QuotaPanel } from "./QuotaPanel";
 import { UsagePanel } from "./UsagePanel";
 
 type DialogMode = "save" | "login" | "rename" | null;
@@ -88,7 +91,10 @@ const toBase64 = (bytes: Uint8Array) => {
 
 const storedDefaultTab = (): AppTab => {
   const value = window.localStorage.getItem(DEFAULT_TAB_STORAGE_KEY);
-  return value === "accounts" || value === "usage" || value === "settings"
+  return value === "accounts" ||
+    value === "usage" ||
+    value === "quota" ||
+    value === "settings"
     ? value
     : "accounts";
 };
@@ -159,6 +165,14 @@ function TabIcon({ tab }: { tab: AppTab }) {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <path d="M3 16.5h14M5 14V9.8M10 14V4M15 14V7" />
+      </svg>
+    );
+  }
+  if (tab === "quota") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M3 10a7 7 0 1 1 14 0M10 10l3.6-3.2M4.2 14.8h11.6" />
+        <circle cx="10" cy="10" r="1" />
       </svg>
     );
   }
@@ -272,19 +286,34 @@ function App() {
   const [importDialog, setImportDialog] = useState(false);
   const workspaceRef = useRef<HTMLElement>(null);
   const qrFileInput = useRef<HTMLInputElement>(null);
-  const [usage, setUsage] = useState<UsageOverview | null>(null);
+  const [usage, setUsage] = useState<LocalUsageStats | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
+  const [quotas, setQuotas] = useState<AccountQuota[] | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
 
   const refreshUsage = useCallback(async () => {
     setUsageLoading(true);
     setUsageError(null);
     try {
-      setUsage(await getUsageOverview());
+      setUsage(await getLocalUsage());
     } catch (reason) {
       setUsageError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setUsageLoading(false);
+    }
+  }, [locale]);
+
+  const refreshQuotas = useCallback(async () => {
+    setQuotaLoading(true);
+    setQuotaError(null);
+    try {
+      setQuotas(await getAccountQuotas());
+    } catch (reason) {
+      setQuotaError(localizeBackendError(messageOf(reason), locale));
+    } finally {
+      setQuotaLoading(false);
     }
   }, [locale]);
 
@@ -306,8 +335,16 @@ function App() {
   useEffect(() => {
     if (activeTab === "usage" && autoRefreshUsage && status?.supported) {
       void refreshUsage();
+    } else if (activeTab === "quota" && autoRefreshUsage && status?.supported) {
+      void refreshQuotas();
     }
-  }, [activeTab, autoRefreshUsage, refreshUsage, status?.supported]);
+  }, [
+    activeTab,
+    autoRefreshUsage,
+    refreshQuotas,
+    refreshUsage,
+    status?.supported,
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem(DEFAULT_TAB_STORAGE_KEY, defaultTab);
@@ -361,6 +398,7 @@ function App() {
           setPairingFeedback(null);
           setNotice(t("newAccountSaved"));
           if (activeTab === "usage") void refreshUsage();
+          if (activeTab === "quota") void refreshQuotas();
           return;
         }
       } catch (reason) {
@@ -385,7 +423,7 @@ function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [activeTab, deviceLogin, locale, refreshUsage, t]);
+  }, [activeTab, deviceLogin, locale, refreshQuotas, refreshUsage, t]);
 
   const active = useMemo(
     () => status?.accounts.find((account) => account.active) ?? null,
@@ -403,6 +441,7 @@ function App() {
       setStatus(await action());
       setNotice(t("operationComplete", { action: description }));
       if (activeTab === "usage") void refreshUsage();
+      if (activeTab === "quota") void refreshQuotas();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -569,6 +608,7 @@ function App() {
       setImportDialog(false);
       setNotice(t("operationComplete", { action: description }));
       if (activeTab === "usage") void refreshUsage();
+      if (activeTab === "quota") void refreshQuotas();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -637,26 +677,30 @@ function App() {
           role="tablist"
           aria-label={t("mainNavigation")}
         >
-          {(["accounts", "usage", "settings"] as AppTab[]).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              className={`${activeTab === tab ? "active" : ""}${tab === "settings" ? " settings-tab" : ""}`}
-              aria-selected={activeTab === tab}
-              aria-controls={`${tab}-panel`}
-              onClick={() => setActiveTab(tab)}
-            >
-              <TabIcon tab={tab} />
-              <span>
-                {tab === "accounts"
-                  ? t("accountsTab")
-                  : tab === "usage"
-                    ? t("usageTab")
-                    : t("settingsTab")}
-              </span>
-            </button>
-          ))}
+          {(["accounts", "usage", "quota", "settings"] as AppTab[]).map(
+            (tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                className={`${activeTab === tab ? "active" : ""}${tab === "settings" ? " settings-tab" : ""}`}
+                aria-selected={activeTab === tab}
+                aria-controls={`${tab}-panel`}
+                onClick={() => setActiveTab(tab)}
+              >
+                <TabIcon tab={tab} />
+                <span>
+                  {tab === "accounts"
+                    ? t("accountsTab")
+                    : tab === "usage"
+                      ? t("usageTab")
+                      : tab === "quota"
+                        ? t("quotaTab")
+                        : t("settingsTab")}
+                </span>
+              </button>
+            ),
+          )}
         </nav>
       </aside>
 
@@ -964,6 +1008,28 @@ function App() {
                     error={usageError}
                     locale={locale}
                     onRefresh={() => void refreshUsage()}
+                    privateMode={privateMode}
+                    t={t}
+                  />
+                ) : null}
+              </div>
+            )}
+
+            {activeTab === "quota" && (
+              <div
+                id="quota-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("quotaTab")}
+              >
+                {status?.supported ? (
+                  <QuotaPanel
+                    activeAccountId={status.activeAccountId}
+                    quotas={quotas}
+                    loading={quotaLoading}
+                    error={quotaError}
+                    locale={locale}
+                    onRefresh={() => void refreshQuotas()}
                     privateMode={privateMode}
                     t={t}
                   />

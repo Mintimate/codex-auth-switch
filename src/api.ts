@@ -64,23 +64,25 @@ export type AccountQuota = {
   queriedAt: number;
 };
 
-export type UsageOverview = {
+export type LocalUsageStats = {
+  today: TokenBreakdown;
+  sevenDays: TokenBreakdown;
+  thirtyDays: TokenBreakdown;
+  daily: { date: string; tokens: TokenBreakdown }[];
+  byAccount: {
+    accountId: string;
+    label: string;
+    tokens: TokenBreakdown;
+  }[];
+  unassigned: TokenBreakdown;
+  filesScanned: number;
+  eventsCount: number;
+  generatedAt: number;
+};
+
+type UsageOverview = {
   quotas: AccountQuota[];
-  local: {
-    today: TokenBreakdown;
-    sevenDays: TokenBreakdown;
-    thirtyDays: TokenBreakdown;
-    daily: { date: string; tokens: TokenBreakdown }[];
-    byAccount: {
-      accountId: string;
-      label: string;
-      tokens: TokenBreakdown;
-    }[];
-    unassigned: TokenBreakdown;
-    filesScanned: number;
-    eventsCount: number;
-    generatedAt: number;
-  };
+  local: LocalUsageStats;
 };
 
 export type AppUpdateStatus =
@@ -144,78 +146,77 @@ const previewDailyTotals = [
   69320, 91720, 76480,
 ];
 
-const previewUsage: UsageOverview = {
-  quotas: [
+const previewQuotas: AccountQuota[] = [
+  {
+    profileId: "account-personal-8f2a",
+    accountId: "account-personal-8f2a",
+    label: "个人 Pro",
+    primary: {
+      usedPercent: 38,
+      windowMinutes: 300,
+      resetsAt: Math.floor(Date.now() / 1000) + 86 * 60,
+    },
+    secondary: {
+      usedPercent: 64,
+      windowMinutes: 10080,
+      resetsAt: Math.floor(Date.now() / 1000) + 4 * 24 * 60 * 60,
+    },
+    resetCredits: {
+      availableCount: 1,
+      expiresAt: [Math.floor(Date.now() / 1000) + 21 * 24 * 60 * 60],
+    },
+    success: true,
+    error: null,
+    queriedAt: Math.floor(Date.now() / 1000),
+  },
+  {
+    profileId: "account-work-13bd",
+    accountId: "account-work-13bd",
+    label: "工作账号",
+    primary: {
+      usedPercent: 17,
+      windowMinutes: 300,
+      resetsAt: Math.floor(Date.now() / 1000) + 128 * 60,
+    },
+    secondary: null,
+    resetCredits: {
+      availableCount: 0,
+      expiresAt: [],
+    },
+    success: true,
+    error: null,
+    queriedAt: Math.floor(Date.now() / 1000),
+  },
+];
+
+const previewLocalUsage: LocalUsageStats = {
+  today: tokens(76480),
+  sevenDays: tokens(495880),
+  thirtyDays: tokens(1842360),
+  daily: previewDailyTotals.map((total, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (previewDailyTotals.length - index - 1));
+    return {
+      date: date.toISOString().slice(0, 10),
+      tokens: tokens(total),
+    };
+  }),
+  byAccount: [
     {
-      profileId: "account-personal-8f2a",
       accountId: "account-personal-8f2a",
       label: "个人 Pro",
-      primary: {
-        usedPercent: 38,
-        windowMinutes: 300,
-        resetsAt: Math.floor(Date.now() / 1000) + 86 * 60,
-      },
-      secondary: {
-        usedPercent: 64,
-        windowMinutes: 10080,
-        resetsAt: Math.floor(Date.now() / 1000) + 4 * 24 * 60 * 60,
-      },
-      resetCredits: {
-        availableCount: 1,
-        expiresAt: [Math.floor(Date.now() / 1000) + 21 * 24 * 60 * 60],
-      },
-      success: true,
-      error: null,
-      queriedAt: Math.floor(Date.now() / 1000),
+      tokens: tokens(1124760),
     },
     {
-      profileId: "account-work-13bd",
       accountId: "account-work-13bd",
       label: "工作账号",
-      primary: {
-        usedPercent: 17,
-        windowMinutes: 300,
-        resetsAt: Math.floor(Date.now() / 1000) + 128 * 60,
-      },
-      secondary: null,
-      resetCredits: {
-        availableCount: 0,
-        expiresAt: [],
-      },
-      success: true,
-      error: null,
-      queriedAt: Math.floor(Date.now() / 1000),
+      tokens: tokens(615200),
     },
   ],
-  local: {
-    today: tokens(76480),
-    sevenDays: tokens(495880),
-    thirtyDays: tokens(1842360),
-    daily: previewDailyTotals.map((total, index) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (previewDailyTotals.length - index - 1));
-      return {
-        date: date.toISOString().slice(0, 10),
-        tokens: tokens(total),
-      };
-    }),
-    byAccount: [
-      {
-        accountId: "account-personal-8f2a",
-        label: "个人 Pro",
-        tokens: tokens(1124760),
-      },
-      {
-        accountId: "account-work-13bd",
-        label: "工作账号",
-        tokens: tokens(615200),
-      },
-    ],
-    unassigned: tokens(102400),
-    filesScanned: 18,
-    eventsCount: 146,
-    generatedAt: Math.floor(Date.now() / 1000),
-  },
+  unassigned: tokens(102400),
+  filesScanned: 18,
+  eventsCount: 146,
+  generatedAt: Math.floor(Date.now() / 1000),
 };
 
 const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
@@ -241,8 +242,19 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "poll_device_login") {
       return Promise.resolve(null as T);
     }
+    if (command === "get_local_usage") {
+      return Promise.resolve(structuredClone(previewLocalUsage) as T);
+    }
+    if (command === "get_account_quotas") {
+      return Promise.resolve(structuredClone(previewQuotas) as T);
+    }
     if (command === "get_usage_overview") {
-      return Promise.resolve(structuredClone(previewUsage) as T);
+      return Promise.resolve(
+        structuredClone({
+          quotas: previewQuotas,
+          local: previewLocalUsage,
+        }) as T,
+      );
     }
     if (command === "prepare_auth_transfer") {
       return Promise.resolve({
@@ -276,7 +288,32 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
 
 export const getStatus = () => call<AppStatus>("get_status");
 
-export const getUsageOverview = () => call<UsageOverview>("get_usage_overview");
+const isMissingCommand = (error: unknown, command: string) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.toLowerCase().includes("not found") && message.includes(command)
+  );
+};
+
+const getLegacyUsageOverview = () => call<UsageOverview>("get_usage_overview");
+
+export const getLocalUsage = async () => {
+  try {
+    return await call<LocalUsageStats>("get_local_usage");
+  } catch (error) {
+    if (!isMissingCommand(error, "get_local_usage")) throw error;
+    return (await getLegacyUsageOverview()).local;
+  }
+};
+
+export const getAccountQuotas = async () => {
+  try {
+    return await call<AccountQuota[]>("get_account_quotas");
+  } catch (error) {
+    if (!isMissingCommand(error, "get_account_quotas")) throw error;
+    return (await getLegacyUsageOverview()).quotas;
+  }
+};
 
 export const getAppVersion = () => call<string>("get_app_version");
 

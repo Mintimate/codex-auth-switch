@@ -138,13 +138,6 @@ pub struct AccountQuota {
     pub queried_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageOverview {
-    pub quotas: Vec<AccountQuota>,
-    pub local: LocalUsageStats,
-}
-
 pub struct PreparedAuthTransfer {
     pub text: String,
     pub qr_data_url: Option<String>,
@@ -660,18 +653,8 @@ impl AccountManager {
         self.status().map(Some)
     }
 
-    pub async fn usage_overview(&self) -> Result<UsageOverview, ManagerError> {
-        self.ensure_file_storage()?;
-        let mut vault = self.load_vault()?;
-        let active_account_id = self.read_live_auth().ok().and_then(|auth| {
-            let identity = validate_chatgpt_auth(&auth).ok()?;
-            upsert_profile(&mut vault, auth, None).ok()?;
-            Some(identity.account_id)
-        });
-        if let Some(account_id) = active_account_id.as_deref() {
-            record_activation(&mut vault, account_id, unix_timestamp());
-        }
-        self.save_vault(&vault)?;
+    pub async fn account_quotas(&self) -> Result<Vec<AccountQuota>, ManagerError> {
+        let (mut vault, active_account_id) = self.load_usage_vault()?;
 
         // 先把要查询的凭据取成快照，避免并发任务借用 vault 而锁住后面的回写。
         let quota_targets = vault
@@ -795,6 +778,11 @@ impl AccountManager {
             self.save_vault(&vault)?;
         }
 
+        Ok(quotas)
+    }
+
+    pub async fn local_usage(&self) -> Result<LocalUsageStats, ManagerError> {
+        let (vault, _) = self.load_usage_vault()?;
         let accounts = vault
             .profiles
             .iter()
@@ -807,12 +795,26 @@ impl AccountManager {
         // 否则会话文件多时会把 tokio 的 worker 全部占满。
         let codex_home = self.codex_home.clone();
         let activations = vault.activations.clone();
-        let local = tauri::async_runtime::spawn_blocking(move || {
+        tauri::async_runtime::spawn_blocking(move || {
             scan_local_usage(&codex_home, &activations, &accounts)
         })
         .await
-        .map_err(|error| ManagerError::Io(format!("读取本地会话用量失败: {error}")))?;
-        Ok(UsageOverview { quotas, local })
+        .map_err(|error| ManagerError::Io(format!("读取本地会话用量失败: {error}")))
+    }
+
+    fn load_usage_vault(&self) -> Result<(Vault, Option<String>), ManagerError> {
+        self.ensure_file_storage()?;
+        let mut vault = self.load_vault()?;
+        let active_account_id = self.read_live_auth().ok().and_then(|auth| {
+            let identity = validate_chatgpt_auth(&auth).ok()?;
+            upsert_profile(&mut vault, auth, None).ok()?;
+            Some(identity.account_id)
+        });
+        if let Some(account_id) = active_account_id.as_deref() {
+            record_activation(&mut vault, account_id, unix_timestamp());
+        }
+        self.save_vault(&vault)?;
+        Ok((vault, active_account_id))
     }
 
     fn auth_path(&self) -> PathBuf {
