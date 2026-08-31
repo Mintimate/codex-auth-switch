@@ -4,7 +4,7 @@ use crate::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
-use futures_util::future::join_all;
+use futures_util::future::{join, join_all};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,6 +25,8 @@ const DEVICE_AUTH_USERCODE_URL: &str = "https://auth.openai.com/api/accounts/dev
 const DEVICE_AUTH_TOKEN_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/token";
 const OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const CODEX_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_RESET_CREDITS_URL: &str =
+    "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 const DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/codex/device";
 const DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 const DEVICE_CODE_DEFAULT_EXPIRES_IN: u64 = 900;
@@ -117,12 +119,20 @@ pub struct UsageWindow {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UsageResetCredits {
+    pub available_count: u64,
+    pub expires_at: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountQuota {
     pub profile_id: String,
     pub account_id: String,
     pub label: String,
     pub primary: Option<UsageWindow>,
     pub secondary: Option<UsageWindow>,
+    pub reset_credits: Option<UsageResetCredits>,
     pub success: bool,
     pub error: Option<String>,
     pub queried_at: u64,
@@ -179,8 +189,28 @@ struct CodexRateLimit {
 }
 
 #[derive(Debug, Deserialize)]
+struct CodexResetCreditsSummary {
+    available_count: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CodexUsageResponse {
     rate_limit: Option<CodexRateLimit>,
+    rate_limit_reset_credits: Option<CodexResetCreditsSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodexResetCredit {
+    status: Option<String>,
+    is_supported_by_plan: Option<bool>,
+    expires_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodexResetCreditsResponse {
+    #[serde(default)]
+    credits: Vec<CodexResetCredit>,
+    available_count: Option<u64>,
 }
 
 enum QuotaQueryError {
@@ -192,7 +222,14 @@ enum QuotaQueryError {
 struct QuotaOutcome {
     index: usize,
     queried_at: u64,
-    result: Result<(Option<UsageWindow>, Option<UsageWindow>), QuotaQueryError>,
+    result: Result<
+        (
+            Option<UsageWindow>,
+            Option<UsageWindow>,
+            Option<UsageResetCredits>,
+        ),
+        QuotaQueryError,
+    >,
     refreshed_auth: Option<Value>,
 }
 
@@ -718,12 +755,13 @@ impl AccountManager {
                 .get(index)
                 .ok_or(ManagerError::ProfileNotFound)?;
             let quota = match result {
-                Ok((primary, secondary)) => AccountQuota {
+                Ok((primary, secondary, reset_credits)) => AccountQuota {
                     profile_id: profile.id.clone(),
                     account_id: profile.account_id.clone(),
                     label: profile.label.clone(),
                     primary,
                     secondary,
+                    reset_credits,
                     success: true,
                     error: None,
                     queried_at,
@@ -734,6 +772,7 @@ impl AccountManager {
                     label: profile.label.clone(),
                     primary: None,
                     secondary: None,
+                    reset_credits: None,
                     success: false,
                     error: Some("订阅凭据已失效，请重新登录该账号".to_string()),
                     queried_at,
@@ -744,6 +783,7 @@ impl AccountManager {
                     label: profile.label.clone(),
                     primary: None,
                     secondary: None,
+                    reset_credits: None,
                     success: false,
                     error: Some(message),
                     queried_at,
@@ -1020,13 +1060,41 @@ fn account_id_from_claims(claims: Option<&TokenClaims>) -> Option<String> {
 async fn query_account_quota(
     auth: &Value,
     account_id: &str,
-) -> Result<(Option<UsageWindow>, Option<UsageWindow>), QuotaQueryError> {
+) -> Result<
+    (
+        Option<UsageWindow>,
+        Option<UsageWindow>,
+        Option<UsageResetCredits>,
+    ),
+    QuotaQueryError,
+> {
     let access_token = auth
         .pointer("/tokens/access_token")
         .and_then(Value::as_str)
         .filter(|token| !token.trim().is_empty())
         .ok_or_else(|| QuotaQueryError::Message("账号缺少可用的访问凭据".to_string()))?;
     let client = quota_client()?;
+    let (usage, reset_credits) = join(
+        query_usage_windows(client, access_token, account_id),
+        query_reset_credits(client, access_token, account_id),
+    )
+    .await;
+    let (primary, secondary, available_count) = usage?;
+    let reset_credits = match reset_credits {
+        Ok(response) => Some(to_usage_reset_credits(response, available_count)),
+        Err(_) => available_count.map(|available_count| UsageResetCredits {
+            available_count,
+            expires_at: Vec::new(),
+        }),
+    };
+    Ok((primary, secondary, reset_credits))
+}
+
+async fn query_usage_windows(
+    client: &Client,
+    access_token: &str,
+    account_id: &str,
+) -> Result<(Option<UsageWindow>, Option<UsageWindow>, Option<u64>), QuotaQueryError> {
     let response = client
         .get(CODEX_USAGE_URL)
         .bearer_auth(access_token)
@@ -1062,13 +1130,88 @@ async fn query_account_quota(
         .json()
         .await
         .map_err(|_| QuotaQueryError::Message("额度服务返回了无法识别的响应".to_string()))?;
+    let available_count = body
+        .rate_limit_reset_credits
+        .and_then(|credits| credits.available_count);
     let Some(rate_limit) = body.rate_limit else {
-        return Ok((None, None));
+        return Ok((None, None, available_count));
     };
     Ok((
         rate_limit.primary_window.and_then(to_usage_window),
         rate_limit.secondary_window.and_then(to_usage_window),
+        available_count,
     ))
+}
+
+async fn query_reset_credits(
+    client: &Client,
+    access_token: &str,
+    account_id: &str,
+) -> Result<CodexResetCreditsResponse, QuotaQueryError> {
+    let response = client
+        .get(CODEX_RESET_CREDITS_URL)
+        .bearer_auth(access_token)
+        .header("Accept", "application/json")
+        .header("ChatGPT-Account-Id", account_id)
+        .send()
+        .await
+        .map_err(|error| {
+            let message = if error.is_timeout() {
+                "重置额度查询超时"
+            } else if error.is_connect() {
+                "无法连接重置额度服务"
+            } else {
+                "重置额度查询网络失败"
+            };
+            QuotaQueryError::Message(message.to_string())
+        })?;
+
+    if matches!(
+        response.status(),
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+    ) {
+        return Err(QuotaQueryError::Unauthorized);
+    }
+    if !response.status().is_success() {
+        return Err(QuotaQueryError::Message(format!(
+            "重置额度服务暂不可用（HTTP {}）",
+            response.status()
+        )));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|_| QuotaQueryError::Message("重置额度服务返回了无法识别的响应".to_string()))
+}
+
+fn to_usage_reset_credits(
+    response: CodexResetCreditsResponse,
+    summary_available_count: Option<u64>,
+) -> UsageResetCredits {
+    let is_available = |credit: &&CodexResetCredit| {
+        credit.status.as_deref() == Some("available") && credit.is_supported_by_plan.unwrap_or(true)
+    };
+    let mut expires_at = response
+        .credits
+        .iter()
+        .filter(is_available)
+        .filter_map(|credit| credit.expires_at.as_deref())
+        .filter_map(|expires_at| chrono::DateTime::parse_from_rfc3339(expires_at).ok())
+        .filter_map(|expires_at| u64::try_from(expires_at.timestamp()).ok())
+        .collect::<Vec<_>>();
+    expires_at.sort_unstable();
+    expires_at.dedup();
+
+    let available_count = response
+        .available_count
+        .or(summary_available_count)
+        .unwrap_or_else(|| response.credits.iter().filter(is_available).count() as u64);
+
+    UsageResetCredits {
+        available_count,
+        expires_at,
+    }
 }
 
 fn to_usage_window(window: CodexRateLimitWindow) -> Option<UsageWindow> {
@@ -1844,9 +1987,19 @@ mod tests {
                     "reset_at": 1787533200
                 },
                 "secondary_window": null
+            },
+            "rate_limit_reset_credits": {
+                "available_count": 2
             }
         }))
         .unwrap();
+        assert_eq!(
+            response
+                .rate_limit_reset_credits
+                .as_ref()
+                .and_then(|credits| credits.available_count),
+            Some(2)
+        );
         let rate_limit = response.rate_limit.unwrap();
         let primary = to_usage_window(rate_limit.primary_window.unwrap()).unwrap();
 
@@ -1854,6 +2007,35 @@ mod tests {
         assert_eq!(primary.window_minutes, Some(300));
         assert_eq!(primary.resets_at, Some(1787533200));
         assert!(rate_limit.secondary_window.is_none());
+    }
+
+    #[test]
+    fn parses_available_reset_credit_expirations_without_exposing_credit_details() {
+        let response: CodexResetCreditsResponse = serde_json::from_value(json!({
+            "credits": [
+                {
+                    "status": "available",
+                    "is_supported_by_plan": true,
+                    "expires_at": "2026-09-21T08:11:48Z"
+                },
+                {
+                    "status": "redeemed",
+                    "is_supported_by_plan": true,
+                    "expires_at": "2026-09-01T08:11:48Z"
+                },
+                {
+                    "status": "available",
+                    "is_supported_by_plan": false,
+                    "expires_at": "2026-09-02T08:11:48Z"
+                }
+            ],
+            "available_count": 1
+        }))
+        .unwrap();
+        let credits = to_usage_reset_credits(response, Some(3));
+
+        assert_eq!(credits.available_count, 1);
+        assert_eq!(credits.expires_at, vec![1_789_978_308]);
     }
 
     #[cfg(unix)]

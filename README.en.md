@@ -90,7 +90,7 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 
 - Summarize local token usage for today, the last 7 days, and the last 30 days
 - Show a 14-day trend, input/output token composition, and account attribution
-- Display subscription usage windows per account, with isolated fallback when one account query fails
+- Display subscription usage windows, available full resets, and the earliest reset-credit expiry per account, with isolated fallback when one account query fails
 - Read only `token_count` metadata from sessions without parsing prompts or response text
 
 ### OAuth Pairing

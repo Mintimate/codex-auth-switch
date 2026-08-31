@@ -1685,6 +1685,36 @@ button:disabled {
   margin-top: 13px;
 }
 
+.reset-credits {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.reset-credits > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reset-credits span,
+.reset-credits small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.reset-credits strong {
+  color: var(--accent-deep);
+  font-size: 12px;
+}
+
+.reset-credits small {
+  color: var(--muted-soft);
+}
+
 .quota-window-copy {
   color: var(--muted);
   font-size: 10px;

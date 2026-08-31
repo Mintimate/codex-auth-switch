@@ -47,12 +47,18 @@ export type UsageWindow = {
   resetsAt: number | null;
 };
 
+export type UsageResetCredits = {
+  availableCount: number;
+  expiresAt: number[];
+};
+
 export type AccountQuota = {
   profileId: string;
   accountId: string;
   label: string;
   primary: UsageWindow | null;
   secondary: UsageWindow | null;
+  resetCredits: UsageResetCredits | null;
   success: boolean;
   error: string | null;
   queriedAt: number;
@@ -154,6 +160,10 @@ const previewUsage: UsageOverview = {
         windowMinutes: 10080,
         resetsAt: Math.floor(Date.now() / 1000) + 4 * 24 * 60 * 60,
       },
+      resetCredits: {
+        availableCount: 1,
+        expiresAt: [Math.floor(Date.now() / 1000) + 21 * 24 * 60 * 60],
+      },
       success: true,
       error: null,
       queriedAt: Math.floor(Date.now() / 1000),
@@ -168,6 +178,10 @@ const previewUsage: UsageOverview = {
         resetsAt: Math.floor(Date.now() / 1000) + 128 * 60,
       },
       secondary: null,
+      resetCredits: {
+        availableCount: 0,
+        expiresAt: [],
+      },
       success: true,
       error: null,
       queriedAt: Math.floor(Date.now() / 1000),

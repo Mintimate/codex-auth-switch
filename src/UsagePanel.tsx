@@ -47,6 +47,22 @@ const formatReset = (
   return t("resetsAt", { date });
 };
 
+const formatResetCreditExpiry = (
+  timestamp: number | undefined,
+  locale: Locale,
+  t: Translate,
+) => {
+  if (!timestamp) return t("resetCreditExpiryUnknown");
+  const date = new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(timestamp * 1000);
+  return t("resetCreditExpiresAt", { date });
+};
+
 function MetricCard({
   label,
   tokens,
@@ -151,17 +167,40 @@ function QuotaCard({
         </b>
       </div>
       {quota.success ? (
-        <div className="quota-windows">
-          {quota.primary && (
-            <QuotaWindow window={quota.primary} locale={locale} t={t} />
+        <>
+          {quota.resetCredits && (
+            <div className="reset-credits">
+              <div>
+                <span>{t("availableResetCredits")}</span>
+                <strong>
+                  {t("resetCreditCount", {
+                    count: quota.resetCredits.availableCount,
+                  })}
+                </strong>
+              </div>
+              {quota.resetCredits.availableCount > 0 && (
+                <small>
+                  {formatResetCreditExpiry(
+                    quota.resetCredits.expiresAt[0],
+                    locale,
+                    t,
+                  )}
+                </small>
+              )}
+            </div>
           )}
-          {quota.secondary && (
-            <QuotaWindow window={quota.secondary} locale={locale} t={t} />
-          )}
-          {!quota.primary && !quota.secondary && (
-            <p className="quota-empty">{t("noQuotaWindows")}</p>
-          )}
-        </div>
+          <div className="quota-windows">
+            {quota.primary && (
+              <QuotaWindow window={quota.primary} locale={locale} t={t} />
+            )}
+            {quota.secondary && (
+              <QuotaWindow window={quota.secondary} locale={locale} t={t} />
+            )}
+            {!quota.primary && !quota.secondary && (
+              <p className="quota-empty">{t("noQuotaWindows")}</p>
+            )}
+          </div>
+        </>
       ) : (
         <p className="quota-error">
           {quota.error
