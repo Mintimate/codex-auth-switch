@@ -23,20 +23,22 @@
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">反馈问题</a>
 </p>
 
-![Codex Auth Switch 亮色仪表盘](docs/images/dashboard-light.jpg)
+![Codex Auth Switch 亮色账号页](docs/images/dashboard-light.jpg)
 
-> 截图使用内置预览数据，不包含真实账号或认证信息。
+> 截图使用内置预览数据，不包含真实账号或认证信息；迁移二维码也是仅供界面展示的示意图。
 
-Codex Auth Switch 解决的不是 OpenAI 订阅、账单或 API Key 管理，而是本机多个 Codex ChatGPT 登录之间的切换问题。它不代理 Codex 请求、不收集遥测，也不会将认证数据发送到项目自建服务。
+Codex Auth Switch 专注于本机多个 Codex ChatGPT 登录之间的切换，并提供本机 Token 用量汇总、订阅额度视图和只读环境体检。它不负责 OpenAI 订阅、账单或 API Key 管理，不代理 Codex 请求、不收集遥测，也不会将认证数据发送到项目自建服务。
 
 > [!IMPORTANT]
 > 本项目与 OpenAI 无隶属、赞助或背书关系。Codex、ChatGPT 和 OpenAI 是其各自权利人的商标。
 
 ## 界面预览
 
-| 暗色主题                                                        | 一次性 Auth 迁移                                                      |
+| 订阅额度巡检                                                    | 本地环境体检                                                          |
 | --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| ![Codex Auth Switch 暗色仪表盘](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth 迁移弹窗](docs/images/auth-share-dialog.jpg) |
+| ![Codex Auth Switch 订阅额度巡检](docs/images/quota-light.jpg)  | ![Codex Auth Switch 本地环境体检](docs/images/diagnostics-light.jpg)  |
+| 暗色账号页                                                      | 一次性 Auth 迁移                                                      |
+| ![Codex Auth Switch 暗色账号页](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth 迁移弹窗](docs/images/auth-share-dialog.jpg) |
 
 ## 下载与安装
 
@@ -92,6 +94,7 @@ cli_auth_credentials_store = "file"
 - 汇总今天、近 7 天和近 30 天的本机 Token 用量
 - 展示 14 天趋势、输入/输出 Token 构成和账号归属
 - 独立的“订阅额度”页面按账号展示额度状态、窗口恢复时间轴、可用完整重置次数与最早过期时间
+- “额度补给路线”通过猫咪巡检动效概览查询成功率、最充足账号、最近恢复与完整重置
 - 本机 Token 与在线订阅额度使用不同查询命令，打开 Token 页面不会访问在线额度接口
 - 单个账号额度查询失败时独立降级，不影响其他账号
 - 只读取会话中的 `token_count` 元数据，不解析提示词或回复正文
@@ -202,8 +205,8 @@ cargo test
 版本号分布在 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 三处，必须完全一致。请使用脚本同步，不要手工逐个修改：
 
 ```bash
-npm run bump 0.7.3      # 只更新版本号文件
-npm run release 0.7.3   # 更新版本号，并创建提交与标签
+npm run bump 1.2.3      # 只更新版本号文件
+npm run release 1.2.3   # 更新版本号，并创建提交与标签
 ```
 
 脚本会同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`，随后回读校验三处版本号一致。`Cargo.lock` 中可能存在与本项目版本号相同的第三方依赖，脚本只修改 `codex-auth-switch` 所属的包块。
@@ -221,17 +224,22 @@ git push origin main --follow-tags
 ## 项目结构
 
 ```text
-src/                        React 桌面界面
-src-tauri/src/manager.rs    账号库、认证校验与切换核心
-src-tauri/src/usage.rs      本机会话 Token 聚合
-src-tauri/src/auth_share.rs Auth 迁移编码与二维码处理
-src-tauri/src/lib.rs        Tauri 命令边界
-src-tauri/icons/            应用图标；Assets.xcassets 由 CI 编译为 macOS 明暗图标
-scripts/bump-version.mjs    版本号同步脚本
-.cnb.yml                    CNB 从 GitHub 拉取并镜像 Release 的流水线
-.cnb/scripts/               GitHub Release 拉取与 CNB 发布脚本
-docs/images/                README 预览截图与应用图标
-docs/release-notes/         手写版本说明（可选）
+src/AccountsPage.tsx          账号状态、切换链路与本机账号库
+src/UsagePanel.tsx            本机 Token 用量页面
+src/QuotaPanel.tsx            订阅额度状态与恢复时间轴
+src/QuotaScene.tsx            额度补给路线动效
+src/SettingsPanel.tsx         本机设置、环境体检与软件更新
+src-tauri/src/manager.rs      账号库、认证校验与切换核心
+src-tauri/src/usage.rs        本机会话 Token 聚合
+src-tauri/src/auth_share.rs   Auth 迁移编码与二维码处理
+src-tauri/src/diagnostics.rs  只读本地环境体检
+src-tauri/src/lib.rs          Tauri 命令边界
+src-tauri/icons/              应用图标；Assets.xcassets 由 CI 编译为 macOS 明暗图标
+scripts/bump-version.mjs      版本号同步脚本
+.cnb.yml                      CNB 从 GitHub 拉取并镜像 Release 的流水线
+.cnb/scripts/                 GitHub Release 拉取与 CNB 发布脚本
+docs/images/                  README 预览截图与应用图标
+docs/release-notes/           手写版本说明（可选）
 ```
 
 ## 官方参考

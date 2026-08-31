@@ -23,20 +23,22 @@
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
 </p>
 
-![Codex Auth Switch light dashboard](docs/images/dashboard-light.jpg)
+![Codex Auth Switch light account page](docs/images/dashboard-light.jpg)
 
-> The screenshots use built-in preview data and contain no real account or authentication information.
+> The screenshots use built-in preview data and contain no real account or authentication information. The transfer QR code is an illustration used only for the interface preview.
 
-Codex Auth Switch is built for switching between multiple Codex ChatGPT logins on one computer. It does not manage OpenAI subscriptions, billing, or API keys. It does not proxy Codex requests, collect telemetry, or send authentication data to a project-operated service.
+Codex Auth Switch focuses on switching between multiple Codex ChatGPT logins on one computer. It also provides local token summaries, subscription quota views, and read-only environment diagnostics. It does not manage OpenAI subscriptions, billing, or API keys, proxy Codex requests, collect telemetry, or send authentication data to a project-operated service.
 
 > [!IMPORTANT]
 > This project is not affiliated with, sponsored by, or endorsed by OpenAI. Codex, ChatGPT, and OpenAI are trademarks of their respective owners.
 
 ## Interface Preview
 
-| Dark theme                                                          | One-time Auth transfer                                                      |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| ![Codex Auth Switch dark dashboard](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth transfer dialog](docs/images/auth-share-dialog.jpg) |
+| Subscription quota inspection                                          | Local environment diagnostics                                                |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| ![Codex Auth Switch subscription quotas](docs/images/quota-light.jpg)  | ![Codex Auth Switch local diagnostics](docs/images/diagnostics-light.jpg)    |
+| Dark account page                                                      | One-time Auth transfer                                                       |
+| ![Codex Auth Switch dark account page](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth transfer dialog](docs/images/auth-share-dialog.jpg) |
 
 ## Download and Install
 
@@ -92,6 +94,7 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Summarize local token usage for today, the last 7 days, and the last 30 days
 - Show a 14-day trend, input/output token composition, and account attribution
 - Use a dedicated Subscription quotas page for account health, recovery timelines, available full resets, and the earliest reset-credit expiry
+- Summarize query success, the healthiest account, the nearest recovery, and full resets in the animated quota inspection route
 - Keep local Token scans and online subscription quota queries on separate commands, so opening Token usage does not query the online endpoint
 - Isolate individual account query failures without affecting other accounts
 - Read only `token_count` metadata from sessions without parsing prompts or response text
@@ -202,8 +205,8 @@ The release workflow requires the GitHub Actions secret `TAURI_SIGNING_PRIVATE_K
 The version number lives in three places — `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` — and they must match exactly. Use the script instead of editing each file by hand:
 
 ```bash
-npm run bump 0.7.3      # update version files only
-npm run release 0.7.3   # update versions, then create the commit and tag
+npm run bump 1.2.3      # update version files only
+npm run release 1.2.3   # update versions, then create the commit and tag
 ```
 
 The script updates `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, then reads the files back to verify all three versions agree. `Cargo.lock` may contain third-party crates that share this project's version number, so the script only edits the `codex-auth-switch` package block.
@@ -221,17 +224,22 @@ To write release notes by hand, add `docs/release-notes/vX.Y.Z.md` before taggin
 ## Project Structure
 
 ```text
-src/                        React desktop interface
-src-tauri/src/manager.rs    Account vault, authentication validation, and switching
-src-tauri/src/usage.rs      Local session token aggregation
-src-tauri/src/auth_share.rs Auth transfer encoding and QR code processing
-src-tauri/src/lib.rs        Tauri command boundary
-src-tauri/icons/            App icons; CI compiles Assets.xcassets into macOS light and dark icons
-scripts/bump-version.mjs    Version synchronization script
-.cnb.yml                    CNB pipeline that pulls and mirrors GitHub Releases
-.cnb/scripts/               GitHub Release download and CNB publishing scripts
-docs/images/                README preview screenshots and app icons
-docs/release-notes/         Hand-written release notes (optional)
+src/AccountsPage.tsx          Account status, switching route, and local vault
+src/UsagePanel.tsx            Local token usage page
+src/QuotaPanel.tsx            Subscription quota status and recovery timeline
+src/QuotaScene.tsx            Animated quota inspection route
+src/SettingsPanel.tsx         Local settings, diagnostics, and software updates
+src-tauri/src/manager.rs      Account vault, authentication validation, and switching
+src-tauri/src/usage.rs        Local session token aggregation
+src-tauri/src/auth_share.rs   Auth transfer encoding and QR code processing
+src-tauri/src/diagnostics.rs  Read-only local environment diagnostics
+src-tauri/src/lib.rs          Tauri command boundary
+src-tauri/icons/              App icons; CI compiles Assets.xcassets into macOS light and dark icons
+scripts/bump-version.mjs      Version synchronization script
+.cnb.yml                      CNB pipeline that pulls and mirrors GitHub Releases
+.cnb/scripts/                 GitHub Release download and CNB publishing scripts
+docs/images/                  README preview screenshots and app icons
+docs/release-notes/           Hand-written release notes (optional)
 ```
 
 ## Official References
