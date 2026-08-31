@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 export type ThemeMode = "light" | "dark" | "system";
 type ResolvedTheme = Exclude<ThemeMode, "system">;
@@ -31,27 +31,15 @@ applyTheme(initialTheme === "system" ? systemTheme() : initialTheme);
 
 export const useAppearance = () => {
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    theme === "system" ? systemTheme() : theme,
-  );
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      if (theme === "system") {
-        setResolvedTheme(media.matches ? "dark" : "light");
-      }
-    };
-
-    handleChange();
-    media.addEventListener("change", handleChange);
-    return () => media.removeEventListener("change", handleChange);
-  }, [theme]);
 
   useLayoutEffect(() => {
-    const nextResolved = theme === "system" ? systemTheme() : theme;
-    setResolvedTheme(nextResolved);
-    applyTheme(nextResolved);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const syncTheme = () =>
+      applyTheme(
+        theme === "system" ? (media.matches ? "dark" : "light") : theme,
+      );
+
+    syncTheme();
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     window.localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
 
@@ -60,9 +48,11 @@ export const useAppearance = () => {
         .setTheme(theme === "system" ? null : theme)
         .catch(() => undefined);
     }
+
+    if (theme !== "system") return;
+    media.addEventListener("change", syncTheme);
+    return () => media.removeEventListener("change", syncTheme);
   }, [theme]);
 
-  useLayoutEffect(() => applyTheme(resolvedTheme), [resolvedTheme]);
-
-  return { resolvedTheme, setTheme, theme };
+  return { setTheme, theme };
 };

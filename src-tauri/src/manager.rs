@@ -211,18 +211,20 @@ enum QuotaQueryError {
     Message(String),
 }
 
+type QuotaQueryResult = Result<
+    (
+        Option<UsageWindow>,
+        Option<UsageWindow>,
+        Option<UsageResetCredits>,
+    ),
+    QuotaQueryError,
+>;
+
 // 并发查询阶段不碰 vault，只把结果和「需要回写的刷新令牌」带回串行阶段统一落盘。
 struct QuotaOutcome {
     index: usize,
     queried_at: u64,
-    result: Result<
-        (
-            Option<UsageWindow>,
-            Option<UsageWindow>,
-            Option<UsageResetCredits>,
-        ),
-        QuotaQueryError,
-    >,
+    result: QuotaQueryResult,
     refreshed_auth: Option<Value>,
 }
 
@@ -259,6 +261,14 @@ impl Default for Vault {
 struct AuthIdentity {
     account_id: String,
     email: Option<String>,
+}
+
+#[derive(Debug)]
+struct TransferSeed {
+    label: Option<String>,
+    id_token: String,
+    refresh_token: String,
+    account_id: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -502,28 +512,14 @@ impl AccountManager {
 
     async fn import_shared_auth(&self, imported: ImportedAuth) -> Result<AppStatus, ManagerError> {
         self.ensure_file_storage()?;
-        let (label, auth) = match imported {
-            ImportedAuth::RefreshSeed {
-                id_token,
-                refresh_token,
-            } => {
-                let transferred_account_id = account_id_from_transferred_id_token(&id_token)?;
-                let refreshed = exchange_refresh_token(
-                    &refresh_token,
-                    "迁移内容可能已被使用或已失效，请在发送端重新生成",
-                )
-                .await?;
-                (
-                    None,
-                    materialize_transferred_auth(id_token, transferred_account_id, refreshed)?,
-                )
-            }
-            ImportedAuth::LegacySnapshot { label, auth } => (
-                Some(validate_label(&label)?.to_string()),
-                canonical_chatgpt_auth(&auth)?,
-            ),
-        };
-        self.import_materialized_auth(auth, label.as_deref())
+        let seed = transfer_seed(imported)?;
+        let refreshed = exchange_refresh_token(
+            &seed.refresh_token,
+            "迁移内容可能已被使用或已失效，请在发送端重新生成",
+        )
+        .await?;
+        let auth = materialize_transferred_auth(seed.id_token, seed.account_id, refreshed)?;
+        self.import_materialized_auth(auth, seed.label.as_deref())
     }
 
     fn import_materialized_auth(
@@ -805,15 +801,23 @@ impl AccountManager {
     fn load_usage_vault(&self) -> Result<(Vault, Option<String>), ManagerError> {
         self.ensure_file_storage()?;
         let mut vault = self.load_vault()?;
-        let active_account_id = self.read_live_auth().ok().and_then(|auth| {
-            let identity = validate_chatgpt_auth(&auth).ok()?;
-            upsert_profile(&mut vault, auth, None).ok()?;
-            Some(identity.account_id)
-        });
+        let mut vault_changed = false;
+        let active_account_id = if let Ok(auth) = self.read_live_auth() {
+            if let Ok(identity) = validate_chatgpt_auth(&auth) {
+                vault_changed |= upsert_profile(&mut vault, auth, None)?;
+                Some(identity.account_id)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         if let Some(account_id) = active_account_id.as_deref() {
-            record_activation(&mut vault, account_id, unix_timestamp());
+            vault_changed |= record_activation(&mut vault, account_id, unix_timestamp());
         }
-        self.save_vault(&vault)?;
+        if vault_changed {
+            self.save_vault(&vault)?;
+        }
         Ok((vault, active_account_id))
     }
 
@@ -896,7 +900,11 @@ fn validate_label(label: &str) -> Result<&str, ManagerError> {
     Ok(label)
 }
 
-fn upsert_profile(vault: &mut Vault, auth: Value, label: Option<&str>) -> Result<(), ManagerError> {
+fn upsert_profile(
+    vault: &mut Vault,
+    auth: Value,
+    label: Option<&str>,
+) -> Result<bool, ManagerError> {
     let identity = validate_chatgpt_auth(&auth)?;
     let now = unix_timestamp();
     if let Some(profile) = vault
@@ -904,13 +912,19 @@ fn upsert_profile(vault: &mut Vault, auth: Value, label: Option<&str>) -> Result
         .iter_mut()
         .find(|profile| profile.account_id == identity.account_id)
     {
+        let changed = label.is_some_and(|label| profile.label != label)
+            || profile.email != identity.email
+            || profile.auth != auth;
+        if !changed {
+            return Ok(false);
+        }
         if let Some(label) = label {
             profile.label = label.to_string();
         }
         profile.email = identity.email;
         profile.auth = auth;
         profile.updated_at = now;
-        return Ok(());
+        return Ok(true);
     }
 
     let default_label = identity
@@ -927,16 +941,16 @@ fn upsert_profile(vault: &mut Vault, auth: Value, label: Option<&str>) -> Result
         created_at: now,
         updated_at: now,
     });
-    Ok(())
+    Ok(true)
 }
 
-fn record_activation(vault: &mut Vault, account_id: &str, activated_at: u64) {
+fn record_activation(vault: &mut Vault, account_id: &str, activated_at: u64) -> bool {
     if vault
         .activations
         .last()
         .is_some_and(|activation| activation.account_id == account_id)
     {
-        return;
+        return false;
     }
     vault.activations.push(ActivationRecord {
         account_id: account_id.to_string(),
@@ -946,6 +960,7 @@ fn record_activation(vault: &mut Vault, account_id: &str, activated_at: u64) {
         let overflow = vault.activations.len() - MAX_ACTIVATION_RECORDS;
         vault.activations.drain(..overflow);
     }
+    true
 }
 
 fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
@@ -1059,17 +1074,7 @@ fn account_id_from_claims(claims: Option<&TokenClaims>) -> Option<String> {
         })
 }
 
-async fn query_account_quota(
-    auth: &Value,
-    account_id: &str,
-) -> Result<
-    (
-        Option<UsageWindow>,
-        Option<UsageWindow>,
-        Option<UsageResetCredits>,
-    ),
-    QuotaQueryError,
-> {
+async fn query_account_quota(auth: &Value, account_id: &str) -> QuotaQueryResult {
     let access_token = auth
         .pointer("/tokens/access_token")
         .and_then(Value::as_str)
@@ -1423,27 +1428,26 @@ fn materialize_transferred_auth(
             "一次性迁移的刷新响应缺少 access_token，未导入任何内容".to_string(),
         ));
     }
-    let id_token = match refreshed.id_token.filter(|token| !token.trim().is_empty()) {
-        Some(id_token) => {
-            let refreshed_account_id =
-                account_id_from_transferred_id_token(&id_token).map_err(|_| {
-                    ManagerError::InvalidAuth(
-                        "刷新响应中的 id_token 无效，未导入任何内容".to_string(),
-                    )
-                })?;
-            if refreshed_account_id != transferred_account_id {
-                return Err(ManagerError::InvalidAuth(
-                    "刷新后的凭据与一次性迁移账号不一致，未导入任何内容".to_string(),
-                ));
-            }
-            id_token
-        }
-        None => transferred_id_token,
-    };
-
-    if let Some(account_id) = parse_claims(&refreshed.access_token)
+    let refreshed_id_token = refreshed.id_token.filter(|token| !token.trim().is_empty());
+    let id_token_account_id = refreshed_id_token
+        .as_deref()
+        .map(account_id_from_transferred_id_token)
+        .transpose()
+        .map_err(|_| {
+            ManagerError::InvalidAuth("刷新响应中的 id_token 无效，未导入任何内容".to_string())
+        })?;
+    let access_token_account_id = parse_claims(&refreshed.access_token)
         .as_ref()
-        .and_then(|claims| account_id_from_claims(Some(claims)))
+        .and_then(|claims| account_id_from_claims(Some(claims)));
+
+    if id_token_account_id.is_none() && access_token_account_id.is_none() {
+        return Err(ManagerError::InvalidAuth(
+            "刷新响应无法识别 ChatGPT 账号 ID，未导入任何内容".to_string(),
+        ));
+    }
+    for account_id in [id_token_account_id, access_token_account_id]
+        .into_iter()
+        .flatten()
     {
         if account_id != transferred_account_id {
             return Err(ManagerError::InvalidAuth(
@@ -1451,6 +1455,7 @@ fn materialize_transferred_auth(
             ));
         }
     }
+    let id_token = refreshed_id_token.unwrap_or(transferred_id_token);
 
     let auth = serde_json::json!({
         "auth_mode": "chatgpt",
@@ -1475,6 +1480,60 @@ fn account_id_from_transferred_id_token(id_token: &str) -> Result<String, Manage
         .ok_or_else(|| {
             ManagerError::InvalidAuth("无法从一次性迁移内容中识别 ChatGPT 账号 ID".to_string())
         })
+}
+
+fn transfer_seed(imported: ImportedAuth) -> Result<TransferSeed, ManagerError> {
+    match imported {
+        ImportedAuth::RefreshSeed {
+            id_token,
+            refresh_token,
+        } => {
+            let account_id = account_id_from_transferred_id_token(&id_token)?;
+            Ok(TransferSeed {
+                label: None,
+                id_token,
+                refresh_token,
+                account_id,
+            })
+        }
+        ImportedAuth::LegacySnapshot { label, auth } => {
+            let label = validate_label(&label)?.to_string();
+            let auth = canonical_chatgpt_auth(&auth)?;
+            let identity = validate_chatgpt_auth(&auth)?;
+            let id_token = auth
+                .pointer("/tokens/id_token")
+                .and_then(Value::as_str)
+                .filter(|token| !token.trim().is_empty())
+                .ok_or_else(|| {
+                    ManagerError::InvalidAuth(
+                        "旧版迁移内容缺少 id_token，未导入任何内容".to_string(),
+                    )
+                })?
+                .to_string();
+            let account_id = account_id_from_transferred_id_token(&id_token)?;
+            if account_id != identity.account_id {
+                return Err(ManagerError::InvalidAuth(
+                    "旧版迁移内容中的账号身份不一致，未导入任何内容".to_string(),
+                ));
+            }
+            let refresh_token = auth
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str)
+                .filter(|token| !token.trim().is_empty())
+                .ok_or_else(|| {
+                    ManagerError::InvalidAuth(
+                        "旧版迁移内容缺少 refresh_token，未导入任何内容".to_string(),
+                    )
+                })?
+                .to_string();
+            Ok(TransferSeed {
+                label: Some(label),
+                id_token,
+                refresh_token,
+                account_id,
+            })
+        }
+    }
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(
@@ -1702,7 +1761,20 @@ mod tests {
             .write_live_auth(&auth("account-b", "b@example.com", "refresh-b"))
             .unwrap();
         target.save_current("工作账号").unwrap();
-        let status = tauri::async_runtime::block_on(target.import_auth_share_text(&share)).unwrap();
+        let seed = transfer_seed(auth_share::decode_text(&share).unwrap()).unwrap();
+        let imported_auth = materialize_transferred_auth(
+            seed.id_token,
+            seed.account_id,
+            OAuthTokenResponse {
+                access_token: fake_jwt("account-a", "a@example.com"),
+                refresh_token: Some("refresh-a-rotated".to_string()),
+                id_token: None,
+            },
+        )
+        .unwrap();
+        let status = target
+            .import_materialized_auth(imported_auth, seed.label.as_deref())
+            .unwrap();
 
         assert_eq!(status.active_account_id.as_deref(), Some("account-a"));
         assert_eq!(status.accounts.len(), 2);
@@ -1712,7 +1784,7 @@ mod tests {
                 .unwrap()
                 .pointer("/tokens/refresh_token")
                 .and_then(Value::as_str),
-            Some("refresh-a")
+            Some("refresh-a-rotated")
         );
     }
 
@@ -1730,7 +1802,20 @@ mod tests {
             .write_live_auth(&auth("account-a", "a@example.com", "refresh-from-target"))
             .unwrap();
         target.save_current("本地名称").unwrap();
-        let status = tauri::async_runtime::block_on(target.import_auth_share_text(&share)).unwrap();
+        let seed = transfer_seed(auth_share::decode_text(&share).unwrap()).unwrap();
+        let imported_auth = materialize_transferred_auth(
+            seed.id_token,
+            seed.account_id,
+            OAuthTokenResponse {
+                access_token: fake_jwt("account-a", "a@example.com"),
+                refresh_token: Some("refresh-from-source-rotated".to_string()),
+                id_token: None,
+            },
+        )
+        .unwrap();
+        let status = target
+            .import_materialized_auth(imported_auth, seed.label.as_deref())
+            .unwrap();
 
         assert_eq!(status.accounts[0].label, "本地名称");
         assert_eq!(
@@ -1739,7 +1824,7 @@ mod tests {
                 .unwrap()
                 .pointer("/tokens/refresh_token")
                 .and_then(Value::as_str),
-            Some("refresh-from-source")
+            Some("refresh-from-source-rotated")
         );
     }
 
@@ -1958,6 +2043,38 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_transfer_when_refreshed_identity_cannot_be_verified() {
+        let error = materialize_transferred_auth(
+            fake_jwt("account-a", "a@example.com"),
+            "account-a".to_string(),
+            OAuthTokenResponse {
+                access_token: "opaque-access-token".to_string(),
+                refresh_token: Some("refresh-a-rotated".to_string()),
+                id_token: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("无法识别 ChatGPT 账号 ID"));
+    }
+
+    #[test]
+    fn rejects_a_legacy_transfer_with_mismatched_account_identity() {
+        let mut legacy_auth = auth("account-a", "a@example.com", "refresh-a");
+        legacy_auth["tokens"]["account_id"] = Value::String("account-b".to_string());
+
+        let error = transfer_seed(ImportedAuth::LegacySnapshot {
+            label: "个人账号".to_string(),
+            auth: legacy_auth,
+        })
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("账号身份不一致"));
+    }
+
+    #[test]
     fn cas3_import_uses_the_account_email_as_the_default_label() {
         let (_root, manager) = test_manager();
         let status = manager
@@ -1968,11 +2085,22 @@ mod tests {
     }
 
     #[test]
+    fn unchanged_profile_is_not_marked_for_persistence() {
+        let mut vault = Vault::default();
+        let account_auth = auth("account-a", "a@example.com", "refresh-a");
+
+        assert!(upsert_profile(&mut vault, account_auth.clone(), Some("个人账号")).unwrap());
+        let updated_at = vault.profiles[0].updated_at;
+        assert!(!upsert_profile(&mut vault, account_auth, None).unwrap());
+        assert_eq!(vault.profiles[0].updated_at, updated_at);
+    }
+
+    #[test]
     fn records_only_real_account_switches() {
         let mut vault = Vault::default();
-        record_activation(&mut vault, "account-a", 10);
-        record_activation(&mut vault, "account-a", 20);
-        record_activation(&mut vault, "account-b", 30);
+        assert!(record_activation(&mut vault, "account-a", 10));
+        assert!(!record_activation(&mut vault, "account-a", 20));
+        assert!(record_activation(&mut vault, "account-b", 30));
 
         assert_eq!(vault.activations.len(), 2);
         assert_eq!(vault.activations[0].activated_at, 10);

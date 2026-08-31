@@ -3,7 +3,6 @@ import { useCallback, useLayoutEffect, useState } from "react";
 export type Locale = "zh-CN" | "en";
 
 const zhCN = {
-  language: "语言",
   chinese: "中文",
   english: "English",
   light: "亮色",
@@ -113,10 +112,7 @@ const zhCN = {
     "可以保存现有 Codex 登录，也可以通过浏览器授权添加新账号。",
   codexDirectory: "Codex 目录",
   localVaultPath: "本地账号库",
-  revealVaultAria: "在文件管理器中打开本地账号库目录",
-  revealVaultTitle: "在文件管理器中显示账号库文件",
   revealVaultFailed: "无法打开本地账号库目录：{message}",
-  openDirectory: "打开目录",
   openCodexDirectory: "打开 Codex 目录",
   openVaultDirectory: "打开账号库目录",
   openCodexDirectoryFailed: "无法打开 Codex 目录：{message}",
@@ -238,11 +234,9 @@ const zhCN = {
   daysWindow: "{count} 天窗口",
   minutesWindow: "{count} 分钟窗口",
   resetUnknown: "重置时间未知",
-  resetsAt: "重置于 {date}",
   availableResetCredits: "可用完整重置",
   resetCreditCount: "{count} 次",
   resetCreditExpiresAt: "最早于 {date} 过期",
-  resetCreditExpiryUnknown: "过期时间未知",
   quotaUsed: "{window}已使用",
   localUsage30Days: "近 30 天本机归属用量",
   noLocalUsage: "暂无本机归属用量",
@@ -273,9 +267,6 @@ const zhCN = {
   accountAttribution: "账号归属",
   accountAttributionHint: "根据本机记录的账号切换时间归属近 30 天 Token",
   usageShare: "占 {percent}%",
-  accountUsageAndQuota: "账号归属与额度",
-  accountUsageHint:
-    "数字为近 30 天本机归属 Token，下方百分比为订阅窗口已用额度",
   unassignedHistory: "历史未归属 {tokens}",
   saveForQuota: "保存账号后即可查看订阅窗口。",
   usagePrivacy:
@@ -283,6 +274,15 @@ const zhCN = {
   quotaOverview: "额度总览",
   quotaTitle: "订阅额度",
   quotaDescription: "比较已保存账号的额度窗口、恢复时间与完整重置有效期。",
+  quotaSceneAria:
+    "额度补给路线：当前账号 {account}，最高窗口已用 {percent}，{recovery}恢复，可用完整重置 {credits} 次。",
+  quotaSceneCurrent: "当前账号",
+  quotaSceneWindow: "额度槽",
+  quotaSceneRecovery: "最近恢复",
+  quotaSceneCredits: "完整重置",
+  quotaSceneNoAccount: "暂无可用账号",
+  quotaScenePatrolling: "猫咪正在巡检额度",
+  quotaSceneReady: "额度补给路线",
   queryingQuota: "查询中…",
   refreshQuota: "刷新额度",
   quotaLoading: "正在查询账号订阅额度…",
@@ -322,7 +322,6 @@ type MessageKey = keyof typeof zhCN;
 type Messages = Record<MessageKey, string>;
 
 const en: Messages = {
-  language: "Language",
   chinese: "中文",
   english: "English",
   light: "Light",
@@ -442,11 +441,8 @@ const en: Messages = {
     "Save the current Codex login or add an account through browser authorization.",
   codexDirectory: "Codex directory",
   localVaultPath: "Local account vault",
-  revealVaultAria: "Open the local account vault directory in the file manager",
-  revealVaultTitle: "Reveal the account vault file in the file manager",
   revealVaultFailed:
     "Could not open the local account vault directory: {message}",
-  openDirectory: "Open folder",
   openCodexDirectory: "Open Codex folder",
   openVaultDirectory: "Open vault folder",
   openCodexDirectoryFailed: "Could not open the Codex directory: {message}",
@@ -572,11 +568,9 @@ const en: Messages = {
   daysWindow: "{count}-day window",
   minutesWindow: "{count}-minute window",
   resetUnknown: "Reset time unavailable",
-  resetsAt: "Resets {date}",
   availableResetCredits: "Full resets available",
   resetCreditCount: "{count}",
   resetCreditExpiresAt: "Earliest expiry {date}",
-  resetCreditExpiryUnknown: "Expiry unavailable",
   quotaUsed: "{window} used",
   localUsage30Days: "Attributed local usage, last 30 days",
   noLocalUsage: "No attributed local usage",
@@ -612,9 +606,6 @@ const en: Messages = {
   accountAttributionHint:
     "Last 30 days of Tokens attributed from locally recorded account switches",
   usageShare: "{percent}% share",
-  accountUsageAndQuota: "Account attribution and quotas",
-  accountUsageHint:
-    "Numbers are locally attributed tokens from the last 30 days; percentages show subscription quota used",
   unassignedHistory: "Unassigned history {tokens}",
   saveForQuota: "Save an account to view its subscription windows.",
   usagePrivacy:
@@ -623,6 +614,15 @@ const en: Messages = {
   quotaTitle: "Subscription quotas",
   quotaDescription:
     "Compare saved accounts by quota windows, recovery times, and full-reset expiry.",
+  quotaSceneAria:
+    "Quota supply route: current account {account}, highest window {percent} used, recovery {recovery}, and {credits} full resets available.",
+  quotaSceneCurrent: "Current account",
+  quotaSceneWindow: "Quota gauge",
+  quotaSceneRecovery: "Next recovery",
+  quotaSceneCredits: "Full resets",
+  quotaSceneNoAccount: "No available account",
+  quotaScenePatrolling: "Checking account quotas",
+  quotaSceneReady: "Quota supply route",
   queryingQuota: "Querying…",
   refreshQuota: "Refresh quotas",
   quotaLoading: "Querying subscription quotas for saved accounts…",
@@ -761,6 +761,14 @@ const backendErrorTranslations: Record<string, string> = {
     "The refreshed credentials do not match the transferred account. Nothing was imported.",
   "刷新响应中的 id_token 无效，未导入任何内容":
     "The refresh response contains an invalid id_token. Nothing was imported.",
+  "刷新响应无法识别 ChatGPT 账号 ID，未导入任何内容":
+    "The refresh response does not identify a ChatGPT account. Nothing was imported.",
+  "旧版迁移内容缺少 id_token，未导入任何内容":
+    "The legacy transfer is missing id_token. Nothing was imported.",
+  "旧版迁移内容缺少 refresh_token，未导入任何内容":
+    "The legacy transfer is missing refresh_token. Nothing was imported.",
+  "旧版迁移内容中的账号身份不一致，未导入任何内容":
+    "The legacy transfer contains mismatched account identities. Nothing was imported.",
   请求超时: "The request timed out",
   无法连接登录服务: "Could not connect to the login service",
   网络请求失败: "The network request failed",

@@ -1,6 +1,7 @@
 import { AccountQuota, UsageWindow } from "./api";
 import { Locale, localizeBackendError, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
+import { QuotaScene } from "./QuotaScene";
 
 type QuotaPanelProps = {
   activeAccountId: string | null;
@@ -239,6 +240,25 @@ export function QuotaPanel({
     )[0];
   const nextReset = events.find((event) => event.kind === "reset");
   const nextExpiry = events.find((event) => event.kind === "expiry");
+  const activeQuota = successful.find(
+    (quota) => quota.accountId === activeAccountId,
+  );
+  const sceneQuota = activeQuota ?? bestQuota;
+  const sceneUtilization = sceneQuota ? quotaUtilization(sceneQuota) : null;
+  const sceneLevel =
+    sceneUtilization === null
+      ? "unknown"
+      : sceneUtilization >= 90
+        ? "tight"
+        : sceneUtilization >= 70
+          ? "attention"
+          : "healthy";
+  const sceneAccountLabel = sceneQuota
+    ? displayLabel(sceneQuota.label)
+    : t("quotaSceneNoAccount");
+  const sceneRecoveryLabel = nextReset
+    ? formatRelative(nextReset.at, locale)
+    : t("noneSoon");
   const sortedQuotas = [...(quotas ?? [])].sort((left, right) => {
     if (left.accountId === activeAccountId) return -1;
     if (right.accountId === activeAccountId) return 1;
@@ -280,6 +300,16 @@ export function QuotaPanel({
         </div>
       ) : quotas.length ? (
         <div className="quota-loaded-content">
+          <QuotaScene
+            accountLabel={sceneAccountLabel}
+            credits={totalCredits}
+            level={sceneLevel}
+            loading={loading}
+            recoveryLabel={sceneRecoveryLabel}
+            t={t}
+            utilization={sceneUtilization}
+          />
+
           <div className="quota-summary-grid">
             <QuotaSummary
               label={t("queryableAccounts")}
@@ -429,10 +459,18 @@ export function QuotaPanel({
                 <ol className="quota-timeline">
                   {events.slice(0, 8).map((event, index) => (
                     <li
-                      className={event.kind}
+                      className={`${event.kind}${index === 0 ? " is-next" : ""}`}
                       key={`${event.accountId}-${event.kind}-${event.at}-${index}`}
                     >
                       <i aria-hidden="true" />
+                      {index === 0 && (
+                        <span className="quota-timeline-paw" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                          <b />
+                        </span>
+                      )}
                       <div>
                         <time
                           dateTime={new Date(event.at * 1000).toISOString()}

@@ -8,10 +8,9 @@ import {
   getAppVersion,
   installAppUpdate,
 } from "./api";
+import type { AppTab } from "./appTypes";
 import { Locale, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
-
-export type AppTab = "accounts" | "usage" | "quota" | "settings";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
 
@@ -147,6 +146,7 @@ export function SettingsPanel({
     if (!("__TAURI_INTERNALS__" in window)) return;
 
     let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
     void listen("app-update-event", (event) => {
       const payload = event.payload as
         | { event: "started"; data: { contentLength: number | null } }
@@ -166,10 +166,19 @@ export function SettingsPanel({
             : current,
         );
       }
-    }).then((stopListening) => {
-      unlisten = stopListening;
-    });
-    return () => unlisten?.();
+    })
+      .then((stopListening) => {
+        if (cancelled) {
+          stopListening();
+        } else {
+          unlisten = stopListening;
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   const installUpdate = useCallback(async () => {
