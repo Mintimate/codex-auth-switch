@@ -291,8 +291,9 @@ const zhCN = {
   noLocalUsage: "暂无本机归属用量",
   noQuotaWindows: "当前账号没有返回可展示的额度窗口。",
   quotaQueryFailed: "额度查询失败",
-  usageTitle: "本机 Token 用量",
-  usageDescription: "从本机会话元数据汇总使用趋势，不访问在线订阅额度。",
+  usageTitle: "Token 用量",
+  usageDescription:
+    "本机会话 Token 汇总，可按模型提供方查看请求分布，不代表订阅或 API 账单。",
   calculating: "统计中…",
   refreshUsage: "刷新用量",
   retry: "重试",
@@ -315,11 +316,24 @@ const zhCN = {
   reasoningOutput: "推理输出",
   accountAttribution: "账号归属",
   accountAttributionHint: "根据本机记录的账号切换时间归属近 30 天 Token",
+  modelProviderAttribution: "按模型提供方",
+  modelProviderAttributionHint:
+    "按每个会话记录的 model_provider 拆分近 30 天 Token",
+  modelProviderOpenai: "OpenAI 默认提供方",
+  modelProviderUnattributed: "未识别提供方",
+  modelProviderPrivate: "第三方提供方 {index}",
+  modelProviderQuotaConfirmed: "已确认计入 ChatGPT 订阅额度",
+  modelProviderQuotaExcluded: "已确认不计入 ChatGPT 订阅额度",
+  modelProviderQuotaUnknown: "无法从本机会话判断认证或计费方式",
+  modelProviderUnattributedHint: "会话中没有可用的 model_provider",
+  modelProviderCurrent: "当前 model_provider：{provider}",
+  modelProviderHint:
+    "model_provider 只表示请求使用的模型提供方，不能证明使用 ChatGPT 订阅或 API Key。普通模式仅显示服务主机，不保存 API Key 或完整地址。",
   usageShare: "占 {percent}%",
   unassignedHistory: "历史未归属 {tokens}",
   saveForQuota: "保存账号后即可查看订阅窗口。",
   usagePrivacy:
-    "只提取会话中的 token_count 元数据，不解析提示词或回复正文。Token 数字不是订阅总额度；账号归属从本版本记录切换历史后开始生效。",
+    "只提取会话中的 token_count 与 session_meta.model_provider 字段，不保留或传递提示词、回复正文及其他会话内容。Token 数字不是订阅总额度；账号归属从本版本记录切换历史后开始生效。",
   quotaOverview: "额度总览",
   quotaTitle: "订阅额度",
   quotaDescription: "比较已保存账号的额度窗口、恢复时间与完整重置有效期。",
@@ -690,9 +704,9 @@ const en: Messages = {
   noQuotaWindows:
     "No displayable quota windows were returned for this account.",
   quotaQueryFailed: "Quota query failed",
-  usageTitle: "Local Token usage",
+  usageTitle: "Token usage",
   usageDescription:
-    "Summarized from local session metadata without querying online subscription quotas.",
+    "Local session Tokens grouped by model provider, not a subscription or API bill.",
   calculating: "Calculating…",
   refreshUsage: "Refresh usage",
   retry: "Retry",
@@ -718,11 +732,26 @@ const en: Messages = {
   accountAttribution: "Account attribution",
   accountAttributionHint:
     "Last 30 days of Tokens attributed from locally recorded account switches",
+  modelProviderAttribution: "By model provider",
+  modelProviderAttributionHint:
+    "Last 30 days of Tokens split by the model_provider recorded in each session",
+  modelProviderOpenai: "OpenAI default provider",
+  modelProviderUnattributed: "Unidentified provider",
+  modelProviderPrivate: "Third-party provider {index}",
+  modelProviderQuotaConfirmed: "Confirmed to count toward ChatGPT quota",
+  modelProviderQuotaExcluded: "Confirmed not to count toward ChatGPT quota",
+  modelProviderQuotaUnknown:
+    "Authentication and billing cannot be determined from local sessions",
+  modelProviderUnattributedHint:
+    "No usable model_provider was recorded in this session",
+  modelProviderCurrent: "Current model_provider: {provider}",
+  modelProviderHint:
+    "model_provider identifies the model provider used for a request; it does not prove ChatGPT subscription or API Key billing. Normal mode shows only the service host and never stores API keys or full addresses.",
   usageShare: "{percent}% share",
   unassignedHistory: "Unassigned history {tokens}",
   saveForQuota: "Save an account to view its subscription windows.",
   usagePrivacy:
-    "Only token_count metadata is extracted from sessions; prompts and responses are never parsed. Token counts are not total subscription quotas. Account attribution starts after this version records switching history.",
+    "Only token_count and session_meta.model_provider fields are extracted from sessions. Prompts, responses, and other session content are not retained or sent to the interface. Token counts are not subscription quotas; account attribution starts after this version records switching history.",
   quotaOverview: "Quota overview",
   quotaTitle: "Subscription quotas",
   quotaDescription:

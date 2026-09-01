@@ -1,6 +1,9 @@
 use crate::{
     auth_share::{self, ImportedAuth},
-    usage::{scan_local_usage, AccountLabel, ActivationRecord, LocalUsageStats},
+    usage::{
+        provider_label, scan_local_usage, AccountLabel, ActivationRecord, LocalUsageStats,
+        ModelProviderKind, ModelProviderOption, ModelProviderState, ProviderCatalog,
+    },
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
@@ -245,6 +248,19 @@ struct Vault {
     profiles: Vec<ProfileRecord>,
     #[serde(default)]
     activations: Vec<ActivationRecord>,
+    // 早期版本记录过计费来源时间线，现已改为按会话读 model_provider。
+    // 保留字段以免旧账号库反序列化失败，但不再读写。
+    #[allow(dead_code)]
+    #[serde(default, skip_serializing)]
+    legacy_sources: Vec<LegacySourceRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LegacySourceRecord {
+    #[serde(default)]
+    source_id: String,
+    #[serde(default)]
+    marked_at: u64,
 }
 
 impl Default for Vault {
@@ -253,6 +269,7 @@ impl Default for Vault {
             version: VAULT_VERSION,
             profiles: Vec::new(),
             activations: Vec::new(),
+            legacy_sources: Vec::new(),
         }
     }
 }
@@ -799,8 +816,9 @@ impl AccountManager {
         // 否则会话文件多时会把 tokio 的 worker 全部占满。
         let codex_home = self.codex_home.clone();
         let activations = vault.activations.clone();
+        let catalog = self.provider_catalog();
         tauri::async_runtime::spawn_blocking(move || {
-            scan_local_usage(&codex_home, &activations, &accounts)
+            scan_local_usage(&codex_home, &activations, &accounts, &catalog)
         })
         .await
         .map_err(|error| ManagerError::Io(format!("读取本地会话用量失败: {error}")))
@@ -865,6 +883,33 @@ impl AccountManager {
         } else {
             Err(ManagerError::UnsupportedStorage(mode))
         }
+    }
+
+    // 每个会话文件自带 model_provider；这里只回显当前配置与已登记提供方。
+    pub fn model_provider_state(&self) -> Result<ModelProviderState, ManagerError> {
+        self.ensure_file_storage()?;
+        let catalog = self.provider_catalog();
+        let active_provider = read_model_provider(&self.config_path());
+        let active_id = match active_provider.as_deref() {
+            Some(provider) => catalog.usage_id(provider),
+            None => ModelProviderKind::Unattributed.provider_id().to_string(),
+        };
+        Ok(ModelProviderState {
+            active_provider,
+            active_id,
+            providers: provider_options(&catalog),
+        })
+    }
+
+    fn provider_catalog(&self) -> ProviderCatalog {
+        let contents = fs::read_to_string(self.config_path()).unwrap_or_default();
+        if contents.trim().is_empty() {
+            return ProviderCatalog::default();
+        }
+        contents
+            .parse::<toml::Table>()
+            .map(|config| ProviderCatalog::from_config(&config))
+            .unwrap_or_default()
     }
 
     fn read_live_auth(&self) -> Result<Value, ManagerError> {
@@ -971,6 +1016,38 @@ fn record_activation(vault: &mut Vault, account_id: &str, activated_at: u64) -> 
     true
 }
 
+// OpenAI 默认提供方固定占一项，其余按 config 中登记的 provider 逐个列出。
+fn provider_options(catalog: &ProviderCatalog) -> Vec<ModelProviderOption> {
+    let mut options = vec![ModelProviderOption {
+        id: ModelProviderKind::Openai.provider_id().to_string(),
+        label: provider_label(ModelProviderKind::Openai).to_string(),
+        kind: ModelProviderKind::Openai,
+    }];
+    options.extend(
+        catalog
+            .known_providers()
+            .into_iter()
+            .map(|(id, label)| ModelProviderOption {
+                id: catalog.usage_id(&id),
+                label,
+                kind: ModelProviderKind::ThirdParty,
+            }),
+    );
+    options
+}
+
+fn read_model_provider(config_path: &Path) -> Option<String> {
+    let contents = fs::read_to_string(config_path).ok()?;
+    if contents.trim().is_empty() {
+        return None;
+    }
+    contents
+        .parse::<toml::Table>()
+        .ok()?
+        .get("model_provider")
+        .and_then(toml::Value::as_str)
+        .map(|value| value.to_string())
+}
 pub(crate) fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
     if auth.get("auth_mode").and_then(Value::as_str) != Some("chatgpt") {
         return Err(ManagerError::InvalidAuth(
@@ -2191,5 +2268,65 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    fn write_config(manager: &AccountManager, contents: &str) {
+        fs::create_dir_all(manager.codex_home_path()).unwrap();
+        fs::write(manager.config_path(), contents).unwrap();
+    }
+
+    // OpenAI 默认提供方的 id 就是 openai，第三方按 provider id 单独成桶。
+    #[test]
+    fn openai_provider_maps_to_default_provider() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "cli_auth_credentials_store = \"file\"\nmodel_provider = \"openai\"\n",
+        );
+
+        let state = manager.model_provider_state().unwrap();
+        assert_eq!(state.active_id, "openai");
+        assert_eq!(state.active_provider.as_deref(), Some("openai"));
+    }
+
+    // 第三方 provider 必须能分辨彼此，不能压成一个「第三方」桶。
+    #[test]
+    fn third_party_providers_get_distinct_usage_ids() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "cli_auth_credentials_store = \"file\"\nmodel_provider = \"custom\"\n\
+             [model_providers.custom]\nname = \"Local Relay\"\nbase_url = \"https://relay.example.com/v1\"\n\
+             [model_providers.relay]\nname = \"Relay\"\n",
+        );
+
+        let state = manager.model_provider_state().unwrap();
+        assert_eq!(state.active_id, "provider:custom");
+        let labels = state
+            .providers
+            .iter()
+            .map(|provider| (provider.id.as_str(), provider.label.as_str()))
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&("provider:custom", "Local Relay")));
+        assert!(labels.contains(&("provider:relay", "Relay")));
+    }
+
+    // 没有登记 name 时退化为 provider id，避免界面出现空白标签。
+    #[test]
+    fn unnamed_provider_falls_back_to_id() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "cli_auth_credentials_store = \"file\"\nmodel_provider = \"custom\"\n\
+             [model_providers.custom]\nbase_url = \"http://127.0.0.1:8080/v1\"\n",
+        );
+
+        let state = manager.model_provider_state().unwrap();
+        let custom = state
+            .providers
+            .iter()
+            .find(|provider| provider.id == "provider:custom")
+            .expect("custom provider");
+        assert_eq!(custom.label, "custom");
     }
 }

@@ -9,7 +9,7 @@ use manager::{AccountManager, AccountQuota, AppStatus, DeviceLoginResponse};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
-use usage::LocalUsageStats;
+use usage::{LocalUsageStats, ModelProviderState};
 
 struct AppState {
     operation_gate: Mutex<()>,
@@ -81,6 +81,17 @@ async fn get_account_quotas(
     account_manager(&app)?
         .account_quotas()
         .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_model_provider_state(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ModelProviderState, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .model_provider_state()
         .map_err(|error| error.to_string())
 }
 
@@ -273,6 +284,7 @@ pub fn run() {
             get_local_usage,
             get_account_quotas,
             get_usage_overview,
+            get_model_provider_state,
             save_current,
             start_device_login,
             poll_device_login,

@@ -1705,6 +1705,33 @@ button:disabled {
   background: var(--accent);
 }
 
+.local-attribution-row.provider-thirdParty .local-attribution-track i {
+  background: var(--warning-border);
+}
+
+.local-attribution-row.provider-unattributed .local-attribution-track i {
+  background: var(--muted-soft);
+}
+
+.model-provider-host {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted-soft);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-provider-note {
+  display: block;
+  margin: 8px 2px 0;
+  color: var(--muted-soft);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .quota-supply-scene {
   position: relative;
   min-width: 0;

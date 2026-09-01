@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppStatus,
   AccountQuota,
+  ModelProviderState,
   copyAuthTransfer,
   getAccountQuotas,
   getLocalUsage,
+  getModelProviderState,
   prepareAuthTransfer,
   getStatus,
   importAuthFromClipboard,
@@ -105,6 +107,9 @@ function App() {
   const [usage, setUsage] = useState<LocalUsageStats | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
+  const [modelProvider, setModelProvider] = useState<ModelProviderState | null>(
+    null,
+  );
   const [quotas, setQuotas] = useState<AccountQuota[] | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [quotaError, setQuotaError] = useState<string | null>(null);
@@ -113,7 +118,12 @@ function App() {
     setUsageLoading(true);
     setUsageError(null);
     try {
-      setUsage(await getLocalUsage());
+      const [nextUsage, nextProvider] = await Promise.all([
+        getLocalUsage(),
+        getModelProviderState(),
+      ]);
+      setUsage(nextUsage);
+      setModelProvider(nextProvider);
     } catch (reason) {
       setUsageError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -526,6 +536,7 @@ function App() {
                     onRefresh={() => void refreshUsage()}
                     privateMode={privateMode}
                     t={t}
+                    modelProvider={modelProvider}
                   />
                 ) : null}
               </div>

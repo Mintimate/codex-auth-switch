@@ -1,4 +1,4 @@
-import { LocalUsageStats, TokenBreakdown } from "./api";
+import { LocalUsageStats, ModelProviderState, TokenBreakdown } from "./api";
 import { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
 
@@ -10,6 +10,7 @@ type UsagePanelProps = {
   onRefresh: () => void;
   privateMode: boolean;
   t: Translate;
+  modelProvider: ModelProviderState | null;
 };
 
 const SKELETON_TREND_BARS = Array.from({ length: 14 });
@@ -111,6 +112,7 @@ export function UsagePanel({
   onRefresh,
   privateMode,
   t,
+  modelProvider,
 }: UsagePanelProps) {
   const compactNumber = new Intl.NumberFormat(locale, {
     notation: "compact",
@@ -236,6 +238,90 @@ export function UsagePanel({
               </article>
             )}
           </div>
+
+          <div className="local-attribution-heading">
+            <div>
+              <strong>{t("modelProviderAttribution")}</strong>
+              <span>{t("modelProviderAttributionHint")}</span>
+            </div>
+            {!privateMode && modelProvider?.activeProvider && (
+              <small>
+                {t("modelProviderCurrent", {
+                  provider: modelProvider.activeProvider,
+                })}
+              </small>
+            )}
+          </div>
+          {usage.byProvider && usage.byProvider.length ? (
+            <div className="local-attribution-list">
+              {usage.byProvider.map((provider, index) => {
+                const share =
+                  usage.thirtyDays.totalTokens > 0
+                    ? (provider.tokens.totalTokens /
+                        usage.thirtyDays.totalTokens) *
+                      100
+                    : 0;
+                const privateProviderIndex = usage
+                  .byProvider!.slice(0, index + 1)
+                  .filter((item) => item.kind === "thirdParty").length;
+                const label =
+                  privateMode && provider.kind === "thirdParty"
+                    ? t("modelProviderPrivate", {
+                        index: privateProviderIndex,
+                      })
+                    : provider.kind === "openai"
+                      ? t("modelProviderOpenai")
+                      : provider.kind === "unattributed"
+                        ? t("modelProviderUnattributed")
+                        : provider.label;
+                const quotaHint =
+                  provider.quotaRelation === "confirmed"
+                    ? t("modelProviderQuotaConfirmed")
+                    : provider.quotaRelation === "excluded"
+                      ? t("modelProviderQuotaExcluded")
+                      : provider.kind === "unattributed"
+                        ? t("modelProviderUnattributedHint")
+                        : t("modelProviderQuotaUnknown");
+                return (
+                  <article
+                    className={`local-attribution-row provider-${provider.kind}`}
+                    key={provider.id}
+                  >
+                    <div>
+                      <strong>{label}</strong>
+                      <span>{quotaHint}</span>
+                      {!privateMode && provider.host && (
+                        <small className="model-provider-host">
+                          {provider.host}
+                        </small>
+                      )}
+                    </div>
+                    <div className="local-attribution-value">
+                      <b
+                        title={`${fullNumber.format(provider.tokens.totalTokens)} tokens`}
+                      >
+                        {compactNumber.format(provider.tokens.totalTokens)}
+                      </b>
+                      <small>
+                        {t("usageShare", { percent: Math.round(share) })}
+                      </small>
+                    </div>
+                    <span
+                      className="local-attribution-track"
+                      aria-hidden="true"
+                    >
+                      <i style={{ width: `${Math.min(100, share)}%` }} />
+                    </span>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="quota-empty standalone">{t("noLocalUsage")}</div>
+          )}
+          <small className="model-provider-note">
+            {t("modelProviderHint")}
+          </small>
 
           <div className="local-attribution-heading">
             <div>

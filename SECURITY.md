@@ -17,7 +17,7 @@ When reporting a bug:
 
 The application is local-only and has no telemetry or project-operated backend. During sign-in it communicates directly with `auth.openai.com`. When the user opens or refreshes usage statistics, it sends each saved account's access token and account ID directly to `chatgpt.com` to query that account's quota window. Credentials are never sent to a project-operated service and are written only to local storage.
 
-Local token statistics are calculated by extracting only `token_count` event metadata from Codex JSONL session files. Lines without `token_count` are discarded before JSON parsing; prompt text, model responses, and other session content are not parsed. Only aggregated token counts cross the Rust-to-frontend boundary.
+Local token statistics extract only `token_count` fields and `session_meta.model_provider` from Codex JSONL session files. Deserialization uses narrow structures that discard all other fields; prompts, model responses, base instructions, and other session content are neither retained nor sent to the frontend. Only aggregated token counts and model-provider labels cross the Rust-to-frontend boundary.
 
 File permissions reduce accidental disclosure but do not protect credentials from another process running as the same user or from an administrator with access to the device.
 

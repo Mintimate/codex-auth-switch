@@ -96,7 +96,19 @@ export type LocalUsageStats = {
   today: TokenBreakdown;
   sevenDays: TokenBreakdown;
   thirtyDays: TokenBreakdown;
-  daily: { date: string; tokens: TokenBreakdown }[];
+  daily: {
+    date: string;
+    tokens: TokenBreakdown;
+    byProvider?: { id: string; totalTokens: number }[];
+  }[];
+  byProvider?: {
+    id: string;
+    label: string;
+    kind: ModelProviderKind;
+    host?: string | null;
+    quotaRelation: QuotaRelation;
+    tokens: TokenBreakdown;
+  }[];
   byAccount: {
     accountId: string;
     label: string;
@@ -106,6 +118,21 @@ export type LocalUsageStats = {
   filesScanned: number;
   eventsCount: number;
   generatedAt: number;
+};
+
+export type ModelProviderKind = "openai" | "thirdParty" | "unattributed";
+export type QuotaRelation = "confirmed" | "excluded" | "unknown";
+
+export type ModelProviderOption = {
+  id: string;
+  label: string;
+  kind: ModelProviderKind;
+};
+
+export type ModelProviderState = {
+  activeProvider: string | null;
+  activeId: string;
+  providers: ModelProviderOption[];
 };
 
 type UsageOverview = {
@@ -226,9 +253,31 @@ const previewLocalUsage: LocalUsageStats = {
     date.setDate(date.getDate() - (previewDailyTotals.length - index - 1));
     return {
       date: date.toISOString().slice(0, 10),
+      byProvider: [
+        { id: "openai", totalTokens: Math.round(total * 0.18) },
+        { id: "provider:custom", totalTokens: Math.round(total * 0.82) },
+      ],
       tokens: tokens(total),
     };
   }),
+  byProvider: [
+    {
+      id: "openai",
+      label: "OpenAI 默认提供方",
+      kind: "openai",
+      host: null,
+      quotaRelation: "unknown",
+      tokens: tokens(331_600),
+    },
+    {
+      id: "provider:custom",
+      label: "本地模型代理",
+      kind: "thirdParty",
+      host: "relay.example.com",
+      quotaRelation: "unknown",
+      tokens: tokens(1_510_760),
+    },
+  ],
   byAccount: [
     {
       accountId: "account-personal-8f2a",
@@ -245,6 +294,19 @@ const previewLocalUsage: LocalUsageStats = {
   filesScanned: 18,
   eventsCount: 146,
   generatedAt: Math.floor(Date.now() / 1000),
+};
+
+const previewModelProviderState: ModelProviderState = {
+  activeProvider: "custom",
+  activeId: "provider:custom",
+  providers: [
+    { id: "openai", label: "OpenAI 默认提供方", kind: "openai" },
+    {
+      id: "provider:custom",
+      label: "本地模型代理",
+      kind: "thirdParty",
+    },
+  ],
 };
 
 const previewDiagnostics: LocalDiagnostics = {
@@ -291,6 +353,9 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     }
     if (command === "get_local_usage") {
       return Promise.resolve(structuredClone(previewLocalUsage) as T);
+    }
+    if (command === "get_model_provider_state") {
+      return Promise.resolve(structuredClone(previewModelProviderState) as T);
     }
     if (command === "get_account_quotas") {
       return Promise.resolve(structuredClone(previewQuotas) as T);
@@ -356,6 +421,15 @@ export const getLocalUsage = async () => {
   } catch (error) {
     if (!isMissingCommand(error, "get_local_usage")) throw error;
     return (await getLegacyUsageOverview()).local;
+  }
+};
+
+export const getModelProviderState = async () => {
+  try {
+    return await call<ModelProviderState>("get_model_provider_state");
+  } catch (error) {
+    if (!isMissingCommand(error, "get_model_provider_state")) throw error;
+    return null;
   }
 };
 

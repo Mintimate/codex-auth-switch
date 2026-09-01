@@ -92,12 +92,14 @@ cli_auth_credentials_store = "file"
 ### 用量与额度
 
 - 汇总今天、近 7 天和近 30 天的本机 Token 用量
-- 展示 14 天趋势、输入/输出 Token 构成和账号归属
+- 展示 14 天趋势、输入/输出 Token 构成、账号归属与模型提供方拆分
+- 按每个会话记录的 `model_provider` 拆分本地 Token，OpenAI 默认提供方与各个自定义提供方分开统计
+- 从 `config.toml` 的 `[model_providers.*]` 读取服务显示名，界面只展示服务主机，不保存 API Key 或完整地址
 - 独立的“订阅额度”页面按账号展示额度状态、窗口恢复时间轴、可用完整重置次数与最早过期时间
 - “额度补给路线”通过猫咪巡检动效概览查询成功率、最充足账号、最近恢复与完整重置
 - 本机 Token 与在线订阅额度使用不同查询命令，打开 Token 页面不会访问在线额度接口
 - 单个账号额度查询失败时独立降级，不影响其他账号
-- 只读取会话中的 `token_count` 元数据，不解析提示词或回复正文
+- 只提取会话中的 `token_count` 与 `session_meta.model_provider` 字段，不保留或传递提示词、回复正文及其他会话内容
 
 ### OAuth 配对
 
@@ -140,6 +142,7 @@ accounts.v1.json
 - Device Code 登录时直接与 OpenAI 认证服务通信，仅请求写入本地 Codex 缓存所需的认证数据。
 - 订阅用量查询直接访问 ChatGPT 兼容性接口。该端点和字段并非 OpenAI 承诺稳定的公开 API，变化时可能影响额度显示，但不影响账号切换和本机 Token 统计。
 - 用量页面中的 Token 数字是本机会话元数据的汇总，不是 ChatGPT 官方订阅总额度。
+- 模型提供方取自会话自带的 `model_provider`，按会话精确归属；该字段不能证明请求使用 ChatGPT 订阅还是 API Key，因此界面不会据此判断计费方式。
 - Codex 历史会话没有可靠的账号 ID，因此账号归属从应用记录切换时间线后开始生效，更早的数据会显示为“历史未归属”。
 
 ## 安全模型
@@ -225,12 +228,12 @@ git push origin main --follow-tags
 
 ```text
 src/AccountsPage.tsx          账号状态、切换链路与本机账号库
-src/UsagePanel.tsx            本机 Token 用量页面
+src/UsagePanel.tsx            Token 用量页面（含模型提供方拆分）
 src/QuotaPanel.tsx            订阅额度状态与恢复时间轴
 src/QuotaScene.tsx            额度补给路线动效
 src/SettingsPanel.tsx         本机设置、环境体检与软件更新
 src-tauri/src/manager.rs      账号库、认证校验与切换核心
-src-tauri/src/usage.rs        本机会话 Token 聚合
+src-tauri/src/usage.rs        本机会话 Token 聚合与模型提供方归属
 src-tauri/src/auth_share.rs   Auth 迁移编码与二维码处理
 src-tauri/src/diagnostics.rs  只读本地环境体检
 src-tauri/src/lib.rs          Tauri 命令边界

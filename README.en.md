@@ -93,11 +93,13 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 
 - Summarize local token usage for today, the last 7 days, and the last 30 days
 - Show a 14-day trend, input/output token composition, and account attribution
+- Split local tokens by the `model_provider` recorded in each session, keeping the OpenAI default provider and each custom provider apart
+- Read display names from `[model_providers.*]` in `config.toml`; only the service host is shown, and API keys or full addresses are never stored
 - Use a dedicated Subscription quotas page for account health, recovery timelines, available full resets, and the earliest reset-credit expiry
 - Summarize query success, the healthiest account, the nearest recovery, and full resets in the animated quota inspection route
 - Keep local Token scans and online subscription quota queries on separate commands, so opening Token usage does not query the online endpoint
 - Isolate individual account query failures without affecting other accounts
-- Read only `token_count` metadata from sessions without parsing prompts or response text
+- Extract only `token_count` and `session_meta.model_provider` fields without retaining or forwarding prompts, responses, or other session content
 
 ### OAuth Pairing
 
@@ -166,6 +168,7 @@ Local file permissions cannot provide additional protection if another privilege
 - Device Code login is still in beta and may need to be enabled by an individual user or workspace administrator
 - The concrete wire protocols for Device Code, token refresh, and subscription usage come from compatibility implementations, not guaranteed stable public APIs
 - Local token data depends on available `token_count` metadata in Codex session files
+- Model providers come from each session's own `model_provider`, so attribution is exact per session. This field does not prove whether a request used a ChatGPT subscription or an API key, so the interface does not infer billing from it
 - The project does not manage OpenAI API keys, subscription billing, or workspace seats
 
 ## Development
@@ -225,12 +228,12 @@ To write release notes by hand, add `docs/release-notes/vX.Y.Z.md` before taggin
 
 ```text
 src/AccountsPage.tsx          Account status, switching route, and local vault
-src/UsagePanel.tsx            Local token usage page
+src/UsagePanel.tsx            Token usage page, including model-provider split
 src/QuotaPanel.tsx            Subscription quota status and recovery timeline
 src/QuotaScene.tsx            Animated quota inspection route
 src/SettingsPanel.tsx         Local settings, diagnostics, and software updates
 src-tauri/src/manager.rs      Account vault, authentication validation, and switching
-src-tauri/src/usage.rs        Local session token aggregation
+src-tauri/src/usage.rs        Local session token aggregation and model-provider attribution
 src-tauri/src/auth_share.rs   Auth transfer encoding and QR code processing
 src-tauri/src/diagnostics.rs  Read-only local environment diagnostics
 src-tauri/src/lib.rs          Tauri command boundary
