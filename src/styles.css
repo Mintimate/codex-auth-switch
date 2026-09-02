@@ -2,8 +2,8 @@
   color-scheme: light;
   --background: #f5f3ed;
   --foreground: #2f312d;
-  --muted: #6f716b;
-  --muted-soft: #92938d;
+  --muted: #60625d;
+  --muted-soft: #6c6e68;
   --card: rgba(251, 250, 247, 0.88);
   --card-solid: #fbfaf7;
   --surface: rgba(241, 239, 233, 0.92);
@@ -39,18 +39,19 @@
   --hint: #eeece6;
   --skeleton-base: rgba(47, 49, 45, 0.08);
   --skeleton-highlight: rgba(255, 255, 255, 0.7);
+  --activity-0: #deddd7;
+  --activity-1: #edc5b4;
+  --activity-2: #da9b7f;
+  --activity-3: #bd7154;
+  --activity-4: #8f4c35;
   --content-max: 1480px;
   font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI",
+    "Microsoft YaHei", sans-serif;
   color: var(--foreground);
   background: var(--background);
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  text-rendering: auto;
 }
 
 :root[data-theme="dark"] {
@@ -58,7 +59,7 @@
   --background: #2d2d2b;
   --foreground: #f1f0ec;
   --muted: #b4b3ad;
-  --muted-soft: #85847f;
+  --muted-soft: #aaa9a4;
   --card: rgba(61, 61, 58, 0.9);
   --card-solid: #3d3d3a;
   --surface: rgba(67, 67, 64, 0.9);
@@ -94,6 +95,11 @@
   --hint: #393936;
   --skeleton-base: rgba(249, 249, 247, 0.08);
   --skeleton-highlight: rgba(249, 249, 247, 0.13);
+  --activity-0: #51514d;
+  --activity-1: #6e4c40;
+  --activity-2: #945d49;
+  --activity-3: #ba7054;
+  --activity-4: #df9274;
 }
 
 * {
@@ -222,15 +228,15 @@ button:disabled {
 }
 
 .brand h1 {
-  font-size: 14px;
-  letter-spacing: -0.02em;
+  font-size: 15px;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
 .brand p {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -389,8 +395,8 @@ button:disabled {
   color: var(--muted);
   outline: none;
   padding: 0 13px;
-  font-size: 12px;
-  font-weight: 680;
+  font-size: 13px;
+  font-weight: 600;
   transition:
     transform 120ms ease,
     background 120ms ease,
@@ -1752,7 +1758,7 @@ button:disabled {
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: 100px;
+  min-height: 112px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -1814,13 +1820,15 @@ button:disabled {
 .quota-scene-station strong {
   margin-top: 7px;
   color: var(--foreground);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .quota-scene-station small {
   margin-top: 3px;
   color: var(--muted-soft);
-  font-size: 7px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .quota-scene-account-icon {
@@ -1853,7 +1861,7 @@ button:disabled {
 
 .quota-scene-meter {
   display: flex;
-  height: 14px;
+  height: 16px;
   align-self: center;
   overflow: hidden;
   border-radius: 999px;
@@ -1874,8 +1882,9 @@ button:disabled {
   z-index: 1;
   width: 100%;
   color: var(--foreground);
-  font-size: 8px;
-  line-height: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
   text-align: center;
 }
 
@@ -2011,7 +2020,8 @@ button:disabled {
 .quota-scene-status {
   display: block;
   color: var(--muted-soft);
-  font-size: 8px;
+  font-size: 11px;
+  line-height: 1.4;
   text-align: center;
 }
 
@@ -2109,8 +2119,8 @@ button:disabled {
 .quota-account b small {
   margin-left: 4px;
   color: var(--muted);
-  font-size: 8px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .quota-windows {
@@ -2140,13 +2150,14 @@ button:disabled {
 .quota-subsection-heading span,
 .quota-bucket-heading span {
   color: var(--muted-soft);
-  font-size: 8px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .quota-account-facts strong {
   overflow: hidden;
   color: var(--foreground);
-  font-size: 10px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2171,7 +2182,7 @@ button:disabled {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--foreground);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .quota-official-usage dl {
@@ -2189,7 +2200,7 @@ button:disabled {
 .quota-official-usage dd {
   overflow: hidden;
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2199,8 +2210,137 @@ button:disabled {
   display: block;
   margin-top: 2px;
   color: var(--muted-soft);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
+}
+
+.quota-daily-usage {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 13px;
+}
+
+.quota-daily-usage-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quota-daily-usage-heading strong {
+  font-size: 12px;
+}
+
+.quota-daily-usage-heading span {
+  overflow: hidden;
+  color: var(--muted-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quota-heatmap-scroll {
+  margin-top: 11px;
+  overflow-x: auto;
+  padding: 2px 1px 4px;
+  scrollbar-width: thin;
+}
+
+.quota-heatmap-layout {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  grid-template-columns: 18px max-content;
+  justify-content: start;
+  gap: 5px;
+}
+
+.quota-heatmap-weekdays,
+.quota-heatmap-grid {
+  display: grid;
+  grid-template-rows: repeat(7, 12px);
+  gap: 3px;
+}
+
+.quota-heatmap-weekdays span {
+  align-self: center;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.quota-heatmap-grid {
+  grid-auto-flow: column;
+}
+
+.quota-heatmap-day,
+.quota-heatmap-legend i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--activity-0);
+}
+
+.quota-heatmap-day {
+  cursor: default;
+  transition: border-color 120ms ease;
+}
+
+.quota-heatmap-day:not(.is-empty):hover {
+  border-color: var(--accent);
+}
+
+.quota-heatmap-day:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.quota-heatmap-day.is-empty {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.quota-heatmap-day.level-1,
+.quota-heatmap-legend i.level-1 {
+  background: var(--activity-1);
+}
+
+.quota-heatmap-day.level-2,
+.quota-heatmap-legend i.level-2 {
+  background: var(--activity-2);
+}
+
+.quota-heatmap-day.level-3,
+.quota-heatmap-legend i.level-3 {
+  background: var(--activity-3);
+}
+
+.quota-heatmap-day.level-4,
+.quota-heatmap-legend i.level-4 {
+  background: var(--activity-4);
+}
+
+.quota-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 7px;
+  color: var(--muted-soft);
+  font-size: 11px;
+}
+
+.quota-heatmap-legend span:first-child {
+  margin-right: 3px;
+}
+
+.quota-heatmap-legend span:last-child {
+  margin-left: 3px;
 }
 
 .quota-bucket {
@@ -2232,7 +2372,7 @@ button:disabled {
 .reset-credits span,
 .reset-credits small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .reset-credits strong {
@@ -2246,12 +2386,12 @@ button:disabled {
 
 .quota-window-copy {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .quota-window-copy strong {
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .quota-track {
@@ -2273,14 +2413,15 @@ button:disabled {
   display: block;
   margin-top: 5px;
   color: var(--muted-soft);
-  font-size: 8px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .quota-error,
 .quota-empty {
   margin: 13px 0 0;
   color: var(--danger);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2299,7 +2440,7 @@ button:disabled {
 .usage-privacy-note {
   margin: 15px 2px 0;
   color: var(--muted-soft);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2341,7 +2482,8 @@ button:disabled {
 .quota-summary > small {
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2399,7 +2541,8 @@ button:disabled {
   background: var(--hint);
   padding: 4px 8px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -2430,7 +2573,7 @@ button:disabled {
   display: block;
   margin-top: 12px;
   color: var(--muted-soft);
-  font-size: 8px;
+  font-size: 11px;
   text-align: right;
 }
 
@@ -2548,14 +2691,14 @@ button:disabled {
 
 .quota-timeline time {
   color: var(--accent-deep);
-  font-size: 9px;
-  font-weight: 720;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .quota-timeline strong {
   margin-top: 4px;
   overflow: hidden;
-  font-size: 10px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2564,7 +2707,8 @@ button:disabled {
 .quota-timeline small,
 .quota-timeline-empty {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .quota-timeline span {
@@ -2986,7 +3130,7 @@ button:disabled {
 .section-heading h2 {
   margin-top: 6px;
   font-size: 21px;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 .text-button {
@@ -4559,11 +4703,11 @@ button:disabled {
   }
 
   .brand h1 {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .brand p {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .brand-mark {
@@ -4602,7 +4746,7 @@ button:disabled {
   }
 
   .quota-scene-station strong {
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .account-flow-heading {
@@ -4720,6 +4864,12 @@ button:disabled {
     align-items: flex-start;
     flex-direction: column;
     gap: 3px;
+  }
+
+  .quota-daily-usage-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 }
 
