@@ -147,6 +147,20 @@ const formatCount = (value: number | null, locale: Locale) =>
     ? "—"
     : new Intl.NumberFormat(locale, { notation: "compact" }).format(value);
 
+const formatTokenUnit = (value: number, locale: Locale) => {
+  const magnitude = Math.abs(value);
+  const unit = [
+    { minimum: 1_000_000_000, suffix: "B" },
+    { minimum: 1_000_000, suffix: "M" },
+    { minimum: 1_000, suffix: "K" },
+  ].find((candidate) => magnitude >= candidate.minimum);
+  if (!unit) return new Intl.NumberFormat(locale).format(value);
+
+  return `${new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+  }).format(value / unit.minimum)}${unit.suffix}`;
+};
+
 const formatDuration = (seconds: number | null, t: Translate) => {
   if (seconds === null) return "—";
   const hours = Math.floor(seconds / 3600);
@@ -177,6 +191,29 @@ const formatCalendarDay = (date: Date, locale: Locale) =>
     timeZone: "UTC",
   }).format(date);
 
+const recentTokenUsage = (
+  buckets: AccountUsageDailyBucket[],
+  dayCount: number,
+) => {
+  const validBuckets = buckets.filter(
+    (bucket) => parseIsoDay(bucket.startDate) && Number.isFinite(bucket.tokens),
+  );
+  if (!validBuckets.length) return null;
+
+  const end = new Date();
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (dayCount - 1));
+  const tokens = validBuckets.reduce((total, bucket) => {
+    const date = parseIsoDay(bucket.startDate)!;
+    return date >= start && date <= end
+      ? total + Math.max(0, bucket.tokens)
+      : total;
+  }, 0);
+
+  return { end, start, tokens };
+};
+
 function DailyUsageHeatmap({
   buckets,
   locale,
@@ -195,13 +232,18 @@ function DailyUsageHeatmap({
   }
 
   const dates = [...usageByDate.keys()].sort();
-  const firstDate = dates[0] ? parseIsoDay(dates[0]) : null;
-  const lastDate = dates.at(-1) ? parseIsoDay(dates.at(-1)!) : null;
-  if (!firstDate || !lastDate) return null;
+  const lastUsageDate = dates.at(-1) ? parseIsoDay(dates.at(-1)!) : null;
+  if (!lastUsageDate) return null;
 
-  const gridStart = new Date(firstDate);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const rangeEnd = new Date(Math.max(today.getTime(), lastUsageDate.getTime()));
+  const rangeStart = new Date(rangeEnd);
+  rangeStart.setUTCDate(rangeStart.getUTCDate() - 364);
+
+  const gridStart = new Date(rangeStart);
   gridStart.setUTCDate(gridStart.getUTCDate() - gridStart.getUTCDay());
-  const gridEnd = new Date(lastDate);
+  const gridEnd = new Date(rangeEnd);
   gridEnd.setUTCDate(gridEnd.getUTCDate() + (6 - gridEnd.getUTCDay()));
 
   const calendarDays: Date[] = [];
@@ -213,13 +255,46 @@ function DailyUsageHeatmap({
     calendarDays.push(new Date(date));
   }
 
-  const maxTokens = Math.max(...usageByDate.values(), 0);
   const numberFormatter = new Intl.NumberFormat(locale);
+  const visibleUsage = [...usageByDate.entries()].filter(([dateKey]) => {
+    const date = parseIsoDay(dateKey)!;
+    return date >= rangeStart && date <= rangeEnd;
+  });
+  const maxTokens = Math.max(...visibleUsage.map(([, tokens]) => tokens), 0);
+  const activeDayCount = visibleUsage.filter(([, tokens]) => tokens > 0).length;
   const weekdayFormatter = new Intl.DateTimeFormat(locale, {
     weekday: "narrow",
     timeZone: "UTC",
   });
+  const monthFormatter = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    timeZone: "UTC",
+  });
   const weekCount = Math.ceil(calendarDays.length / 7);
+  const monthLabels: { column: number; label: string }[] = [];
+  for (const date of calendarDays) {
+    const isFirstRangeDay = date.getTime() === rangeStart.getTime();
+    if (
+      date < rangeStart ||
+      date > rangeEnd ||
+      (!isFirstRangeDay && date.getUTCDate() !== 1)
+    ) {
+      continue;
+    }
+    const column = Math.floor(
+      (date.getTime() - gridStart.getTime()) / (7 * 24 * 60 * 60 * 1000),
+    );
+    if (
+      monthLabels.length &&
+      column - monthLabels[monthLabels.length - 1].column < 2
+    ) {
+      monthLabels.pop();
+    }
+    monthLabels.push({
+      column,
+      label: monthFormatter.format(date),
+    });
+  }
   const activityLevel = (tokens: number) =>
     tokens <= 0 || maxTokens <= 0
       ? 0
@@ -231,13 +306,29 @@ function DailyUsageHeatmap({
         <strong>{t("dailyTokenActivity")}</strong>
         <span>
           {t("dailyUsageRange", {
-            start: formatCalendarDay(firstDate, locale),
-            end: formatCalendarDay(lastDate, locale),
+            start: formatCalendarDay(rangeStart, locale),
+            end: formatCalendarDay(rangeEnd, locale),
           })}
         </span>
       </div>
       <div className="quota-heatmap-scroll">
         <div className="quota-heatmap-layout">
+          <div
+            className="quota-heatmap-months"
+            aria-hidden="true"
+            style={{
+              gridTemplateColumns: `repeat(${weekCount}, var(--heatmap-cell-size))`,
+            }}
+          >
+            {monthLabels.map((month) => (
+              <span
+                key={`${month.column}-${month.label}`}
+                style={{ gridColumn: month.column + 1 }}
+              >
+                {month.label}
+              </span>
+            ))}
+          </div>
           <div className="quota-heatmap-weekdays" aria-hidden="true">
             {[1, 3, 5].map((weekday) => (
               <span key={weekday} style={{ gridRow: weekday + 1 }}>
@@ -251,12 +342,21 @@ function DailyUsageHeatmap({
             className="quota-heatmap-grid"
             role="grid"
             aria-label={t("dailyTokenActivityAria")}
-            style={{ gridTemplateColumns: `repeat(${weekCount}, 12px)` }}
+            style={{
+              gridTemplateColumns: `repeat(${weekCount}, var(--heatmap-cell-size))`,
+            }}
           >
             {calendarDays.map((date, index) => {
               const dateKey = date.toISOString().slice(0, 10);
               const tokens = usageByDate.get(dateKey);
               const tooltip =
+                tokens === undefined
+                  ? undefined
+                  : t("dailyTokenTooltip", {
+                      date: formatCalendarDay(date, locale),
+                      tokens: formatTokenUnit(tokens, locale),
+                    });
+              const ariaLabel =
                 tokens === undefined
                   ? undefined
                   : t("dailyTokenTooltip", {
@@ -271,12 +371,12 @@ function DailyUsageHeatmap({
                       : ` level-${activityLevel(tokens)}`
                   }`}
                   key={dateKey}
+                  data-tooltip={tooltip}
                   style={{
                     gridColumn: Math.floor(index / 7) + 1,
                     gridRow: (index % 7) + 1,
                   }}
-                  title={tooltip}
-                  aria-label={tooltip}
+                  aria-label={ariaLabel}
                   aria-hidden={tokens === undefined}
                   tabIndex={tokens === undefined ? -1 : 0}
                   role={tokens === undefined ? undefined : "gridcell"}
@@ -286,12 +386,20 @@ function DailyUsageHeatmap({
           </div>
         </div>
       </div>
-      <div className="quota-heatmap-legend" aria-hidden="true">
-        <span>{t("usageLess")}</span>
-        {[0, 1, 2, 3, 4].map((level) => (
-          <i className={`level-${level}`} key={level} />
-        ))}
-        <span>{t("usageMore")}</span>
+      <div className="quota-heatmap-footer">
+        <span className="quota-heatmap-summary">
+          {t("dailyActivitySummary", {
+            active: activeDayCount,
+            recorded: visibleUsage.length,
+          })}
+        </span>
+        <div className="quota-heatmap-legend" aria-hidden="true">
+          <span>{t("usageLess")}</span>
+          {[0, 1, 2, 3, 4].map((level) => (
+            <i className={`level-${level}`} key={level} />
+          ))}
+          <span>{t("usageMore")}</span>
+        </div>
       </div>
     </div>
   );
@@ -546,6 +654,9 @@ export function QuotaPanel({
                   const level = quotaLevel(quota);
                   const buckets = quotaBuckets(quota);
                   const plan = formatPlan(quota.planType);
+                  const sevenDayUsage = quota.officialUsage
+                    ? recentTokenUsage(quota.officialUsage.dailyUsageBuckets, 7)
+                    : null;
                   return (
                     <article
                       className={`quota-card level-${level}`}
@@ -584,132 +695,162 @@ export function QuotaPanel({
                                   : t("compatibilityFallback")}
                               </strong>
                             </div>
-                          </div>
-                          {quota.resetCredits && (
-                            <div className="reset-credits">
-                              <div>
+                            {quota.resetCredits && (
+                              <div className="reset-credits">
                                 <span>{t("availableResetCredits")}</span>
                                 <strong>
                                   {t("resetCreditCount", {
                                     count: quota.resetCredits.availableCount,
                                   })}
                                 </strong>
+                                {quota.resetCredits.expiresAt[0] && (
+                                  <small>
+                                    {t("resetCreditExpiresAt", {
+                                      date: formatDate(
+                                        quota.resetCredits.expiresAt[0],
+                                        locale,
+                                        true,
+                                      ),
+                                    })}
+                                  </small>
+                                )}
                               </div>
-                              {quota.resetCredits.expiresAt[0] && (
-                                <small>
-                                  {t("resetCreditExpiresAt", {
-                                    date: formatDate(
-                                      quota.resetCredits.expiresAt[0],
-                                      locale,
-                                      true,
-                                    ),
-                                  })}
-                                </small>
-                              )}
-                            </div>
-                          )}
-                          {quota.officialUsage && (
-                            <div className="quota-official-usage">
-                              <div className="quota-subsection-heading">
-                                <strong>{t("officialAccountUsage")}</strong>
-                                <span>{t("officialAccountUsageHint")}</span>
+                            )}
+                          </div>
+                          <div
+                            className={`quota-account-details${
+                              quota.officialUsage ? "" : " quota-only"
+                            }`}
+                          >
+                            {quota.officialUsage && (
+                              <div className="quota-official-usage">
+                                <div className="quota-subsection-heading">
+                                  <strong>{t("officialAccountUsage")}</strong>
+                                  <span>{t("officialAccountUsageHint")}</span>
+                                </div>
+                                <div className="quota-official-metrics">
+                                  <div className="quota-recent-usage">
+                                    <span>{t("last7DaysTokens")}</span>
+                                    <strong>
+                                      {formatCount(
+                                        sevenDayUsage?.tokens ?? null,
+                                        locale,
+                                      )}
+                                    </strong>
+                                    <small>
+                                      {sevenDayUsage
+                                        ? t("dailyUsageRange", {
+                                            start: formatCalendarDay(
+                                              sevenDayUsage.start,
+                                              locale,
+                                            ),
+                                            end: formatCalendarDay(
+                                              sevenDayUsage.end,
+                                              locale,
+                                            ),
+                                          })
+                                        : t("noDailyTokenUsage")}
+                                    </small>
+                                  </div>
+                                  <dl>
+                                    <div>
+                                      <dt>{t("lifetimeTokens")}</dt>
+                                      <dd>
+                                        {formatCount(
+                                          quota.officialUsage.lifetimeTokens,
+                                          locale,
+                                        )}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt>{t("peakDailyTokens")}</dt>
+                                      <dd>
+                                        {formatCount(
+                                          quota.officialUsage.peakDailyTokens,
+                                          locale,
+                                        )}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt>{t("currentStreak")}</dt>
+                                      <dd>
+                                        {quota.officialUsage
+                                          .currentStreakDays === null
+                                          ? "—"
+                                          : t("daysCount", {
+                                              count:
+                                                quota.officialUsage
+                                                  .currentStreakDays,
+                                            })}
+                                        {quota.officialUsage
+                                          .longestStreakDays !== null && (
+                                          <small>
+                                            {t("longestStreak", {
+                                              count:
+                                                quota.officialUsage
+                                                  .longestStreakDays,
+                                            })}
+                                          </small>
+                                        )}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt>{t("longestTurn")}</dt>
+                                      <dd>
+                                        {formatDuration(
+                                          quota.officialUsage
+                                            .longestRunningTurnSec,
+                                          t,
+                                        )}
+                                      </dd>
+                                    </div>
+                                  </dl>
+                                </div>
+                                {quota.officialUsage.dailyUsageBuckets.length >
+                                  0 && (
+                                  <DailyUsageHeatmap
+                                    buckets={
+                                      quota.officialUsage.dailyUsageBuckets
+                                    }
+                                    locale={locale}
+                                    t={t}
+                                  />
+                                )}
                               </div>
-                              <dl>
-                                <div>
-                                  <dt>{t("lifetimeTokens")}</dt>
-                                  <dd>
-                                    {formatCount(
-                                      quota.officialUsage.lifetimeTokens,
-                                      locale,
+                            )}
+                            <div className="quota-windows">
+                              {buckets.map((bucket) => (
+                                <div className="quota-bucket" key={bucket.id}>
+                                  <div className="quota-bucket-heading">
+                                    <strong>
+                                      {bucket.name ?? t("defaultCodexQuota")}
+                                    </strong>
+                                    {bucket.name && (
+                                      <span>{t("modelSpecificQuota")}</span>
                                     )}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt>{t("peakDailyTokens")}</dt>
-                                  <dd>
-                                    {formatCount(
-                                      quota.officialUsage.peakDailyTokens,
-                                      locale,
-                                    )}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt>{t("currentStreak")}</dt>
-                                  <dd>
-                                    {quota.officialUsage.currentStreakDays ===
-                                    null
-                                      ? "—"
-                                      : t("daysCount", {
-                                          count:
-                                            quota.officialUsage
-                                              .currentStreakDays,
-                                        })}
-                                    {quota.officialUsage.longestStreakDays !==
-                                      null && (
-                                      <small>
-                                        {t("longestStreak", {
-                                          count:
-                                            quota.officialUsage
-                                              .longestStreakDays,
-                                        })}
-                                      </small>
-                                    )}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt>{t("longestTurn")}</dt>
-                                  <dd>
-                                    {formatDuration(
-                                      quota.officialUsage.longestRunningTurnSec,
-                                      t,
-                                    )}
-                                  </dd>
-                                </div>
-                              </dl>
-                              {quota.officialUsage.dailyUsageBuckets.length >
-                                0 && (
-                                <DailyUsageHeatmap
-                                  buckets={
-                                    quota.officialUsage.dailyUsageBuckets
-                                  }
-                                  locale={locale}
-                                  t={t}
-                                />
-                              )}
-                            </div>
-                          )}
-                          <div className="quota-windows">
-                            {buckets.map((bucket) => (
-                              <div className="quota-bucket" key={bucket.id}>
-                                <div className="quota-bucket-heading">
-                                  <strong>
-                                    {bucket.name ?? t("defaultCodexQuota")}
-                                  </strong>
-                                  {bucket.name && (
-                                    <span>{t("modelSpecificQuota")}</span>
+                                  </div>
+                                  {bucket.primary && (
+                                    <QuotaWindowRow
+                                      window={bucket.primary}
+                                      locale={locale}
+                                      t={t}
+                                    />
+                                  )}
+                                  {bucket.secondary && (
+                                    <QuotaWindowRow
+                                      window={bucket.secondary}
+                                      locale={locale}
+                                      t={t}
+                                    />
                                   )}
                                 </div>
-                                {bucket.primary && (
-                                  <QuotaWindowRow
-                                    window={bucket.primary}
-                                    locale={locale}
-                                    t={t}
-                                  />
-                                )}
-                                {bucket.secondary && (
-                                  <QuotaWindowRow
-                                    window={bucket.secondary}
-                                    locale={locale}
-                                    t={t}
-                                  />
-                                )}
-                              </div>
-                            ))}
-                            {!quotaWindows(quota).length && (
-                              <p className="quota-empty">
-                                {t("noQuotaWindows")}
-                              </p>
-                            )}
+                              ))}
+                              {!quotaWindows(quota).length && (
+                                <p className="quota-empty">
+                                  {t("noQuotaWindows")}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </>
                       ) : (
