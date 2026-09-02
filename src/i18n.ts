@@ -291,6 +291,24 @@ const zhCN = {
   noLocalUsage: "暂无本机归属用量",
   noQuotaWindows: "当前账号没有返回可展示的额度窗口。",
   quotaQueryFailed: "额度查询失败",
+  subscriptionPlan: "订阅套餐",
+  subscriptionExpiry: "订阅到期日",
+  officialNotProvided: "官方未提供",
+  quotaDataSource: "数据来源",
+  officialAppServer: "官方 App Server",
+  compatibilityFallback: "兼容查询",
+  officialAccountUsage: "官方账号用量",
+  officialAccountUsageHint: "由 Codex 账户接口返回",
+  lifetimeTokens: "累计 Token",
+  peakDailyTokens: "单日峰值",
+  currentStreak: "连续使用",
+  longestStreak: "最长 {count} 天",
+  longestTurn: "最长任务",
+  daysCount: "{count} 天",
+  minutesCount: "{count} 分钟",
+  hoursMinutes: "{hours} 小时 {minutes} 分钟",
+  defaultCodexQuota: "Codex 默认额度",
+  modelSpecificQuota: "模型专属额度",
   usageTitle: "Token 用量",
   usageDescription:
     "本机会话 Token 汇总，可按模型提供方查看请求分布，不代表订阅或 API 账单。",
@@ -378,7 +396,7 @@ const zhCN = {
   quotaTimelineHint: "按时间查看窗口恢复与完整重置过期",
   noQuotaEvents: "当前没有可展示的未来额度事件。",
   quotaPrivacy:
-    "订阅额度直接从 ChatGPT 兼容性接口查询，只返回窗口、重置次数与时间；认证令牌不会进入前端或日志。",
+    "优先通过官方 Codex App Server 读取套餐、额度和账号用量；不可用时降级到 ChatGPT 兼容性接口。官方接口不提供订阅到期日，认证令牌不会进入前端或日志。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -704,6 +722,24 @@ const en: Messages = {
   noQuotaWindows:
     "No displayable quota windows were returned for this account.",
   quotaQueryFailed: "Quota query failed",
+  subscriptionPlan: "Subscription plan",
+  subscriptionExpiry: "Subscription expiry",
+  officialNotProvided: "Not provided",
+  quotaDataSource: "Data source",
+  officialAppServer: "Official App Server",
+  compatibilityFallback: "Compatibility fallback",
+  officialAccountUsage: "Official account usage",
+  officialAccountUsageHint: "Returned by the Codex account API",
+  lifetimeTokens: "Lifetime Tokens",
+  peakDailyTokens: "Peak day",
+  currentStreak: "Current streak",
+  longestStreak: "Longest {count} days",
+  longestTurn: "Longest task",
+  daysCount: "{count} days",
+  minutesCount: "{count} min",
+  hoursMinutes: "{hours} h {minutes} min",
+  defaultCodexQuota: "Default Codex quota",
+  modelSpecificQuota: "Model-specific quota",
   usageTitle: "Token usage",
   usageDescription:
     "Local session Tokens grouped by model provider, not a subscription or API bill.",
@@ -798,7 +834,7 @@ const en: Messages = {
   quotaTimelineHint: "Upcoming window recoveries and full-reset expiries",
   noQuotaEvents: "No future quota events are available.",
   quotaPrivacy:
-    "Subscription quotas are queried directly from a ChatGPT compatibility endpoint. Only windows, reset counts, and times reach the interface; authentication tokens never enter the frontend or logs.",
+    "Plans, quotas, and account usage are read through the official Codex App Server when available, with the ChatGPT compatibility endpoint as a fallback. The official API does not provide subscription expiry, and authentication tokens never enter the frontend or logs.",
 };
 
 const messages: Record<Locale, Messages> = { "zh-CN": zhCN, en };
@@ -872,6 +908,8 @@ const backendErrorTranslations: Record<string, string> = {
   账号缺少可用的访问凭据: "The account has no usable access credentials",
   "订阅凭据已失效，请重新登录该账号":
     "The subscription credentials expired. Log in to this account again.",
+  "官方账户响应与本地账号不一致，请重新登录":
+    "The official account response does not match the saved account. Log in again.",
   额度查询失败: "Quota query failed",
   额度查询超时: "The quota query timed out",
   无法连接额度服务: "Could not connect to the quota service",

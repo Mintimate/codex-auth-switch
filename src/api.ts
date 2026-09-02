@@ -80,13 +80,32 @@ export type UsageResetCredits = {
   expiresAt: number[];
 };
 
+export type QuotaBucket = {
+  id: string;
+  name: string | null;
+  primary: UsageWindow | null;
+  secondary: UsageWindow | null;
+};
+
+export type AccountUsageSummary = {
+  lifetimeTokens: number | null;
+  peakDailyTokens: number | null;
+  longestRunningTurnSec: number | null;
+  currentStreakDays: number | null;
+  longestStreakDays: number | null;
+};
+
 export type AccountQuota = {
   profileId: string;
   accountId: string;
   label: string;
   primary: UsageWindow | null;
   secondary: UsageWindow | null;
+  buckets: QuotaBucket[];
   resetCredits: UsageResetCredits | null;
+  planType: string | null;
+  officialUsage: AccountUsageSummary | null;
+  source: "appServer" | "compatibility" | null;
   success: boolean;
   error: string | null;
   queriedAt: number;
@@ -216,10 +235,45 @@ const previewQuotas: AccountQuota[] = [
       windowMinutes: 10080,
       resetsAt: Math.floor(Date.now() / 1000) + 4 * 24 * 60 * 60,
     },
+    buckets: [
+      {
+        id: "codex",
+        name: null,
+        primary: {
+          usedPercent: 38,
+          windowMinutes: 300,
+          resetsAt: Math.floor(Date.now() / 1000) + 86 * 60,
+        },
+        secondary: {
+          usedPercent: 64,
+          windowMinutes: 10080,
+          resetsAt: Math.floor(Date.now() / 1000) + 4 * 24 * 60 * 60,
+        },
+      },
+      {
+        id: "codex_bengalfox",
+        name: "GPT-5.3-Codex-Spark",
+        primary: {
+          usedPercent: 12,
+          windowMinutes: 300,
+          resetsAt: Math.floor(Date.now() / 1000) + 142 * 60,
+        },
+        secondary: null,
+      },
+    ],
     resetCredits: {
       availableCount: 1,
       expiresAt: [Math.floor(Date.now() / 1000) + 21 * 24 * 60 * 60],
     },
+    planType: "pro",
+    officialUsage: {
+      lifetimeTokens: 1567980267,
+      peakDailyTokens: 375224027,
+      longestRunningTurnSec: 45622,
+      currentStreakDays: 11,
+      longestStreakDays: 14,
+    },
+    source: "appServer",
     success: true,
     error: null,
     queriedAt: Math.floor(Date.now() / 1000),
@@ -234,10 +288,14 @@ const previewQuotas: AccountQuota[] = [
       resetsAt: Math.floor(Date.now() / 1000) + 128 * 60,
     },
     secondary: null,
+    buckets: [],
     resetCredits: {
       availableCount: 0,
       expiresAt: [],
     },
+    planType: null,
+    officialUsage: null,
+    source: "compatibility",
     success: true,
     error: null,
     queriedAt: Math.floor(Date.now() / 1000),

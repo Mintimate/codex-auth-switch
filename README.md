@@ -95,7 +95,8 @@ cli_auth_credentials_store = "file"
 - 展示 14 天趋势、输入/输出 Token 构成、账号归属与模型提供方拆分
 - 按每个会话记录的 `model_provider` 拆分本地 Token，OpenAI 默认提供方与各个自定义提供方分开统计
 - 从 `config.toml` 的 `[model_providers.*]` 读取服务显示名，界面只展示服务主机，不保存 API Key 或完整地址
-- 独立的“订阅额度”页面按账号展示额度状态、窗口恢复时间轴、可用完整重置次数与最早过期时间
+- 独立的“订阅额度”页面优先通过官方 Codex App Server 展示套餐、默认与模型专属额度窗口、恢复时间轴、完整重置和账号用量摘要
+- 明确标注官方接口未提供订阅到期日，不把访问令牌或完整重置的过期时间误当成账号有效期
 - “额度补给路线”通过猫咪巡检动效概览查询成功率、最充足账号、最近恢复与完整重置
 - 本机 Token 与在线订阅额度使用不同查询命令，打开 Token 页面不会访问在线额度接口
 - 单个账号额度查询失败时独立降级，不影响其他账号
@@ -140,7 +141,8 @@ accounts.v1.json
 
 - 应用不代理 Codex 会话请求，也没有自建后端、遥测或分析服务。
 - Device Code 登录时直接与 OpenAI 认证服务通信，仅请求写入本地 Codex 缓存所需的认证数据。
-- 订阅用量查询直接访问 ChatGPT 兼容性接口。该端点和字段并非 OpenAI 承诺稳定的公开 API，变化时可能影响额度显示，但不影响账号切换和本机 Token 统计。
+- 订阅用量优先通过本机 Codex 提供的官方 App Server 协议读取；旧版 Codex 或 App Server 不可用时，才直接访问隔离的 ChatGPT 兼容性接口。兼容端点和字段并非 OpenAI 承诺稳定的公开 API，变化时可能影响降级显示，但不影响账号切换和本机 Token 统计。
+- 官方 App Server 当前返回套餐、额度窗口、完整重置和账号 Token 活动摘要，但不返回订阅到期日。
 - 用量页面中的 Token 数字是本机会话元数据的汇总，不是 ChatGPT 官方订阅总额度。
 - 模型提供方取自会话自带的 `model_provider`，按会话精确归属；该字段不能证明请求使用 ChatGPT 订阅还是 API Key，因此界面不会据此判断计费方式。
 - Codex 历史会话没有可靠的账号 ID，因此账号归属从应用记录切换时间线后开始生效，更早的数据会显示为“历史未归属”。
@@ -167,7 +169,7 @@ Codex Auth Switch 会在自己的应用数据目录保存账号快照：
 
 - 仅支持 `cli_auth_credentials_store = "file"`
 - Device Code 登录仍是 Beta，可能需要个人用户或工作区管理员先启用相应权限
-- Device Code、令牌刷新和订阅用量接口的具体线协议来自兼容性实现，不是官方承诺的稳定对外 API
+- Device Code、令牌刷新和订阅用量降级接口的具体线协议来自兼容性实现，不是官方承诺的稳定对外 API
 - 本机 Token 数据取决于 Codex 会话文件中可用的 `token_count` 元数据
 - 项目不管理 OpenAI API Key、订阅计费或工作区席位
 
@@ -233,6 +235,7 @@ src/QuotaPanel.tsx            订阅额度状态与恢复时间轴
 src/QuotaScene.tsx            额度补给路线动效
 src/SettingsPanel.tsx         本机设置、环境体检与软件更新
 src-tauri/src/manager.rs      账号库、认证校验与切换核心
+src-tauri/src/codex_app_server.rs 官方 Codex App Server 只读账号协议
 src-tauri/src/usage.rs        本机会话 Token 聚合与模型提供方归属
 src-tauri/src/auth_share.rs   Auth 迁移编码与二维码处理
 src-tauri/src/diagnostics.rs  只读本地环境体检
@@ -249,8 +252,9 @@ docs/release-notes/           手写版本说明（可选）
 
 - [OpenAI 认证文档](https://learn.chatgpt.com/docs/auth)
 - [OpenAI Codex 方案与用量说明](https://learn.chatgpt.com/docs/pricing)
+- [OpenAI Codex App Server 协议](https://learn.chatgpt.com/docs/app-server)
 
-OpenAI 官方文档将 Device Code 登录标记为 Beta，并说明可能需要用户或工作区管理员先在 ChatGPT 安全设置中启用。官方用量说明也指出，用量取决于模型、上下文和任务复杂度，本地与云端任务会共享相应的用量窗口。本 README 确认的是这些产品能力；应用使用的具体 HTTP 端点和字段属于兼容性实现，不应视为 OpenAI 对公开 API 稳定性的承诺。
+OpenAI 官方文档将 Device Code 登录标记为 Beta，并说明可能需要用户或工作区管理员先在 ChatGPT 安全设置中启用。Codex App Server 文档公开了 `account/read`、`account/rateLimits/read` 与 `account/usage/read`；其中没有订阅到期字段。应用仅把这套协议标记为官方数据源，具体 HTTP 降级端点仍属于兼容性实现，不应视为 OpenAI 对公开 API 稳定性的承诺。
 
 ## License
 

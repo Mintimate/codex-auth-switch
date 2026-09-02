@@ -1,5 +1,6 @@
 mod app_update;
 mod auth_share;
+mod codex_app_server;
 mod diagnostics;
 mod manager;
 mod usage;

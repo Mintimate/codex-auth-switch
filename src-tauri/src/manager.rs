@@ -1,5 +1,6 @@
 use crate::{
     auth_share::{self, ImportedAuth},
+    codex_app_server,
     usage::{
         provider_label, scan_local_usage, AccountLabel, ActivationRecord, LocalUsageStats,
         ModelProviderKind, ModelProviderOption, ModelProviderState, ProviderCatalog,
@@ -37,7 +38,7 @@ const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 const USER_AGENT: &str = "codex-auth-switch";
 const USAGE_QUERY_TIMEOUT_SECS: u64 = 10;
 const MAX_ACTIVATION_RECORDS: usize = 10_000;
-const MAX_CONCURRENT_QUOTA_QUERIES: usize = 4;
+const MAX_CONCURRENT_QUOTA_QUERIES: usize = 2;
 
 // reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
 // 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
@@ -129,13 +130,36 @@ pub struct UsageResetCredits {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QuotaBucket {
+    pub id: String,
+    pub name: Option<String>,
+    pub primary: Option<UsageWindow>,
+    pub secondary: Option<UsageWindow>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUsageSummary {
+    pub lifetime_tokens: Option<u64>,
+    pub peak_daily_tokens: Option<u64>,
+    pub longest_running_turn_sec: Option<u64>,
+    pub current_streak_days: Option<u64>,
+    pub longest_streak_days: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountQuota {
     pub profile_id: String,
     pub account_id: String,
     pub label: String,
     pub primary: Option<UsageWindow>,
     pub secondary: Option<UsageWindow>,
+    pub buckets: Vec<QuotaBucket>,
     pub reset_credits: Option<UsageResetCredits>,
+    pub plan_type: Option<String>,
+    pub official_usage: Option<AccountUsageSummary>,
+    pub source: Option<String>,
     pub success: bool,
     pub error: Option<String>,
     pub queried_at: u64,
@@ -214,14 +238,17 @@ enum QuotaQueryError {
     Message(String),
 }
 
-type QuotaQueryResult = Result<
-    (
-        Option<UsageWindow>,
-        Option<UsageWindow>,
-        Option<UsageResetCredits>,
-    ),
-    QuotaQueryError,
->;
+struct QuotaDetails {
+    primary: Option<UsageWindow>,
+    secondary: Option<UsageWindow>,
+    buckets: Vec<QuotaBucket>,
+    reset_credits: Option<UsageResetCredits>,
+    plan_type: Option<String>,
+    official_usage: Option<AccountUsageSummary>,
+    source: String,
+}
+
+type QuotaQueryResult = Result<QuotaDetails, QuotaQueryError>;
 
 // 并发查询阶段不碰 vault，只把结果和「需要回写的刷新令牌」带回串行阶段统一落盘。
 struct QuotaOutcome {
@@ -704,20 +731,8 @@ impl AccountManager {
                             };
                         };
                         let queried_at = unix_timestamp();
-                        let mut result = query_account_quota(&auth, &account_id).await;
-                        let mut refreshed_auth = None;
-
-                        if matches!(result, Err(QuotaQueryError::Unauthorized)) {
-                            match refresh_codex_auth(&auth).await {
-                                Ok(next_auth) => {
-                                    result = query_account_quota(&next_auth, &account_id).await;
-                                    refreshed_auth = Some(next_auth);
-                                }
-                                Err(error) => {
-                                    result = Err(QuotaQueryError::Message(error.to_string()))
-                                }
-                            }
-                        }
+                        let (result, refreshed_auth) =
+                            query_account_details(&auth, &account_id).await;
 
                         QuotaOutcome {
                             index,
@@ -759,13 +774,17 @@ impl AccountManager {
                 .get(index)
                 .ok_or(ManagerError::ProfileNotFound)?;
             let quota = match result {
-                Ok((primary, secondary, reset_credits)) => AccountQuota {
+                Ok(details) => AccountQuota {
                     profile_id: profile.id.clone(),
                     account_id: profile.account_id.clone(),
                     label: profile.label.clone(),
-                    primary,
-                    secondary,
-                    reset_credits,
+                    primary: details.primary,
+                    secondary: details.secondary,
+                    buckets: details.buckets,
+                    reset_credits: details.reset_credits,
+                    plan_type: details.plan_type,
+                    official_usage: details.official_usage,
+                    source: Some(details.source),
                     success: true,
                     error: None,
                     queried_at,
@@ -776,7 +795,11 @@ impl AccountManager {
                     label: profile.label.clone(),
                     primary: None,
                     secondary: None,
+                    buckets: Vec::new(),
                     reset_credits: None,
+                    plan_type: None,
+                    official_usage: None,
+                    source: None,
                     success: false,
                     error: Some("订阅凭据已失效，请重新登录该账号".to_string()),
                     queried_at,
@@ -787,7 +810,11 @@ impl AccountManager {
                     label: profile.label.clone(),
                     primary: None,
                     secondary: None,
+                    buckets: Vec::new(),
                     reset_credits: None,
+                    plan_type: None,
+                    official_usage: None,
+                    source: None,
                     success: false,
                     error: Some(message),
                     queried_at,
@@ -1159,7 +1186,140 @@ fn account_id_from_claims(claims: Option<&TokenClaims>) -> Option<String> {
         })
 }
 
-async fn query_account_quota(auth: &Value, account_id: &str) -> QuotaQueryResult {
+async fn query_account_details(
+    auth: &Value,
+    account_id: &str,
+) -> (QuotaQueryResult, Option<Value>) {
+    if let Ok(snapshot) = codex_app_server::query_account(auth).await {
+        if snapshot
+            .rate_limits
+            .account_id
+            .as_deref()
+            .is_some_and(|response_id| response_id != account_id)
+        {
+            return (
+                Err(QuotaQueryError::Message(
+                    "官方账户响应与本地账号不一致，请重新登录".to_string(),
+                )),
+                None,
+            );
+        }
+        let refreshed_auth = match snapshot.refreshed_auth.as_ref() {
+            Some(auth) => match canonical_chatgpt_auth(auth).and_then(|auth| {
+                let identity = validate_chatgpt_auth(&auth)?;
+                if identity.account_id != account_id {
+                    return Err(ManagerError::InvalidAuth(
+                        "官方账户响应与本地账号不一致，请重新登录".to_string(),
+                    ));
+                }
+                Ok(auth)
+            }) {
+                Ok(auth) => Some(auth),
+                Err(error) => return (Err(QuotaQueryError::Message(error.to_string())), None),
+            },
+            None => None,
+        };
+        return (Ok(official_quota_details(snapshot)), refreshed_auth);
+    }
+
+    let mut result = query_account_quota_compatibility(auth, account_id).await;
+    let mut refreshed_auth = None;
+    if matches!(result, Err(QuotaQueryError::Unauthorized)) {
+        match refresh_codex_auth(auth).await {
+            Ok(next_auth) => {
+                result = query_account_quota_compatibility(&next_auth, account_id).await;
+                refreshed_auth = Some(next_auth);
+            }
+            Err(error) => result = Err(QuotaQueryError::Message(error.to_string())),
+        }
+    }
+    (result, refreshed_auth)
+}
+
+fn official_quota_details(snapshot: codex_app_server::AccountSnapshot) -> QuotaDetails {
+    let codex_app_server::AccountSnapshot {
+        plan_type,
+        rate_limits,
+        usage,
+        refreshed_auth: _,
+    } = snapshot;
+    let mut buckets = rate_limits
+        .rate_limits_by_limit_id
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(id, limit)| QuotaBucket {
+            id,
+            name: limit.limit_name,
+            primary: limit.primary.map(official_usage_window),
+            secondary: limit.secondary.map(official_usage_window),
+        })
+        .collect::<Vec<_>>();
+    let limit = &rate_limits.rate_limits;
+    let default_id = limit
+        .limit_id
+        .clone()
+        .unwrap_or_else(|| "codex".to_string());
+    if buckets.is_empty() || !buckets.iter().any(|bucket| bucket.id == default_id) {
+        buckets.push(QuotaBucket {
+            id: default_id,
+            name: limit.limit_name.clone(),
+            primary: limit.primary.clone().map(official_usage_window),
+            secondary: limit.secondary.clone().map(official_usage_window),
+        });
+    }
+    buckets.sort_by(|left, right| {
+        (left.id != "codex")
+            .cmp(&(right.id != "codex"))
+            .then_with(|| left.name.cmp(&right.name))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+
+    let default_bucket = buckets
+        .iter()
+        .find(|bucket| bucket.id == "codex")
+        .or_else(|| buckets.first());
+    let reset_credits = rate_limits.rate_limit_reset_credits.map(|credits| {
+        let mut expires_at = credits
+            .credits
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|credit| credit.status == "available")
+            .filter_map(|credit| credit.expires_at)
+            .collect::<Vec<_>>();
+        expires_at.sort_unstable();
+        expires_at.dedup();
+        UsageResetCredits {
+            available_count: credits.available_count,
+            expires_at,
+        }
+    });
+
+    QuotaDetails {
+        primary: default_bucket.and_then(|bucket| bucket.primary.clone()),
+        secondary: default_bucket.and_then(|bucket| bucket.secondary.clone()),
+        buckets,
+        reset_credits,
+        plan_type,
+        official_usage: usage.map(|summary| AccountUsageSummary {
+            lifetime_tokens: summary.lifetime_tokens,
+            peak_daily_tokens: summary.peak_daily_tokens,
+            longest_running_turn_sec: summary.longest_running_turn_sec,
+            current_streak_days: summary.current_streak_days,
+            longest_streak_days: summary.longest_streak_days,
+        }),
+        source: "appServer".to_string(),
+    }
+}
+
+fn official_usage_window(window: codex_app_server::RateLimitWindow) -> UsageWindow {
+    UsageWindow {
+        used_percent: window.used_percent.clamp(0.0, 100.0),
+        window_minutes: window.window_duration_mins,
+        resets_at: window.resets_at,
+    }
+}
+
+async fn query_account_quota_compatibility(auth: &Value, account_id: &str) -> QuotaQueryResult {
     let access_token = auth
         .pointer("/tokens/access_token")
         .and_then(Value::as_str)
@@ -1179,7 +1339,15 @@ async fn query_account_quota(auth: &Value, account_id: &str) -> QuotaQueryResult
             expires_at: Vec::new(),
         }),
     };
-    Ok((primary, secondary, reset_credits))
+    Ok(QuotaDetails {
+        primary,
+        secondary,
+        buckets: Vec::new(),
+        reset_credits,
+        plan_type: None,
+        official_usage: None,
+        source: "compatibility".to_string(),
+    })
 }
 
 async fn query_usage_windows(
@@ -1743,6 +1911,7 @@ fn unix_timestamp() -> u64 {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::HashMap;
     use tempfile::TempDir;
 
     fn fake_jwt(account_id: &str, email: &str) -> String {
@@ -2222,6 +2391,60 @@ mod tests {
         assert_eq!(primary.window_minutes, Some(300));
         assert_eq!(primary.resets_at, Some(1787533200));
         assert!(rate_limit.secondary_window.is_none());
+    }
+
+    #[test]
+    fn maps_official_multi_bucket_quota_and_usage_summary() {
+        let snapshot = codex_app_server::AccountSnapshot {
+            plan_type: Some("pro".to_string()),
+            rate_limits: codex_app_server::RateLimitsResponse {
+                rate_limits: codex_app_server::RateLimitSnapshot {
+                    limit_id: Some("codex".to_string()),
+                    primary: Some(codex_app_server::RateLimitWindow {
+                        used_percent: 21.0,
+                        window_duration_mins: Some(10_080),
+                        resets_at: Some(1_788_749_509),
+                    }),
+                    plan_type: Some("pro".to_string()),
+                    ..Default::default()
+                },
+                rate_limits_by_limit_id: Some(HashMap::from([(
+                    "codex_model".to_string(),
+                    codex_app_server::RateLimitSnapshot {
+                        limit_id: Some("codex_model".to_string()),
+                        limit_name: Some("Model quota".to_string()),
+                        primary: Some(codex_app_server::RateLimitWindow {
+                            used_percent: 8.0,
+                            window_duration_mins: Some(300),
+                            resets_at: Some(1_788_364_857),
+                        }),
+                        ..Default::default()
+                    },
+                )])),
+                rate_limit_reset_credits: None,
+                account_id: Some("account-a".to_string()),
+            },
+            usage: Some(codex_app_server::AccountUsageSummary {
+                lifetime_tokens: Some(1_234_567),
+                peak_daily_tokens: Some(45_678),
+                longest_running_turn_sec: Some(540),
+                current_streak_days: Some(8),
+                longest_streak_days: Some(14),
+            }),
+            refreshed_auth: None,
+        };
+
+        let details = official_quota_details(snapshot);
+        assert_eq!(details.source, "appServer");
+        assert_eq!(details.plan_type.as_deref(), Some("pro"));
+        assert_eq!(details.buckets.len(), 2);
+        assert_eq!(details.buckets[0].id, "codex");
+        assert_eq!(details.buckets[1].name.as_deref(), Some("Model quota"));
+        assert_eq!(details.primary.unwrap().used_percent, 21.0);
+        assert_eq!(
+            details.official_usage.unwrap().longest_streak_days,
+            Some(14)
+        );
     }
 
     #[test]

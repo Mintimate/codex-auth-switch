@@ -59,10 +59,27 @@ const formatRelative = (timestamp: number, locale: Locale) => {
   return formatter.format(seconds < 0 ? -days : days, "day");
 };
 
-const quotaUtilization = (quota: AccountQuota) => {
-  const windows = [quota.primary, quota.secondary].filter(
-    (window): window is UsageWindow => Boolean(window),
+const quotaBuckets = (quota: AccountQuota) => {
+  if (quota.buckets?.length) return quota.buckets;
+  return [
+    {
+      id: "codex",
+      name: null,
+      primary: quota.primary,
+      secondary: quota.secondary,
+    },
+  ];
+};
+
+const quotaWindows = (quota: AccountQuota) =>
+  quotaBuckets(quota).flatMap((bucket) =>
+    [bucket.primary, bucket.secondary].filter((window): window is UsageWindow =>
+      Boolean(window),
+    ),
   );
+
+const quotaUtilization = (quota: AccountQuota) => {
+  const windows = quotaWindows(quota);
   return windows.length
     ? Math.max(...windows.map((window) => window.usedPercent))
     : null;
@@ -89,7 +106,7 @@ const quotaEvents = (quotas: AccountQuota[], t: Translate) => {
   const now = Date.now() / 1000;
   const events: QuotaEvent[] = [];
   for (const quota of quotas) {
-    for (const window of [quota.primary, quota.secondary]) {
+    for (const window of quotaWindows(quota)) {
       if (window?.resetsAt && window.resetsAt > now) {
         events.push({
           accountId: quota.accountId,
@@ -115,6 +132,27 @@ const quotaEvents = (quotas: AccountQuota[], t: Translate) => {
     }
   }
   return events.sort((left, right) => left.at - right.at);
+};
+
+const formatPlan = (planType: string | null) => {
+  if (!planType) return null;
+  return planType
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const formatCount = (value: number | null, locale: Locale) =>
+  value === null
+    ? "—"
+    : new Intl.NumberFormat(locale, { notation: "compact" }).format(value);
+
+const formatDuration = (seconds: number | null, t: Translate) => {
+  if (seconds === null) return "—";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.max(1, Math.round((seconds % 3600) / 60));
+  if (!hours) return t("minutesCount", { count: minutes });
+  return t("hoursMinutes", { hours, minutes });
 };
 
 function QuotaWindowRow({
@@ -364,6 +402,8 @@ export function QuotaPanel({
               <div className="quota-account-list">
                 {sortedQuotas.map((quota) => {
                   const level = quotaLevel(quota);
+                  const buckets = quotaBuckets(quota);
+                  const plan = formatPlan(quota.planType);
                   return (
                     <article
                       className={`quota-card level-${level}`}
@@ -385,6 +425,24 @@ export function QuotaPanel({
 
                       {quota.success ? (
                         <>
+                          <div className="quota-account-facts">
+                            <div>
+                              <span>{t("subscriptionPlan")}</span>
+                              <strong>{plan ?? t("unknown")}</strong>
+                            </div>
+                            <div>
+                              <span>{t("subscriptionExpiry")}</span>
+                              <strong>{t("officialNotProvided")}</strong>
+                            </div>
+                            <div>
+                              <span>{t("quotaDataSource")}</span>
+                              <strong>
+                                {quota.source === "appServer"
+                                  ? t("officialAppServer")
+                                  : t("compatibilityFallback")}
+                              </strong>
+                            </div>
+                          </div>
                           {quota.resetCredits && (
                             <div className="reset-credits">
                               <div>
@@ -408,22 +466,94 @@ export function QuotaPanel({
                               )}
                             </div>
                           )}
+                          {quota.officialUsage && (
+                            <div className="quota-official-usage">
+                              <div className="quota-subsection-heading">
+                                <strong>{t("officialAccountUsage")}</strong>
+                                <span>{t("officialAccountUsageHint")}</span>
+                              </div>
+                              <dl>
+                                <div>
+                                  <dt>{t("lifetimeTokens")}</dt>
+                                  <dd>
+                                    {formatCount(
+                                      quota.officialUsage.lifetimeTokens,
+                                      locale,
+                                    )}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>{t("peakDailyTokens")}</dt>
+                                  <dd>
+                                    {formatCount(
+                                      quota.officialUsage.peakDailyTokens,
+                                      locale,
+                                    )}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>{t("currentStreak")}</dt>
+                                  <dd>
+                                    {quota.officialUsage.currentStreakDays ===
+                                    null
+                                      ? "—"
+                                      : t("daysCount", {
+                                          count:
+                                            quota.officialUsage
+                                              .currentStreakDays,
+                                        })}
+                                    {quota.officialUsage.longestStreakDays !==
+                                      null && (
+                                      <small>
+                                        {t("longestStreak", {
+                                          count:
+                                            quota.officialUsage
+                                              .longestStreakDays,
+                                        })}
+                                      </small>
+                                    )}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>{t("longestTurn")}</dt>
+                                  <dd>
+                                    {formatDuration(
+                                      quota.officialUsage.longestRunningTurnSec,
+                                      t,
+                                    )}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </div>
+                          )}
                           <div className="quota-windows">
-                            {quota.primary && (
-                              <QuotaWindowRow
-                                window={quota.primary}
-                                locale={locale}
-                                t={t}
-                              />
-                            )}
-                            {quota.secondary && (
-                              <QuotaWindowRow
-                                window={quota.secondary}
-                                locale={locale}
-                                t={t}
-                              />
-                            )}
-                            {!quota.primary && !quota.secondary && (
+                            {buckets.map((bucket) => (
+                              <div className="quota-bucket" key={bucket.id}>
+                                <div className="quota-bucket-heading">
+                                  <strong>
+                                    {bucket.name ?? t("defaultCodexQuota")}
+                                  </strong>
+                                  {bucket.name && (
+                                    <span>{t("modelSpecificQuota")}</span>
+                                  )}
+                                </div>
+                                {bucket.primary && (
+                                  <QuotaWindowRow
+                                    window={bucket.primary}
+                                    locale={locale}
+                                    t={t}
+                                  />
+                                )}
+                                {bucket.secondary && (
+                                  <QuotaWindowRow
+                                    window={bucket.secondary}
+                                    locale={locale}
+                                    t={t}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                            {!quotaWindows(quota).length && (
                               <p className="quota-empty">
                                 {t("noQuotaWindows")}
                               </p>

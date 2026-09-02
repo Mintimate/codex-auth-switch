@@ -95,7 +95,8 @@ Select **Switch to this account** under **Saved accounts**. Before switching, th
 - Show a 14-day trend, input/output token composition, and account attribution
 - Split local tokens by the `model_provider` recorded in each session, keeping the OpenAI default provider and each custom provider apart
 - Read display names from `[model_providers.*]` in `config.toml`; only the service host is shown, and API keys or full addresses are never stored
-- Use a dedicated Subscription quotas page for account health, recovery timelines, available full resets, and the earliest reset-credit expiry
+- Prefer the official Codex App Server on the Subscription quotas page for plans, default and model-specific quota windows, recovery timelines, full resets, and account usage summaries
+- State clearly that the official interface does not provide subscription expiry, rather than confusing token or reset-credit expiry with account validity
 - Summarize query success, the healthiest account, the nearest recovery, and full resets in the animated quota inspection route
 - Keep local Token scans and online subscription quota queries on separate commands, so opening Token usage does not query the online endpoint
 - Isolate individual account query failures without affecting other accounts
@@ -140,7 +141,8 @@ accounts.v1.json
 
 - The app does not proxy Codex session requests and has no project-operated backend, telemetry, or analytics service.
 - During Device Code login, it communicates directly with OpenAI authentication services and requests only the authentication data needed for the local Codex cache.
-- Subscription usage queries access a ChatGPT compatibility endpoint directly. OpenAI does not guarantee this endpoint or its fields as a stable public API. Changes may affect quota display but not account switching or local token statistics.
+- Subscription usage is read through the official local Codex App Server protocol first. Direct access to the isolated ChatGPT compatibility endpoint is only a fallback for older or unavailable App Server installations. OpenAI does not guarantee that fallback endpoint or its fields as a stable public API.
+- The official App Server currently returns plan, quota-window, full-reset, and account token-activity data, but no subscription-expiry field.
 - Token counts on the usage page summarize local session metadata; they are not the official total ChatGPT subscription quota.
 - Historical Codex sessions do not contain a reliable account ID. Account attribution begins after the app starts recording the switching timeline; older data appears as **Unassigned history**.
 
@@ -166,7 +168,7 @@ Local file permissions cannot provide additional protection if another privilege
 
 - Only `cli_auth_credentials_store = "file"` is supported
 - Device Code login is still in beta and may need to be enabled by an individual user or workspace administrator
-- The concrete wire protocols for Device Code, token refresh, and subscription usage come from compatibility implementations, not guaranteed stable public APIs
+- The concrete wire protocols for Device Code, token refresh, and fallback subscription usage come from compatibility implementations, not guaranteed stable public APIs
 - Local token data depends on available `token_count` metadata in Codex session files
 - Model providers come from each session's own `model_provider`, so attribution is exact per session. This field does not prove whether a request used a ChatGPT subscription or an API key, so the interface does not infer billing from it
 - The project does not manage OpenAI API keys, subscription billing, or workspace seats
@@ -233,6 +235,7 @@ src/QuotaPanel.tsx            Subscription quota status and recovery timeline
 src/QuotaScene.tsx            Animated quota inspection route
 src/SettingsPanel.tsx         Local settings, diagnostics, and software updates
 src-tauri/src/manager.rs      Account vault, authentication validation, and switching
+src-tauri/src/codex_app_server.rs Official Codex App Server read-only account protocol
 src-tauri/src/usage.rs        Local session token aggregation and model-provider attribution
 src-tauri/src/auth_share.rs   Auth transfer encoding and QR code processing
 src-tauri/src/diagnostics.rs  Read-only local environment diagnostics
@@ -249,8 +252,9 @@ docs/release-notes/           Hand-written release notes (optional)
 
 - [OpenAI authentication documentation](https://learn.chatgpt.com/docs/auth)
 - [OpenAI Codex plans and usage](https://learn.chatgpt.com/docs/pricing)
+- [OpenAI Codex App Server protocol](https://learn.chatgpt.com/docs/app-server)
 
-OpenAI's documentation marks Device Code login as beta and notes that users or workspace administrators may need to enable it in ChatGPT security settings. The official usage guide also explains that usage depends on the model, context, and task complexity, and that local and cloud tasks share the applicable usage windows. This README confirms those product capabilities. The specific HTTP endpoints and fields used by the app are compatibility details and should not be interpreted as an OpenAI commitment to public API stability.
+OpenAI's documentation marks Device Code login as beta and notes that users or workspace administrators may need to enable it in ChatGPT security settings. The Codex App Server documentation exposes `account/read`, `account/rateLimits/read`, and `account/usage/read`; none includes a subscription-expiry field. Only that protocol is labeled as the official data source here. The fallback HTTP endpoints remain compatibility details and should not be interpreted as an OpenAI commitment to public API stability.
 
 ## License
 
