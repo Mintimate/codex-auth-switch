@@ -18,7 +18,7 @@ jobs:
     name: 检查发布版本
     runs-on: ubuntu-latest
     outputs:
-      release_body: ${{ steps.version.outputs.release_body }}
+      release_id: ${{ steps.release.outputs.release_id }}
       release_tag: ${{ steps.version.outputs.release_tag }}
     steps:
       - name: 检出代码
@@ -56,14 +56,81 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
 
+      - name: 验证 updater 清单生成器
+        run: node --test .github/scripts/generate-updater-manifest.test.mjs
+
+      - name: 创建或重置草稿 Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ steps.version.outputs.release_body }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+        shell: bash
+        run: |
+          release_pages="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          release_count="$(jq -r --arg tag "${RELEASE_TAG}" \
+            '[.[][] | select(.tag_name == $tag)] | length' <<<"${release_pages}")"
+
+          if [[ "${release_count}" -gt 1 ]]; then
+            echo "::error::标签 ${RELEASE_TAG} 对应多个 Release"
+            exit 1
+          fi
+
+          prerelease=false
+          if [[ "${RELEASE_TAG}" == *-* ]]; then
+            prerelease=true
+          fi
+
+          if [[ "${release_count}" -eq 0 ]]; then
+            release_json="$(jq -n \
+              --arg tag "${RELEASE_TAG}" \
+              --arg name "${RELEASE_TAG}" \
+              --arg body "${RELEASE_BODY}" \
+              --arg target "${GITHUB_SHA}" \
+              --argjson prerelease "${prerelease}" \
+              '{
+                tag_name: $tag,
+                target_commitish: $target,
+                name: $name,
+                body: $body,
+                draft: true,
+                prerelease: $prerelease
+              }' |
+              gh api --method POST \
+                "repos/${GITHUB_REPOSITORY}/releases" --input -)"
+          else
+            release_json="$(jq -cer --arg tag "${RELEASE_TAG}" \
+              '.[][] | select(.tag_name == $tag)' <<<"${release_pages}")"
+            if ! jq -e '.draft == true' <<<"${release_json}" >/dev/null; then
+              echo "::error::Release ${RELEASE_TAG} 已公开，拒绝覆盖"
+              exit 1
+            fi
+
+            release_id="$(jq -r '.id' <<<"${release_json}")"
+            release_json="$(jq -n \
+              --arg name "${RELEASE_TAG}" \
+              --arg body "${RELEASE_BODY}" \
+              --argjson prerelease "${prerelease}" \
+              '{name: $name, body: $body, draft: true, prerelease: $prerelease}' |
+              gh api --method PATCH \
+                "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --input -)"
+
+            jq -r '.assets[].id' <<<"${release_json}" |
+              while read -r asset_id; do
+                gh api --method DELETE \
+                  "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+              done
+          fi
+
+          echo "release_id=$(jq -r '.id' <<<"${release_json}")" >> "${GITHUB_OUTPUT}"
+
   build:
     name: ${{ matrix.name }}
     needs: prepare
     runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
-      # tauri-action 会读取并合并同一 Release 中的 latest.json，必须避免矩阵任务并发覆盖。
-      max-parallel: 1
       matrix:
         include:
           - name: macOS Apple Silicon
@@ -196,18 +263,14 @@ jobs:
         with:
           tauriScript: npm run tauri
           args: ${{ matrix.args }}
+          releaseId: ${{ needs.prepare.outputs.release_id }}
           tagName: ${{ needs.prepare.outputs.release_tag }}
-          releaseName: ${{ needs.prepare.outputs.release_tag }}
-          releaseBody: ${{ needs.prepare.outputs.release_body }}
-          # 所有平台和 updater 清单通过最终校验前，不向现有客户端公开新版本。
           releaseDraft: true
           prerelease: ${{ contains(needs.prepare.outputs.release_tag, '-') }}
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
+          # 各平台只上传唯一命名的安装包和签名，latest.json 在所有构建结束后统一生成。
+          uploadUpdaterJson: false
           uploadUpdaterSignatures: true
           releaseAssetNamePattern: Codex-Auth-Switch_[version]_${{ matrix.asset_os }}_${{ matrix.asset_arch }}[setup][ext]
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: Codex-Auth-Switch-[version]-${{ matrix.asset_os }}-${{ matrix.asset_arch }}-[bundle]
 
   publish:
     name: 验证并发布更新
@@ -216,22 +279,67 @@ jobs:
       - build
     runs-on: ubuntu-latest
     steps:
-      - name: 验证 updater 清单与签名产物
+      - name: 检出发布脚本
+        uses: actions/checkout@v7
+
+      - name: 下载签名并生成 updater 清单
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         shell: bash
         run: |
-          release_pages="$(gh api --paginate --slurp \
-            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
-          release_json="$(jq -cer --arg tag "${RELEASE_TAG}" '
-            [.[][] | select(.tag_name == $tag)]
-            | if length == 1 then .[0] else error("没有找到唯一的草稿 Release") end
-          ' <<<"${release_pages}")"
-          jq -e '.draft == true' <<<"${release_json}"
+          manifest_dir="${RUNNER_TEMP}/updater-manifest"
+          signature_dir="${manifest_dir}/signatures"
+          mkdir -p "${signature_dir}"
+
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            > "${manifest_dir}/release.json"
+          jq -e --arg tag "${RELEASE_TAG}" \
+            '.draft == true and .tag_name == $tag' \
+            "${manifest_dir}/release.json"
+
+          jq -r '
+            .assets[]
+            | select((.label // .name) | endswith(".sig"))
+            | [.id, (.label // .name)]
+            | @tsv
+          ' "${manifest_dir}/release.json" |
+            while IFS=$'\t' read -r asset_id asset_name; do
+              if [[ "${asset_name}" == */* || "${asset_name}" == *..* ]]; then
+                echo "::error::非法签名文件名：${asset_name}"
+                exit 1
+              fi
+              gh api \
+                -H 'Accept: application/octet-stream' \
+                "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" \
+                > "${signature_dir}/${asset_name}"
+            done
+
+          app_version="${RELEASE_TAG#v}"
+          node .github/scripts/generate-updater-manifest.mjs \
+            "${app_version}" \
+            "${RELEASE_TAG}" \
+            "${manifest_dir}/release.json" \
+            "${signature_dir}" \
+            "${manifest_dir}/latest.json"
+
+          gh release upload "${RELEASE_TAG}" \
+            "${manifest_dir}/latest.json" --clobber
+
+      - name: 验证 updater 清单与签名产物
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        shell: bash
+        run: |
+          release_json="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")"
+          jq -e --arg tag "${RELEASE_TAG}" \
+            '.draft == true and .tag_name == $tag' <<<"${release_json}"
 
           manifest_dir="${RUNNER_TEMP}/updater-manifest"
-          mkdir -p "${manifest_dir}"
           manifest="${manifest_dir}/latest.json"
           manifest_asset_id="$(jq -er '
             [.assets[] | select(.name == "latest.json")]
@@ -272,54 +380,40 @@ jobs:
           jq -e '
             ([.assets[].name | select(endswith(".app.tar.gz"))] | length) == 2
             and ([.assets[].name | select(endswith(".app.tar.gz.sig"))] | length) == 2
+            and ([.assets[].name | select(endswith(".dmg"))] | length) == 2
+            and ([.assets[].name | select(endswith(".msi"))] | length) == 1
+            and ([.assets[].name | select(endswith(".msi.sig"))] | length) == 1
+            and ([.assets[].name | select(endswith("-setup.exe"))] | length) == 1
+            and ([.assets[].name | select(endswith("-setup.exe.sig"))] | length) == 1
+            and ([.assets[].name | select(endswith(".AppImage"))] | length) == 1
+            and ([.assets[].name | select(endswith(".AppImage.sig"))] | length) == 1
+            and ([.assets[].name | select(endswith(".deb"))] | length) == 1
+            and ([.assets[].name | select(endswith(".deb.sig"))] | length) == 1
+            and ([.assets[].name | select(endswith(".rpm"))] | length) == 1
+            and ([.assets[].name | select(endswith(".rpm.sig"))] | length) == 1
           ' <<<"${release_json}"
-
-      - name: 删除旧命名的安装产物
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-        shell: bash
-        run: |
-          release_pages="$(gh api --paginate --slurp \
-            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
-          jq -r --arg tag "${RELEASE_TAG}" '
-            .[][]
-            | select(.tag_name == $tag)
-            | .assets[]
-            | [.id, .name]
-            | @tsv
-          ' <<<"${release_pages}" |
-            while IFS=$'\t' read -r asset_id asset_name; do
-              case "${asset_name}" in
-                codex-auth-switch-*)
-                  gh api --method DELETE \
-                    "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
-                  ;;
-              esac
-            done
 
       - name: 公开已验证的 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         shell: bash
         run: |
-          release_pages="$(gh api --paginate --slurp \
-            "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
-          release_id="$(jq -er --arg tag "${RELEASE_TAG}" '
-            [.[][] | select(.tag_name == $tag)]
-            | if length == 1 then .[0].id else error("没有找到唯一的草稿 Release") end
-          ' <<<"${release_pages}")"
+          release_json="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")"
+          jq -e --arg tag "${RELEASE_TAG}" \
+            '.draft == true and .tag_name == $tag' <<<"${release_json}"
 
           if [[ "${RELEASE_TAG}" == *-* ]]; then
             gh api --method PATCH \
-              "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
               -F draft=false \
               -F prerelease=true \
               -f make_latest=false
           else
             gh api --method PATCH \
-              "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
               -F draft=false \
               -F prerelease=false \
               -f make_latest=true
