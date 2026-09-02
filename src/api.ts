@@ -93,6 +93,12 @@ export type AccountUsageSummary = {
   longestRunningTurnSec: number | null;
   currentStreakDays: number | null;
   longestStreakDays: number | null;
+  dailyUsageBuckets: AccountUsageDailyBucket[];
+};
+
+export type AccountUsageDailyBucket = {
+  startDate: string;
+  tokens: number;
 };
 
 export type AccountQuota = {
@@ -220,6 +226,16 @@ const previewDailyTotals = [
   69320, 91720, 76480,
 ];
 
+const previewOfficialDailyUsage = Array.from({ length: 35 }, (_, index) => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - (34 - index));
+  const multiplier = index % 9 === 0 ? 0 : 650 + ((index * 137) % 900);
+  return {
+    startDate: date.toISOString().slice(0, 10),
+    tokens: previewDailyTotals[index % previewDailyTotals.length] * multiplier,
+  };
+});
+
 const previewQuotas: AccountQuota[] = [
   {
     profileId: "account-personal-8f2a",
@@ -272,6 +288,7 @@ const previewQuotas: AccountQuota[] = [
       longestRunningTurnSec: 45622,
       currentStreakDays: 11,
       longestStreakDays: 14,
+      dailyUsageBuckets: previewOfficialDailyUsage,
     },
     source: "appServer",
     success: true,

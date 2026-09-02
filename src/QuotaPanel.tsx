@@ -1,4 +1,4 @@
-import { AccountQuota, UsageWindow } from "./api";
+import { AccountQuota, AccountUsageDailyBucket, UsageWindow } from "./api";
 import { Locale, localizeBackendError, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
 import { QuotaScene } from "./QuotaScene";
@@ -154,6 +154,148 @@ const formatDuration = (seconds: number | null, t: Translate) => {
   if (!hours) return t("minutesCount", { count: minutes });
   return t("hoursMinutes", { hours, minutes });
 };
+
+const parseIsoDay = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+    ? date
+    : null;
+};
+
+const formatCalendarDay = (date: Date, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+
+function DailyUsageHeatmap({
+  buckets,
+  locale,
+  t,
+}: {
+  buckets: AccountUsageDailyBucket[];
+  locale: Locale;
+  t: Translate;
+}) {
+  const usageByDate = new Map<string, number>();
+  for (const bucket of buckets) {
+    if (!parseIsoDay(bucket.startDate) || !Number.isFinite(bucket.tokens)) {
+      continue;
+    }
+    usageByDate.set(bucket.startDate, Math.max(0, bucket.tokens));
+  }
+
+  const dates = [...usageByDate.keys()].sort();
+  const firstDate = dates[0] ? parseIsoDay(dates[0]) : null;
+  const lastDate = dates.at(-1) ? parseIsoDay(dates.at(-1)!) : null;
+  if (!firstDate || !lastDate) return null;
+
+  const gridStart = new Date(firstDate);
+  gridStart.setUTCDate(gridStart.getUTCDate() - gridStart.getUTCDay());
+  const gridEnd = new Date(lastDate);
+  gridEnd.setUTCDate(gridEnd.getUTCDate() + (6 - gridEnd.getUTCDay()));
+
+  const calendarDays: Date[] = [];
+  for (
+    const date = new Date(gridStart);
+    date <= gridEnd;
+    date.setUTCDate(date.getUTCDate() + 1)
+  ) {
+    calendarDays.push(new Date(date));
+  }
+
+  const maxTokens = Math.max(...usageByDate.values(), 0);
+  const numberFormatter = new Intl.NumberFormat(locale);
+  const weekdayFormatter = new Intl.DateTimeFormat(locale, {
+    weekday: "narrow",
+    timeZone: "UTC",
+  });
+  const weekCount = Math.ceil(calendarDays.length / 7);
+  const activityLevel = (tokens: number) =>
+    tokens <= 0 || maxTokens <= 0
+      ? 0
+      : Math.max(1, Math.min(4, Math.ceil((tokens / maxTokens) * 4)));
+
+  return (
+    <div className="quota-daily-usage">
+      <div className="quota-daily-usage-heading">
+        <strong>{t("dailyTokenActivity")}</strong>
+        <span>
+          {t("dailyUsageRange", {
+            start: formatCalendarDay(firstDate, locale),
+            end: formatCalendarDay(lastDate, locale),
+          })}
+        </span>
+      </div>
+      <div className="quota-heatmap-scroll">
+        <div className="quota-heatmap-layout">
+          <div className="quota-heatmap-weekdays" aria-hidden="true">
+            {[1, 3, 5].map((weekday) => (
+              <span key={weekday} style={{ gridRow: weekday + 1 }}>
+                {weekdayFormatter.format(
+                  new Date(Date.UTC(2026, 7, 2 + weekday)),
+                )}
+              </span>
+            ))}
+          </div>
+          <div
+            className="quota-heatmap-grid"
+            role="grid"
+            aria-label={t("dailyTokenActivityAria")}
+            style={{ gridTemplateColumns: `repeat(${weekCount}, 12px)` }}
+          >
+            {calendarDays.map((date, index) => {
+              const dateKey = date.toISOString().slice(0, 10);
+              const tokens = usageByDate.get(dateKey);
+              const tooltip =
+                tokens === undefined
+                  ? undefined
+                  : t("dailyTokenTooltip", {
+                      date: formatCalendarDay(date, locale),
+                      tokens: numberFormatter.format(tokens),
+                    });
+              return (
+                <span
+                  className={`quota-heatmap-day${
+                    tokens === undefined
+                      ? " is-empty"
+                      : ` level-${activityLevel(tokens)}`
+                  }`}
+                  key={dateKey}
+                  style={{
+                    gridColumn: Math.floor(index / 7) + 1,
+                    gridRow: (index % 7) + 1,
+                  }}
+                  title={tooltip}
+                  aria-label={tooltip}
+                  aria-hidden={tokens === undefined}
+                  tabIndex={tokens === undefined ? -1 : 0}
+                  role={tokens === undefined ? undefined : "gridcell"}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="quota-heatmap-legend" aria-hidden="true">
+        <span>{t("usageLess")}</span>
+        {[0, 1, 2, 3, 4].map((level) => (
+          <i className={`level-${level}`} key={level} />
+        ))}
+        <span>{t("usageMore")}</span>
+      </div>
+    </div>
+  );
+}
 
 function QuotaWindowRow({
   locale,
@@ -524,6 +666,16 @@ export function QuotaPanel({
                                   </dd>
                                 </div>
                               </dl>
+                              {quota.officialUsage.dailyUsageBuckets.length >
+                                0 && (
+                                <DailyUsageHeatmap
+                                  buckets={
+                                    quota.officialUsage.dailyUsageBuckets
+                                  }
+                                  locale={locale}
+                                  t={t}
+                                />
+                              )}
                             </div>
                           )}
                           <div className="quota-windows">
