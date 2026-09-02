@@ -145,6 +145,14 @@ pub struct AccountUsageSummary {
     pub longest_running_turn_sec: Option<u64>,
     pub current_streak_days: Option<u64>,
     pub longest_streak_days: Option<u64>,
+    pub daily_usage_buckets: Vec<AccountUsageDailyBucket>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUsageDailyBucket {
+    pub start_date: String,
+    pub tokens: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1300,12 +1308,20 @@ fn official_quota_details(snapshot: codex_app_server::AccountSnapshot) -> QuotaD
         buckets,
         reset_credits,
         plan_type,
-        official_usage: usage.map(|summary| AccountUsageSummary {
-            lifetime_tokens: summary.lifetime_tokens,
-            peak_daily_tokens: summary.peak_daily_tokens,
-            longest_running_turn_sec: summary.longest_running_turn_sec,
-            current_streak_days: summary.current_streak_days,
-            longest_streak_days: summary.longest_streak_days,
+        official_usage: usage.map(|usage| AccountUsageSummary {
+            lifetime_tokens: usage.summary.lifetime_tokens,
+            peak_daily_tokens: usage.summary.peak_daily_tokens,
+            longest_running_turn_sec: usage.summary.longest_running_turn_sec,
+            current_streak_days: usage.summary.current_streak_days,
+            longest_streak_days: usage.summary.longest_streak_days,
+            daily_usage_buckets: usage
+                .daily_usage_buckets
+                .into_iter()
+                .map(|bucket| AccountUsageDailyBucket {
+                    start_date: bucket.start_date,
+                    tokens: bucket.tokens,
+                })
+                .collect(),
         }),
         source: "appServer".to_string(),
     }
@@ -2424,12 +2440,18 @@ mod tests {
                 rate_limit_reset_credits: None,
                 account_id: Some("account-a".to_string()),
             },
-            usage: Some(codex_app_server::AccountUsageSummary {
-                lifetime_tokens: Some(1_234_567),
-                peak_daily_tokens: Some(45_678),
-                longest_running_turn_sec: Some(540),
-                current_streak_days: Some(8),
-                longest_streak_days: Some(14),
+            usage: Some(codex_app_server::AccountUsage {
+                summary: codex_app_server::AccountUsageSummary {
+                    lifetime_tokens: Some(1_234_567),
+                    peak_daily_tokens: Some(45_678),
+                    longest_running_turn_sec: Some(540),
+                    current_streak_days: Some(8),
+                    longest_streak_days: Some(14),
+                },
+                daily_usage_buckets: vec![codex_app_server::AccountUsageDailyBucket {
+                    start_date: "2026-09-01".to_string(),
+                    tokens: 45_678,
+                }],
             }),
             refreshed_auth: None,
         };
@@ -2441,10 +2463,10 @@ mod tests {
         assert_eq!(details.buckets[0].id, "codex");
         assert_eq!(details.buckets[1].name.as_deref(), Some("Model quota"));
         assert_eq!(details.primary.unwrap().used_percent, 21.0);
-        assert_eq!(
-            details.official_usage.unwrap().longest_streak_days,
-            Some(14)
-        );
+        let official_usage = details.official_usage.unwrap();
+        assert_eq!(official_usage.longest_streak_days, Some(14));
+        assert_eq!(official_usage.daily_usage_buckets.len(), 1);
+        assert_eq!(official_usage.daily_usage_buckets[0].tokens, 45_678);
     }
 
     #[test]

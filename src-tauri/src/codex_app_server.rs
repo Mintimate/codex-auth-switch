@@ -27,7 +27,7 @@ pub enum AppServerError {
 pub struct AccountSnapshot {
     pub plan_type: Option<String>,
     pub rate_limits: RateLimitsResponse,
-    pub usage: Option<AccountUsageSummary>,
+    pub usage: Option<AccountUsage>,
     pub refreshed_auth: Option<Value>,
 }
 
@@ -82,10 +82,24 @@ pub struct AccountUsageSummary {
     pub longest_streak_days: Option<u64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUsageDailyBucket {
+    pub start_date: String,
+    pub tokens: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountUsage {
+    pub summary: AccountUsageSummary,
+    pub daily_usage_buckets: Vec<AccountUsageDailyBucket>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AccountUsageResponse {
     summary: AccountUsageSummary,
+    daily_usage_buckets: Option<Vec<AccountUsageDailyBucket>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,7 +172,10 @@ pub async fn query_account(auth: &Value) -> Result<AccountSnapshot, AppServerErr
     let usage = responses
         .usage
         .and_then(|value| parse_result::<AccountUsageResponse>(Some(value)).ok())
-        .map(|response| response.summary);
+        .map(|response| AccountUsage {
+            summary: response.summary,
+            daily_usage_buckets: response.daily_usage_buckets.unwrap_or_default(),
+        });
     let plan_type = match account.account {
         Some(Account::ChatGpt { plan_type }) => plan_type,
         _ => None,
@@ -342,12 +359,28 @@ mod tests {
                 "currentStreakDays": 11,
                 "longestStreakDays": 14
             },
-            "dailyUsageBuckets": null,
+            "dailyUsageBuckets": [
+                { "startDate": "2026-08-31", "tokens": 123456_u64 },
+                { "startDate": "2026-09-01", "tokens": 789012_u64 }
+            ],
             "threadUsage": null
         }))
         .unwrap();
         assert_eq!(usage.summary.current_streak_days, Some(11));
         assert_eq!(usage.summary.longest_streak_days, Some(14));
+        let buckets = usage.daily_usage_buckets.unwrap();
+        assert_eq!(buckets.len(), 2);
+        assert_eq!(buckets[0].start_date, "2026-08-31");
+        assert_eq!(buckets[1].tokens, 789_012);
+    }
+
+    #[test]
+    fn accepts_missing_daily_usage_buckets() {
+        let usage: AccountUsageResponse = serde_json::from_value(json!({
+            "summary": {}
+        }))
+        .unwrap();
+        assert!(usage.daily_usage_buckets.is_none());
     }
 
     #[cfg(unix)]
