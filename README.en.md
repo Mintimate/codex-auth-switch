@@ -2,43 +2,47 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/images/app-icon-dark.svg">
-  <img src="./docs/images/app-icon.svg" width="156" height="156" alt="Codex Auth Switch app icon">
+  <img src="./docs/images/app-icon.svg" width="144" height="144" alt="Codex Auth Switch app icon">
 </picture>
 
 </div>
 
 <h1 align="center">Codex Auth Switch</h1>
 
-<p align="center"><a href="./README.md">简体中文</a> | <strong>English</strong></p>
-
-<p align="center">Local only · Switch Auth</p>
+<p align="center"><a href="./README.md">简体中文</a> · <strong>English</strong></p>
+<p align="center">A local-only account switcher for Codex ChatGPT</p>
 
 <p align="center">
-  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">Download the latest release</a> |
-  <a href="#quick-start">Quick start</a> |
-  <a href="#features">Features</a> |
-  <a href="#security-model">Data security</a> |
-  <a href="https://github.com/Mintimate/codex-auth-switch/releases">Release history</a> |
-  <a href="#development">Development</a> |
+  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">Download</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#security-boundaries">Security</a> ·
+  <a href="#development">Development</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
 </p>
 
-![Codex Auth Switch light account page](docs/images/dashboard-light.jpg)
+![Codex Auth Switch account page](docs/images/dashboard-light.jpg)
 
-> The screenshots use built-in preview data and contain no real account or authentication information. The transfer QR code is an illustration used only for the interface preview.
+> Screenshots use built-in preview data and contain no real accounts, tokens, or authentication data.
 
-Codex Auth Switch focuses on switching between multiple Codex ChatGPT logins on one computer. It also provides local token summaries, subscription quota views, and read-only environment diagnostics. It does not manage OpenAI subscriptions, billing, or API keys, proxy Codex requests, collect telemetry, or send authentication data to a project-operated service.
+Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides local Token usage, subscription quotas, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
 
 > [!IMPORTANT]
 > This project is not affiliated with, sponsored by, or endorsed by OpenAI. Codex, ChatGPT, and OpenAI are trademarks of their respective owners.
 
+## Highlights
+
+- Save, rename, and switch local accounts while preserving rotated tokens before each switch
+- Add an account through browser-based Device Code authorization without entering a password in the app
+- Summarize local session Tokens for today, 7 days, and 30 days, split by account and model provider
+- Show quota windows, recovery timelines, 7-day Tokens, and a one-year activity heatmap
+- Transfer Auth once through a QR code or clipboard, with legacy CAS2 import compatibility
+- Run read-only diagnostics and use light/dark themes, Chinese/English UI, and signed updates
+
 ## Interface Preview
 
-| Subscription quota inspection                                          | Local environment diagnostics                                                |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| ![Codex Auth Switch subscription quotas](docs/images/quota-light.jpg)  | ![Codex Auth Switch local diagnostics](docs/images/diagnostics-light.jpg)    |
-| Dark account page                                                      | One-time Auth transfer                                                       |
-| ![Codex Auth Switch dark account page](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth transfer dialog](docs/images/auth-share-dialog.jpg) |
+| Token usage                                                   | Subscription quotas                                                   |
+| ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| ![Codex Auth Switch Token usage](docs/images/usage-light.jpg) | ![Codex Auth Switch subscription quotas](docs/images/quota-light.jpg) |
 
 ## Download and Install
 
@@ -50,86 +54,33 @@ Download the installer for your system from [Releases](https://github.com/Mintim
 | Windows | x64                   | `.exe` / `.msi`               |
 | Linux   | x64                   | `.AppImage` / `.deb` / `.rpm` |
 
-The macOS package uses an ad hoc signature. On first launch, you may need to approve it in System Settings → Privacy & Security. Some systems may also warn about open-source installers that are not signed with a commercial certificate. Make sure your download came from this project's GitHub Releases page.
+The macOS package uses an ad hoc signature, so first launch may require approval in System Settings → Privacy & Security. Download only from this project's Releases page.
 
 ## Quick Start
 
 ### 1. Enable file-based credential storage
 
-The current release manages only file-based Codex credentials. Add the following setting to `CODEX_HOME/config.toml` (the default is `~/.codex/config.toml`):
+Add the following to `CODEX_HOME/config.toml` (default: `~/.codex/config.toml`):
 
 ```toml
 cli_auth_credentials_store = "file"
 ```
 
-The app does not modify `keyring` or `auto` configurations and displays a clear warning when either mode is active. API Key authentication remains separate from ChatGPT subscription authentication and is never treated as a switchable subscription account.
+The app does not modify `keyring` or `auto`, and API Key authentication is never saved as a subscription account.
 
-### 2. Save the current login
+### 2. Save or add an account
 
-Open the app, give the current Codex ChatGPT login a local name, and select **Save current login**.
+Open the app to save the current Codex ChatGPT login, or select **Add account** and complete Device Code authorization in a browser.
 
-### 3. Add an account with OAuth
+### 3. Switch accounts
 
-Select **Add account with OAuth** to generate a browser URL and one-time pairing code. Complete authorization in a local browser or send both to the account owner. The device that initiated pairing saves and switches to the account after authorization succeeds.
+Select **Switch to this account** in the local vault. The app validates the target and atomically replaces the `auth.json` used by Codex.
 
-One-time Auth transfer is available through a QR code or the clipboard. Stop Codex sessions on the sending device first; the app then force-refreshes credentials and uses the same compact CAS3 content for both formats. The receiver immediately refreshes it and rebuilds a complete Auth; after success, the sending device must not use the account again. Start OAuth pairing on the receiving device when both devices need ongoing access.
+### 4. Transfer to another device (optional)
 
-### 4. Switch with one click
+One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions on the sending device first; the receiver immediately refreshes and validates the account during import. For ongoing access on both devices, start a new OAuth authorization on the receiving device instead.
 
-Select **Switch to this account** under **Saved accounts**. Before switching, the app saves any rotated tokens for the current account, then atomically replaces the authentication file used by Codex.
-
-## Features
-
-### Account Management
-
-- Detect the current Codex ChatGPT login
-- Save, rename, and switch local accounts
-- Add accounts through browser-based Device Code authorization
-- Remove the locally saved copy of any account; removing the current account does not sign out or interrupt the active Codex login
-- Capture potentially rotated tokens for the current account before switching
-- Run a Rust-powered local environment check from Settings for configuration, authentication structure, file permissions, vault consistency, switch history, and atomic-write residue
-
-### Usage and Quotas
-
-- Summarize local token usage for today, the last 7 days, and the last 30 days
-- Show a 14-day trend, input/output token composition, and account attribution
-- Split local tokens by the `model_provider` recorded in each session, keeping the OpenAI default provider and each custom provider apart
-- Read display names from `[model_providers.*]` in `config.toml`; only the service host is shown, and API keys or full addresses are never stored
-- Prefer the official Codex App Server on the Subscription quotas page for plans, default and model-specific quota windows, recovery timelines, full resets, and account usage summaries
-- State clearly that the official interface does not provide subscription expiry, rather than confusing token or reset-credit expiry with account validity
-- Summarize query success, the healthiest account, the nearest recovery, and full resets in the animated quota inspection route
-- Keep local Token scans and online subscription quota queries on separate commands, so opening Token usage does not query the online endpoint
-- Isolate individual account query failures without affecting other accounts
-- Extract only `token_count` and `session_meta.model_provider` fields without retaining or forwarding prompts, responses, or other session content
-
-### OAuth Pairing
-
-- Start Device Code OAuth on the device receiving the account and display a browser URL and short-lived pairing code
-- Let the account owner authorize from another browser without transferring existing Auth or refresh tokens
-- Write authentication data returned by the authorization service only to the initiating device's local Codex cache
-
-### One-Time Auth Transfer
-
-- Transfer Auth once to another device through the system clipboard or a QR code
-- Require sending-device sessions to stop, then force-refresh credentials and reuse the same CAS3 transfer content for the QR code and clipboard
-- Include only the `id_token` and `refresh_token` needed for receiver-side redemption; CAS3 omits the access token, account ID, label, and refresh timestamp
-- Immediately refresh CAS3 credentials on import, verify account identity, and rebuild a complete Auth before writing or switching anything locally
-- Continue importing legacy CAS2 text and QR codes while generating only the shorter CAS3 format
-- Perform payload encoding, decoding, clipboard access, and QR processing entirely in the Rust backend
-- Keep raw, copyable token text out of the frontend
-- Stop using the account on the sending device after import; use OAuth pairing when both devices need ongoing access
-
-### Desktop Experience
-
-- Chinese and English interface with a persistent language switcher
-- Separate tabs for accounts, Token usage, subscription quotas, and settings, with a configurable startup page
-- Optional automatic refresh for the corresponding data when opening Token usage or subscription quotas
-- Light, dark, and system appearance modes
-- Desktop installers for macOS, Windows, and Linux
-- Visible local account vault path with direct access from the file manager
-- Signed update checks and installation from either GitHub or CNB Releases in Settings
-
-## Data Boundaries
+## Security Boundaries
 
 ```text
 CODEX_HOME/auth.json
@@ -139,122 +90,45 @@ Codex Auth Switch (Tauri + Rust)
 accounts.v1.json
 ```
 
-- The app does not proxy Codex session requests and has no project-operated backend, telemetry, or analytics service.
-- During Device Code login, it communicates directly with OpenAI authentication services and requests only the authentication data needed for the local Codex cache.
-- Subscription usage is read through the official local Codex App Server protocol first. Direct access to the isolated ChatGPT compatibility endpoint is only a fallback for older or unavailable App Server installations. OpenAI does not guarantee that fallback endpoint or its fields as a stable public API.
-- The official App Server currently returns plan, quota-window, full-reset, and account token-activity data, but no subscription-expiry field.
-- Token counts on the usage page summarize local session metadata; they are not the official total ChatGPT subscription quota.
-- Historical Codex sessions do not contain a reliable account ID. Account attribution begins after the app starts recording the switching timeline; older data appears as **Unassigned history**.
-
-## Security Model
-
-In file credential mode, Codex stores the login cache in `CODEX_HOME/auth.json`, which defaults to `~/.codex/auth.json`. This file contains access tokens and should be protected like a password.
-
-Codex Auth Switch stores account snapshots in its own application data directory:
-
-- The application data directory uses `0700` permissions on macOS and Linux
-- The account vault and temporary authentication files use `0600` permissions
-- Routine status commands return only redacted account summaries to the frontend
-- Local token parsing happens entirely in the Rust backend; the frontend receives aggregate numbers only
-- Logs and error messages never contain tokens
-- Credential switching uses same-directory atomic replacement on macOS and Linux
-
-Local file permissions cannot provide additional protection if another privileged user already controls the device. System keychain storage is not currently supported.
+- Account snapshots, Token aggregation, and diagnostics stay on the device; there is no project-operated backend, telemetry, or analytics
+- Rust handles authentication reads, validation, transfer, and writes; raw tokens never enter the frontend or logs
+- On macOS/Linux, the app-data directory uses `0700`, while the vault and temporary credential files use `0600`
+- API Key authentication remains separate from ChatGPT subscription authentication
+- Usage scans read only `token_count` and `session_meta.model_provider`; prompts and responses are not retained
+- Subscription data prefers the local Codex App Server; direct HTTP fallback is an isolated compatibility implementation, not a guaranteed stable public API
 
 > [!WARNING]
-> An OAuth pairing code can authorize the initiating device while it remains valid, so send it only to the intended account owner. A one-time Auth transfer contains login credentials; the receiver immediately refreshes and takes over the updated credentials, so use the same content only once. After import, the sending device must stop using that account. Never send QR screenshots or clipboard contents to untrusted people.
+> OAuth pairing codes and one-time Auth transfers can grant account access. Share them only with the intended account owner, and stop using the account on the sending device after a successful transfer.
 
 ## Current Limitations
 
 - Only `cli_auth_credentials_store = "file"` is supported
-- Device Code login is still in beta and may need to be enabled by an individual user or workspace administrator
-- The concrete wire protocols for Device Code, token refresh, and fallback subscription usage come from compatibility implementations, not guaranteed stable public APIs
-- Local token data depends on available `token_count` metadata in Codex session files
-- Model providers come from each session's own `model_provider`, so attribution is exact per session. This field does not prove whether a request used a ChatGPT subscription or an API key, so the interface does not infer billing from it
-- The project does not manage OpenAI API keys, subscription billing, or workspace seats
+- Device Code login is still beta and may need to be enabled by the user or workspace administrator
+- The official App Server does not provide subscription expiry, and local Token totals are not the official subscription quota
+- Historical sessions lack reliable account IDs, so attribution begins after the app starts recording the switch timeline
 
 ## Development
 
-Requirements:
-
-- Node.js 20+
-- Rust stable
-- npm
-- Platform build dependencies for Tauri 2
+Requires Node.js 20+, Rust stable, npm, and the platform dependencies for Tauri 2.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Frontend checks:
+Checks before committing:
 
 ```bash
 npm run format
 npm run typecheck
 npm run build:web
-```
 
-Rust checks:
-
-```bash
 cd src-tauri
 cargo fmt --all
 cargo test
 ```
 
-The release workflow requires the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. If the private key has a password, also configure `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is pinned in `src-tauri/tauri.conf.json`; keep the private key for all future releases so installed versions can verify updates.
-
-## Releasing a New Version
-
-The version number lives in three places — `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` — and they must match exactly. Use the script instead of editing each file by hand:
-
-```bash
-npm run bump 1.2.3      # update version files only
-npm run release 1.2.3   # update versions, then create the commit and tag
-```
-
-The script updates `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, then reads the files back to verify all three versions agree. `Cargo.lock` may contain third-party crates that share this project's version number, so the script only edits the `codex-auth-switch` package block.
-
-Once the changes look right, push the tag to start the release:
-
-```bash
-git push origin main --follow-tags
-```
-
-The workflow reads the version from `src-tauri/tauri.conf.json` and fails if the Git tag does not match. After the tag is pushed, GitHub Actions builds all four platform installers, generates release notes, verifies the updater manifest and signatures, and promotes the draft to a published release. Only after the GitHub Release succeeds is its tag mirrored to CNB; the CNB `tag_push` pipeline then pulls the updater manifest and assets directly from GitHub, uses the same release-note generator, rewrites the CNB update URLs, and creates the mirrored Release.
-
-To write release notes by hand, add `docs/release-notes/vX.Y.Z.md` before tagging. Otherwise notes are generated from Conventional Commits.
-
-## Project Structure
-
-```text
-src/AccountsPage.tsx          Account status, switching route, and local vault
-src/UsagePanel.tsx            Token usage page, including model-provider split
-src/QuotaPanel.tsx            Subscription quota status and recovery timeline
-src/QuotaScene.tsx            Animated quota inspection route
-src/SettingsPanel.tsx         Local settings, diagnostics, and software updates
-src-tauri/src/manager.rs      Account vault, authentication validation, and switching
-src-tauri/src/codex_app_server.rs Official Codex App Server read-only account protocol
-src-tauri/src/usage.rs        Local session token aggregation and model-provider attribution
-src-tauri/src/auth_share.rs   Auth transfer encoding and QR code processing
-src-tauri/src/diagnostics.rs  Read-only local environment diagnostics
-src-tauri/src/lib.rs          Tauri command boundary
-src-tauri/icons/              App icons; CI compiles Assets.xcassets into macOS light and dark icons
-scripts/bump-version.mjs      Version synchronization script
-.cnb.yml                      CNB pipeline that pulls and mirrors GitHub Releases
-.cnb/scripts/                 GitHub Release download and CNB publishing scripts
-docs/images/                  README preview screenshots and app icons
-docs/release-notes/           Hand-written release notes (optional)
-```
-
-## Official References
-
-- [OpenAI authentication documentation](https://learn.chatgpt.com/docs/auth)
-- [OpenAI Codex plans and usage](https://learn.chatgpt.com/docs/pricing)
-- [OpenAI Codex App Server protocol](https://learn.chatgpt.com/docs/app-server)
-
-OpenAI's documentation marks Device Code login as beta and notes that users or workspace administrators may need to enable it in ChatGPT security settings. The Codex App Server documentation exposes `account/read`, `account/rateLimits/read`, and `account/usage/read`; none includes a subscription-expiry field. Only that protocol is labeled as the official data source here. The fallback HTTP endpoints remain compatibility details and should not be interpreted as an OpenAI commitment to public API stability.
+Use `npm run release <version>` to synchronize versions, create the release commit, and tag it. Pushing a `v*` tag lets CI build, sign, and publish installers for every platform.
 
 ## License
 

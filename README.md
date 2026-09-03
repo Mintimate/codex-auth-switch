@@ -2,47 +2,51 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/images/app-icon-dark.svg">
-  <img src="./docs/images/app-icon.svg" width="156" height="156" alt="Codex Auth Switch 应用图标">
+  <img src="./docs/images/app-icon.svg" width="144" height="144" alt="Codex Auth Switch 应用图标">
 </picture>
 
 </div>
 
 <h1 align="center">Codex Auth Switch</h1>
 
-<p align="center"><strong>简体中文</strong> | <a href="./README.en.md">English</a></p>
-
-<p align="center">纯本地 · 切换 Auth</p>
+<p align="center"><strong>简体中文</strong> · <a href="./README.en.md">English</a></p>
+<p align="center">纯本地的 Codex ChatGPT 多账号切换器</p>
 
 <p align="center">
-  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">最新版本下载</a> |
-  <a href="#快速开始">快速使用指南</a> |
-  <a href="#核心功能">功能一览</a> |
-  <a href="#安全模型">数据安全</a> |
-  <a href="https://github.com/Mintimate/codex-auth-switch/releases">版本更新记录</a> |
-  <a href="#开发">研发手册</a> |
+  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">下载</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#安全边界">安全边界</a> ·
+  <a href="#开发">开发</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">反馈问题</a>
 </p>
 
-![Codex Auth Switch 亮色账号页](docs/images/dashboard-light.jpg)
+![Codex Auth Switch 账号页](docs/images/dashboard-light.jpg)
 
-> 截图使用内置预览数据，不包含真实账号或认证信息；迁移二维码也是仅供界面展示的示意图。
+> 截图使用内置预览数据，不包含真实账号、令牌或认证信息。
 
-Codex Auth Switch 专注于本机多个 Codex ChatGPT 登录之间的切换，并提供本机 Token 用量汇总、订阅额度视图和只读环境体检。它不负责 OpenAI 订阅、账单或 API Key 管理，不代理 Codex 请求、不收集遥测，也不会将认证数据发送到项目自建服务。
+Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT 登录，同时提供本机 Token 用量、订阅额度和环境体检。它不代理 Codex 请求，不收集遥测，也不管理 API Key、订阅账单或工作区席位。
 
 > [!IMPORTANT]
 > 本项目与 OpenAI 无隶属、赞助或背书关系。Codex、ChatGPT 和 OpenAI 是其各自权利人的商标。
 
+## 主要能力
+
+- 保存、重命名和一键切换本机账号；切换前会捕获可能已轮换的令牌
+- 通过浏览器 Device Code 授权添加账号，无需在应用中输入密码
+- 汇总今天、近 7 天和近 30 天的本机会话 Token，并按账号与模型提供方拆分
+- 展示订阅额度窗口、恢复时间轴、近 7 天 Token 和一年活跃热力图
+- 通过二维码或剪贴板完成一次性 Auth 迁移，并继续兼容旧版 CAS2 导入
+- 提供只读环境体检、亮色/暗色主题、中英文界面和签名更新
+
 ## 界面预览
 
-| 订阅额度巡检                                                    | 本地环境体检                                                          |
-| --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| ![Codex Auth Switch 订阅额度巡检](docs/images/quota-light.jpg)  | ![Codex Auth Switch 本地环境体检](docs/images/diagnostics-light.jpg)  |
-| 暗色账号页                                                      | 一次性 Auth 迁移                                                      |
-| ![Codex Auth Switch 暗色账号页](docs/images/dashboard-dark.jpg) | ![Codex Auth Switch Auth 迁移弹窗](docs/images/auth-share-dialog.jpg) |
+| Token 用量                                                   | 订阅额度                                                   |
+| ------------------------------------------------------------ | ---------------------------------------------------------- |
+| ![Codex Auth Switch Token 用量](docs/images/usage-light.jpg) | ![Codex Auth Switch 订阅额度](docs/images/quota-light.jpg) |
 
 ## 下载与安装
 
-前往 [Releases](https://github.com/Mintimate/codex-auth-switch/releases/latest) 下载与系统匹配的安装包。
+前往 [Releases](https://github.com/Mintimate/codex-auth-switch/releases/latest) 下载对应安装包。
 
 | 系统    | 架构                  | 格式                          |
 | ------- | --------------------- | ----------------------------- |
@@ -50,86 +54,33 @@ Codex Auth Switch 专注于本机多个 Codex ChatGPT 登录之间的切换，�
 | Windows | x64                   | `.exe` / `.msi`               |
 | Linux   | x64                   | `.AppImage` / `.deb` / `.rpm` |
 
-macOS 安装包使用 ad-hoc 签名，首次打开时可能需要在“系统设置 → 隐私与安全性”中确认。部分系统也可能对未使用商业证书签名的开源安装包显示风险提示，请确认下载来自本项目的 GitHub Releases。
+macOS 安装包使用 ad-hoc 签名。首次打开时，可能需要在“系统设置 → 隐私与安全性”中确认。请只从本项目 Releases 下载。
 
 ## 快速开始
 
 ### 1. 启用文件凭据存储
 
-当前版本只管理 Codex 的文件凭据。在 `CODEX_HOME/config.toml`（默认为 `~/.codex/config.toml`）中设置：
+在 `CODEX_HOME/config.toml`（默认为 `~/.codex/config.toml`）中设置：
 
 ```toml
 cli_auth_credentials_store = "file"
 ```
 
-`keyring` 和 `auto` 模式不会被修改，应用会显示明确提示。API Key 登录与 ChatGPT 订阅登录也保持分离，不会被当作可切换的订阅账号。
+应用不会修改 `keyring` 或 `auto`，API Key 登录也不会被保存为订阅账号。
 
-### 2. 保存当前登录
+### 2. 保存或添加账号
 
-打开应用，为当前 Codex ChatGPT 登录设置一个本地名称，然后选择“保存当前登录”。
+打开应用后，可以保存当前 Codex ChatGPT 登录，也可以选择“登录新账号”，在浏览器中完成 Device Code 授权。
 
-### 3. 通过 OAuth 添加账号
+### 3. 切换账号
 
-选择“OAuth 添加账号”后，应用会显示浏览器地址和一次性配对验证码。你可以在本机浏览器完成授权，也可以把这两项提供给账号持有人；授权成功后，发起配对的设备会自动保存并切换到该账号。
+在账号库中选择“切换到此账号”。应用会校验目标账号，并原子替换 Codex 当前使用的 `auth.json`。
 
-一次性 Auth 迁移支持二维码和剪贴板。开始前应先停止发送端的 Codex 会话；应用随后会强制刷新凭据，并让二维码与剪贴板复用同一份精简 CAS3 内容。接收端导入时会立即联网刷新并重建完整 Auth；成功后发送端不得再次使用该账号。需要两端长期使用时，应在接收设备发起 OAuth 配对。
+### 4. 跨设备迁移（可选）
 
-### 4. 一键切换
+一次性 Auth 迁移支持二维码与剪贴板。发送前应停止发送端的 Codex 会话；接收端导入后会立即刷新并校验账号。需要两端长期使用时，请在接收设备重新发起 OAuth 授权。
 
-在“已保存账号”中选择“切换到此账号”。应用会先保存当前账号可能已轮换的令牌，再原子替换 Codex 正在使用的认证文件。
-
-## 核心功能
-
-### 账号管理
-
-- 检测当前 Codex ChatGPT 登录
-- 保存、重命名和一键切换本机账号
-- 通过浏览器 Device Code 授权添加账号
-- 移除任意账号的本地保存副本；移除当前账号不会注销或中断当前 Codex 登录
-- 切换前自动捕获当前账号可能轮换过的令牌
-- 在设置页由 Rust 执行本地环境体检，校验配置、认证结构、文件权限、账号库一致性、切换历史与原子写残留
-
-### 用量与额度
-
-- 汇总今天、近 7 天和近 30 天的本机 Token 用量
-- 展示 14 天趋势、输入/输出 Token 构成、账号归属与模型提供方拆分
-- 按每个会话记录的 `model_provider` 拆分本地 Token，OpenAI 默认提供方与各个自定义提供方分开统计
-- 从 `config.toml` 的 `[model_providers.*]` 读取服务显示名，界面只展示服务主机，不保存 API Key 或完整地址
-- 独立的“订阅额度”页面优先通过官方 Codex App Server 展示套餐、默认与模型专属额度窗口、恢复时间轴、完整重置和账号用量摘要
-- 明确标注官方接口未提供订阅到期日，不把访问令牌或完整重置的过期时间误当成账号有效期
-- “额度补给路线”通过猫咪巡检动效概览查询成功率、最充足账号、最近恢复与完整重置
-- 本机 Token 与在线订阅额度使用不同查询命令，打开 Token 页面不会访问在线额度接口
-- 单个账号额度查询失败时独立降级，不影响其他账号
-- 只提取会话中的 `token_count` 与 `session_meta.model_provider` 字段，不保留或传递提示词、回复正文及其他会话内容
-
-### OAuth 配对
-
-- 在接收账号的设备发起 Device Code OAuth，展示浏览器地址和短期配对码
-- 账号持有人可在其他浏览器中完成授权，无需传递已有 Auth 或 refresh token
-- 授权成功后，仅将认证服务返回的登录数据写入发起配对设备的本地 Codex 缓存
-
-### 一次性 Auth 迁移
-
-- 通过系统剪贴板或二维码把 Auth 一次性迁移到另一台设备
-- 要求先停止发送端会话，再强制刷新凭据；二维码与剪贴板复用同一份 CAS3 迁移内容
-- CAS3 只携带接收端兑换所需的 `id_token` 和 `refresh_token`，不再携带 access token、账号 ID、名称或刷新时间
-- 接收端导入 CAS3 时会立即联网刷新，校验账号一致性并重建完整 Auth；只有全部成功后才写入本地并切换账号
-- 继续兼容导入旧版 CAS2 文本和二维码，但新生成的迁移内容一律使用更短的 CAS3
-- 迁移数据的编解码、剪贴板访问和二维码处理都在 Rust 后端中完成
-- 前端不会获得可复制的原始令牌文本
-- 接收端导入成功后，发送端不得继续使用该账号；需要两端长期使用时应改用 OAuth 配对
-
-### 桌面体验
-
-- 简体中文和英文界面，语言选择会在本机持久保存
-- 账号、Token 用量、订阅额度与设置采用独立 Tab，支持设置默认启动页
-- 可选择进入 Token 用量或订阅额度页时是否自动刷新对应数据
-- 亮色、暗色与跟随系统三种外观模式
-- macOS、Windows 和 Linux 桌面安装包
-- 本机账号库路径可见，可直接在文件管理器中定位
-- 可在设置页选择 GitHub 或 CNB，检查并安装对应 Release 发布的签名更新
-
-## 数据边界
+## 安全边界
 
 ```text
 CODEX_HOME/auth.json
@@ -139,122 +90,45 @@ Codex Auth Switch (Tauri + Rust)
 accounts.v1.json
 ```
 
-- 应用不代理 Codex 会话请求，也没有自建后端、遥测或分析服务。
-- Device Code 登录时直接与 OpenAI 认证服务通信，仅请求写入本地 Codex 缓存所需的认证数据。
-- 订阅用量优先通过本机 Codex 提供的官方 App Server 协议读取；旧版 Codex 或 App Server 不可用时，才直接访问隔离的 ChatGPT 兼容性接口。兼容端点和字段并非 OpenAI 承诺稳定的公开 API，变化时可能影响降级显示，但不影响账号切换和本机 Token 统计。
-- 官方 App Server 当前返回套餐、额度窗口、完整重置和账号 Token 活动摘要，但不返回订阅到期日。
-- 用量页面中的 Token 数字是本机会话元数据的汇总，不是 ChatGPT 官方订阅总额度。
-- 模型提供方取自会话自带的 `model_provider`，按会话精确归属；该字段不能证明请求使用 ChatGPT 订阅还是 API Key，因此界面不会据此判断计费方式。
-- Codex 历史会话没有可靠的账号 ID，因此账号归属从应用记录切换时间线后开始生效，更早的数据会显示为“历史未归属”。
-
-## 安全模型
-
-Codex 文件凭据模式将登录缓存保存在 `CODEX_HOME/auth.json`，默认路径为 `~/.codex/auth.json`。该文件包含访问令牌，应当像密码一样保护。
-
-Codex Auth Switch 会在自己的应用数据目录保存账号快照：
-
-- macOS/Linux 上的应用数据目录权限设置为 `0700`
-- 账号库和临时认证文件权限设置为 `0600`
-- 日常状态接口只向前端返回脱敏账号摘要
-- 本机 Token 解析完全在 Rust 后端完成，前端只接收聚合数字
-- 日志和错误消息不会包含令牌
-- macOS/Linux 上的凭据切换使用同目录原子替换
-
-如果设备已被其他高权限用户控制，本地文件权限无法提供额外保护。系统钥匙串模式目前不在支持范围内。
+- 账号快照、Token 聚合和诊断都留在本机；没有自建后端、遥测或分析服务
+- 认证数据的读取、校验、迁移和写入由 Rust 后端完成，原始令牌不会进入前端或日志
+- macOS/Linux 上的应用数据目录使用 `0700`，账号库和临时认证文件使用 `0600`
+- API Key 认证与 ChatGPT 订阅认证保持分离
+- 用量页只读取会话中的 `token_count` 和 `session_meta.model_provider`，不保留提示词或回复正文
+- 订阅数据优先读取本机 Codex App Server；直接 HTTP 降级仅是隔离的兼容实现，不应视为稳定公开 API
 
 > [!WARNING]
-> OAuth 配对码在有效期内可授权发起配对的设备，只应提供给预期的账号持有人。一次性 Auth 迁移载荷包含可登录凭据；接收端会立即刷新并接管更新后的凭据，同一份内容只应导入一次。导入后发送端必须停止使用该账号。请勿把二维码截图或剪贴板内容发送给不受信任的人。
+> OAuth 配对码和一次性 Auth 迁移内容都可能授予账号访问能力。只提供给预期的账号持有人；迁移成功后不要继续在发送端使用同一账号。
 
 ## 当前限制
 
 - 仅支持 `cli_auth_credentials_store = "file"`
-- Device Code 登录仍是 Beta，可能需要个人用户或工作区管理员先启用相应权限
-- Device Code、令牌刷新和订阅用量降级接口的具体线协议来自兼容性实现，不是官方承诺的稳定对外 API
-- 本机 Token 数据取决于 Codex 会话文件中可用的 `token_count` 元数据
-- 项目不管理 OpenAI API Key、订阅计费或工作区席位
+- Device Code 登录仍为 Beta，可能需要用户或工作区管理员先启用
+- 官方 App Server 不提供订阅到期日；本机 Token 统计也不等同于官方订阅总额度
+- 历史会话没有可靠账号 ID，账号归属从应用开始记录切换时间线后生效
 
 ## 开发
 
-需要：
-
-- Node.js 20+
-- Rust stable
-- npm
-- Tauri 2 的平台构建依赖
+需要 Node.js 20+、Rust stable、npm 和 Tauri 2 对应的平台构建依赖。
 
 ```bash
 npm install
 npm run dev
 ```
 
-前端校验：
+提交前检查：
 
 ```bash
 npm run format
 npm run typecheck
 npm run build:web
-```
 
-Rust 校验：
-
-```bash
 cd src-tauri
 cargo fmt --all
 cargo test
 ```
 
-发布流水线需要配置 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY`；如果私钥设置了密码，同时配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。更新签名公钥已固化在 `src-tauri/tauri.conf.json`，后续发布必须保留对应私钥，否则已安装版本无法验证新更新。
-
-## 发布新版本
-
-版本号分布在 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 三处，必须完全一致。请使用脚本同步，不要手工逐个修改：
-
-```bash
-npm run bump 1.2.3      # 只更新版本号文件
-npm run release 1.2.3   # 更新版本号，并创建提交与标签
-```
-
-脚本会同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`，随后回读校验三处版本号一致。`Cargo.lock` 中可能存在与本项目版本号相同的第三方依赖，脚本只修改 `codex-auth-switch` 所属的包块。
-
-确认无误后推送标签触发发布：
-
-```bash
-git push origin main --follow-tags
-```
-
-流水线以 `src-tauri/tauri.conf.json` 的版本为准，并校验 Git 标签与之一致；不一致会直接失败。标签推送后，GitHub Actions 会构建四个平台安装包、生成版本说明、校验更新清单与签名，并将草稿转为正式发布。GitHub Release 成功后，对应标签才会同步到 CNB；CNB 的 `tag_push` 流水线随后直接从 GitHub 拉取更新清单与附件，使用同一版本说明生成逻辑，改写 CNB 更新地址并创建镜像 Release。
-
-需要手写版本说明时，在打标签前添加 `docs/release-notes/vX.Y.Z.md`；否则版本说明会依据 Conventional Commits 自动生成。
-
-## 项目结构
-
-```text
-src/AccountsPage.tsx          账号状态、切换链路与本机账号库
-src/UsagePanel.tsx            Token 用量页面（含模型提供方拆分）
-src/QuotaPanel.tsx            订阅额度状态与恢复时间轴
-src/QuotaScene.tsx            额度补给路线动效
-src/SettingsPanel.tsx         本机设置、环境体检与软件更新
-src-tauri/src/manager.rs      账号库、认证校验与切换核心
-src-tauri/src/codex_app_server.rs 官方 Codex App Server 只读账号协议
-src-tauri/src/usage.rs        本机会话 Token 聚合与模型提供方归属
-src-tauri/src/auth_share.rs   Auth 迁移编码与二维码处理
-src-tauri/src/diagnostics.rs  只读本地环境体检
-src-tauri/src/lib.rs          Tauri 命令边界
-src-tauri/icons/              应用图标；Assets.xcassets 由 CI 编译为 macOS 明暗图标
-scripts/bump-version.mjs      版本号同步脚本
-.cnb.yml                      CNB 从 GitHub 拉取并镜像 Release 的流水线
-.cnb/scripts/                 GitHub Release 拉取与 CNB 发布脚本
-docs/images/                  README 预览截图与应用图标
-docs/release-notes/           手写版本说明（可选）
-```
-
-## 官方参考
-
-- [OpenAI 认证文档](https://learn.chatgpt.com/docs/auth)
-- [OpenAI Codex 方案与用量说明](https://learn.chatgpt.com/docs/pricing)
-- [OpenAI Codex App Server 协议](https://learn.chatgpt.com/docs/app-server)
-
-OpenAI 官方文档将 Device Code 登录标记为 Beta，并说明可能需要用户或工作区管理员先在 ChatGPT 安全设置中启用。Codex App Server 文档公开了 `account/read`、`account/rateLimits/read` 与 `account/usage/read`；其中没有订阅到期字段。应用仅把这套协议标记为官方数据源，具体 HTTP 降级端点仍属于兼容性实现，不应视为 OpenAI 对公开 API 稳定性的承诺。
+发布版本必须使用 `npm run release <version>` 同步版本、创建提交与标签；推送 `v*` 标签后由 CI 构建、签名并发布各平台安装包。
 
 ## License
 
