@@ -6,7 +6,10 @@ mod manager;
 mod usage;
 
 use diagnostics::LocalDiagnostics;
-use manager::{AccountManager, AccountQuota, AppStatus, DeviceLoginResponse};
+use manager::{
+    AccountManager, AccountQuota, AppStatus, CodexContextConfig, CodexContextMode,
+    DeviceLoginResponse,
+};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
@@ -59,6 +62,25 @@ fn get_local_diagnostics(app: AppHandle) -> Result<LocalDiagnostics, String> {
         manager.codex_home_path(),
         manager.vault_path(),
     ))
+}
+
+#[tauri::command]
+fn get_codex_context_config(app: AppHandle) -> Result<CodexContextConfig, String> {
+    account_manager(&app)?
+        .codex_context_config()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn set_codex_context_mode(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode: CodexContextMode,
+) -> Result<CodexContextConfig, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .set_codex_context_mode(mode)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -282,6 +304,8 @@ pub fn run() {
             app_update::install_app_update,
             get_status,
             get_local_diagnostics,
+            get_codex_context_config,
+            set_codex_context_mode,
             get_local_usage,
             get_account_quotas,
             get_usage_overview,

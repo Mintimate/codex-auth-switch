@@ -21,6 +21,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Semaphore;
+use toml_edit::{value as toml_edit_value, DocumentMut};
 
 const VAULT_VERSION: u32 = 1;
 const VAULT_FILE_NAME: &str = "accounts.v1.json";
@@ -39,6 +40,8 @@ const USER_AGENT: &str = "codex-auth-switch";
 const USAGE_QUERY_TIMEOUT_SECS: u64 = 10;
 const MAX_ACTIVATION_RECORDS: usize = 10_000;
 const MAX_CONCURRENT_QUOTA_QUERIES: usize = 2;
+const ONE_MILLION_CONTEXT_WINDOW: i64 = 1_000_000;
+const ONE_MILLION_AUTO_COMPACT_LIMIT: i64 = 900_000;
 
 // reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
 // 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
@@ -56,6 +59,21 @@ pub enum ManagerError {
     Network(String),
     DeviceCodeExpired,
     TokenExchange(String),
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexContextMode {
+    Default,
+    OneMillion,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexContextConfig {
+    mode: String,
+    context_window: Option<i64>,
+    auto_compact_token_limit: Option<i64>,
 }
 
 impl fmt::Display for ManagerError {
@@ -890,6 +908,62 @@ impl AccountManager {
         self.codex_home.join("config.toml")
     }
 
+    pub fn codex_context_config(&self) -> Result<CodexContextConfig, ManagerError> {
+        let config_path = self.config_path();
+        if !config_path.exists() {
+            return Ok(context_config_state(None, None));
+        }
+        let contents = fs::read_to_string(&config_path).map_err(|error| {
+            ManagerError::Io(format!("读取 {} 失败: {error}", config_path.display()))
+        })?;
+        if contents.trim().is_empty() {
+            return Ok(context_config_state(None, None));
+        }
+        let document = contents.parse::<DocumentMut>().map_err(|error| {
+            ManagerError::InvalidConfig(format!("Codex config.toml 格式错误: {error}"))
+        })?;
+        Ok(context_config_state(
+            document
+                .get("model_context_window")
+                .and_then(|item| item.as_integer()),
+            document
+                .get("model_auto_compact_token_limit")
+                .and_then(|item| item.as_integer()),
+        ))
+    }
+
+    pub fn set_codex_context_mode(
+        &self,
+        mode: CodexContextMode,
+    ) -> Result<CodexContextConfig, ManagerError> {
+        let config_path = self.config_path();
+        let contents = if config_path.exists() {
+            fs::read_to_string(&config_path).map_err(|error| {
+                ManagerError::Io(format!("读取 {} 失败: {error}", config_path.display()))
+            })?
+        } else {
+            String::new()
+        };
+        let mut document = contents.parse::<DocumentMut>().map_err(|error| {
+            ManagerError::InvalidConfig(format!("Codex config.toml 格式错误: {error}"))
+        })?;
+
+        match mode {
+            CodexContextMode::Default => {
+                document.remove("model_context_window");
+                document.remove("model_auto_compact_token_limit");
+            }
+            CodexContextMode::OneMillion => {
+                document["model_context_window"] = toml_edit_value(ONE_MILLION_CONTEXT_WINDOW);
+                document["model_auto_compact_token_limit"] =
+                    toml_edit_value(ONE_MILLION_AUTO_COMPACT_LIMIT);
+            }
+        }
+
+        atomic_write(&config_path, document.to_string().as_bytes())?;
+        self.codex_context_config()
+    }
+
     fn storage_mode(&self) -> Result<String, ManagerError> {
         let config_path = self.config_path();
         if !config_path.exists() {
@@ -1082,6 +1156,26 @@ fn read_model_provider(config_path: &Path) -> Option<String> {
         .get("model_provider")
         .and_then(toml::Value::as_str)
         .map(|value| value.to_string())
+}
+
+fn context_config_state(
+    context_window: Option<i64>,
+    auto_compact_token_limit: Option<i64>,
+) -> CodexContextConfig {
+    let mode = if context_window.is_none() && auto_compact_token_limit.is_none() {
+        "default"
+    } else if context_window == Some(ONE_MILLION_CONTEXT_WINDOW)
+        && auto_compact_token_limit == Some(ONE_MILLION_AUTO_COMPACT_LIMIT)
+    {
+        "oneMillion"
+    } else {
+        "custom"
+    };
+    CodexContextConfig {
+        mode: mode.to_string(),
+        context_window,
+        auto_compact_token_limit,
+    }
 }
 pub(crate) fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
     if auth.get("auth_mode").and_then(Value::as_str) != Some("chatgpt") {
@@ -2518,6 +2612,74 @@ mod tests {
     fn write_config(manager: &AccountManager, contents: &str) {
         fs::create_dir_all(manager.codex_home_path()).unwrap();
         fs::write(manager.config_path(), contents).unwrap();
+    }
+
+    #[test]
+    fn one_million_context_preset_preserves_the_rest_of_config() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "# keep this comment\nmodel = \"gpt-5.6\"\n\n[features]\napps = true\n",
+        );
+
+        let state = manager
+            .set_codex_context_mode(CodexContextMode::OneMillion)
+            .unwrap();
+        assert_eq!(state.mode, "oneMillion");
+        assert_eq!(state.context_window, Some(1_000_000));
+        assert_eq!(state.auto_compact_token_limit, Some(900_000));
+
+        let contents = fs::read_to_string(manager.config_path()).unwrap();
+        assert!(contents.contains("# keep this comment"));
+        assert!(contents.contains("model = \"gpt-5.6\""));
+        assert!(contents.contains("[features]"));
+        assert!(contents.contains("apps = true"));
+        let config = contents.parse::<toml::Table>().unwrap();
+        assert_eq!(
+            config
+                .get("model_context_window")
+                .and_then(toml::Value::as_integer),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            config
+                .get("model_auto_compact_token_limit")
+                .and_then(toml::Value::as_integer),
+            Some(900_000)
+        );
+    }
+
+    #[test]
+    fn default_context_removes_only_the_context_overrides() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "model_context_window = 800000\nmodel_auto_compact_token_limit = 700000\nmodel_reasoning_effort = \"high\"\n",
+        );
+
+        let before = manager.codex_context_config().unwrap();
+        assert_eq!(before.mode, "custom");
+        let state = manager
+            .set_codex_context_mode(CodexContextMode::Default)
+            .unwrap();
+        assert_eq!(state.mode, "default");
+
+        let contents = fs::read_to_string(manager.config_path()).unwrap();
+        assert!(!contents.contains("model_context_window"));
+        assert!(!contents.contains("model_auto_compact_token_limit"));
+        assert!(contents.contains("model_reasoning_effort = \"high\""));
+    }
+
+    #[test]
+    fn invalid_config_is_not_replaced_by_context_preset() {
+        let (_root, manager) = test_manager();
+        let invalid = "model = [\n";
+        write_config(&manager, invalid);
+
+        assert!(manager
+            .set_codex_context_mode(CodexContextMode::OneMillion)
+            .is_err());
+        assert_eq!(fs::read_to_string(manager.config_path()).unwrap(), invalid);
     }
 
     // OpenAI 默认提供方的 id 就是 openai，第三方按 provider id 单独成桶。

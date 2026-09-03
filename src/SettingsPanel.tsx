@@ -4,16 +4,20 @@ import {
   AppStatus,
   AppUpdateCheckResult,
   AppUpdateSource,
+  CodexContextConfig,
+  CodexContextMode,
   LocalDiagnosticCheck,
   LocalDiagnosticId,
   LocalDiagnostics,
   checkAppUpdate,
+  getCodexContextConfig,
   getAppVersion,
   getLocalDiagnostics,
   installAppUpdate,
+  setCodexContextMode,
 } from "./api";
 import type { AppTab } from "./appTypes";
-import { Locale, MessageKey, Translate } from "./i18n";
+import { Locale, localizeBackendError, MessageKey, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
@@ -171,12 +175,26 @@ export function SettingsPanel({
   const [diagnostics, setDiagnostics] = useState<LocalDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [contextConfig, setContextConfig] = useState<CodexContextConfig | null>(
+    null,
+  );
+  const [contextConfigLoading, setContextConfigLoading] = useState(true);
+  const [contextConfigError, setContextConfigError] = useState<string | null>(
+    null,
+  );
   const updateTotalRef = useRef<number | null>(null);
   const tabOptions: Option<AppTab>[] = [
     { label: t("accountsTab"), value: "accounts" },
     { label: t("usageTab"), value: "usage" },
     { label: t("quotaTab"), value: "quota" },
     { label: t("settingsTab"), value: "settings" },
+  ];
+  const contextOptions: Option<CodexContextMode>[] = [
+    { label: t("contextModeDefault"), value: "default" },
+    { label: t("contextModeOneMillion"), value: "oneMillion" },
+    ...(contextConfig?.mode === "custom"
+      ? [{ label: t("contextModeCustom"), value: "custom" } as const]
+      : []),
   ];
 
   const runUpdateCheck = useCallback(async () => {
@@ -208,6 +226,38 @@ export function SettingsPanel({
     }
   }, [t]);
 
+  const loadContextConfig = useCallback(async () => {
+    setContextConfigLoading(true);
+    setContextConfigError(null);
+    try {
+      setContextConfig(await getCodexContextConfig());
+    } catch (error) {
+      setContextConfigError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setContextConfigLoading(false);
+    }
+  }, []);
+
+  const changeContextMode = useCallback(
+    async (mode: CodexContextMode) => {
+      if (mode === "custom" || mode === contextConfig?.mode) return;
+      setContextConfigLoading(true);
+      setContextConfigError(null);
+      try {
+        setContextConfig(await setCodexContextMode(mode));
+      } catch (error) {
+        setContextConfigError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setContextConfigLoading(false);
+      }
+    },
+    [contextConfig?.mode],
+  );
+
   useEffect(() => {
     window.localStorage.setItem(UPDATE_SOURCE_STORAGE_KEY, updateSource);
   }, [updateSource]);
@@ -215,6 +265,10 @@ export function SettingsPanel({
   useEffect(() => {
     void runDiagnostics();
   }, [runDiagnostics]);
+
+  useEffect(() => {
+    void loadContextConfig();
+  }, [loadContextConfig]);
 
   useEffect(() => {
     void getAppVersion()
@@ -314,6 +368,24 @@ export function SettingsPanel({
         minute: "2-digit",
       }).format(diagnostics.generatedAt * 1000)
     : null;
+  const contextValue = (value: number | null | undefined) =>
+    value === null || value === undefined
+      ? t("contextValueUnset")
+      : new Intl.NumberFormat(locale).format(value);
+  const contextConfigHint = contextConfigError
+    ? t("contextConfigChangeFailed", {
+        message: localizeBackendError(contextConfigError, locale),
+      })
+    : contextConfigLoading || !contextConfig
+      ? t("contextConfigLoading")
+      : contextConfig.mode === "oneMillion"
+        ? t("contextConfigOneMillionHint")
+        : contextConfig.mode === "custom"
+          ? t("contextConfigCustomHint", {
+              context: contextValue(contextConfig.contextWindow),
+              compact: contextValue(contextConfig.autoCompactTokenLimit),
+            })
+          : t("contextConfigDefaultHint");
 
   return (
     <div className="settings-page">
@@ -383,6 +455,27 @@ export function SettingsPanel({
               options={tabOptions}
               value={defaultTab}
               onChange={onDefaultTabChange}
+            />
+          </div>
+        </section>
+
+        <section className="settings-group">
+          <div className="settings-group-heading">
+            <h3>{t("codexSettings")}</h3>
+            <p>{t("codexSettingsHint")}</p>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <strong>{t("contextWindow")}</strong>
+              <span aria-live="polite">{contextConfigHint}</span>
+            </div>
+            <SegmentedControl
+              ariaLabel={t("contextWindow")}
+              disabled={contextConfigLoading || !contextConfig}
+              options={contextOptions}
+              value={contextConfig?.mode ?? "default"}
+              onChange={(mode) => void changeContextMode(mode)}
             />
           </div>
         </section>
