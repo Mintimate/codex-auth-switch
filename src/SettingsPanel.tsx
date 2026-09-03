@@ -386,6 +386,16 @@ export function SettingsPanel({
               compact: contextValue(contextConfig.autoCompactTokenLimit),
             })
           : t("contextConfigDefaultHint");
+  const contextConfigPreview = contextConfig
+    ? [
+        contextConfig.contextWindow === null
+          ? `# model_context_window ${t("contextConfigValueNotSet")}`
+          : `model_context_window = ${contextConfig.contextWindow}`,
+        contextConfig.autoCompactTokenLimit === null
+          ? `# model_auto_compact_token_limit ${t("contextConfigValueNotSet")}`
+          : `model_auto_compact_token_limit = ${contextConfig.autoCompactTokenLimit}`,
+      ].join("\n")
+    : `# ${contextConfigHint}`;
 
   return (
     <div className="settings-page">
@@ -478,6 +488,27 @@ export function SettingsPanel({
               onChange={(mode) => void changeContextMode(mode)}
             />
           </div>
+
+          <details className="context-config-details">
+            <summary>
+              <span className="context-config-summary-closed">
+                {t("expandConfigPreview")}
+              </span>
+              <span className="context-config-summary-open">
+                {t("collapseConfigPreview")}
+              </span>
+              <i aria-hidden="true" />
+            </summary>
+            <div className="context-config-preview">
+              <div>
+                <strong>config.toml</strong>
+                <span>{t("contextConfigPreviewHint")}</span>
+              </div>
+              <pre>
+                <code>{contextConfigPreview}</code>
+              </pre>
+            </div>
+          </details>
         </section>
 
         <section className="settings-group">
