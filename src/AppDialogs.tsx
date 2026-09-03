@@ -496,6 +496,8 @@ export function AccountNameDialog({
   onLabelChange,
   onSubmit,
   privateMode,
+  requiresFileStorage,
+  storageMode,
   t,
 }: {
   label: string;
@@ -505,6 +507,8 @@ export function AccountNameDialog({
   onLabelChange: (label: string) => void;
   onSubmit: () => void;
   privateMode: boolean;
+  requiresFileStorage: boolean;
+  storageMode: string;
   t: Translate;
 }) {
   return (
@@ -558,6 +562,15 @@ export function AccountNameDialog({
               onChange={(event) => onLabelChange(event.target.value)}
               placeholder={t("accountNamePlaceholder")}
             />
+            {mode === "login" && requiresFileStorage && (
+              <div className="login-config-notice" role="note">
+                <strong>{t("loginRequiresFileStorage")}</strong>
+                <span>
+                  {t("loginRequiresFileStorageHint", { mode: storageMode })}
+                </span>
+                <code>cli_auth_credentials_store = &quot;file&quot;</code>
+              </div>
+            )}
             {mode === "login" && <p>{t("deviceLoginNextStep")}</p>}
             <div className="dialog-actions">
               <button
@@ -575,7 +588,11 @@ export function AccountNameDialog({
                 }`}
                 disabled={!label.trim() || oauthTransitioning}
               >
-                {mode === "login" ? t("requestLoginCodeButton") : t("continue")}
+                {mode === "login"
+                  ? requiresFileStorage
+                    ? t("modifyConfigAndRequestLoginCode")
+                    : t("requestLoginCodeButton")
+                  : t("continue")}
                 {mode === "login" && (
                   <span className="oauth-pixel-burst" aria-hidden="true">
                     {Array.from({ length: OAUTH_PIXEL_COUNT }, (_, index) => (

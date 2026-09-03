@@ -3,7 +3,7 @@ import type { AppTab } from "./appTypes";
 import type { Translate } from "./i18n";
 
 const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
-const APP_TABS: AppTab[] = ["accounts", "usage", "quota", "settings"];
+const APP_TABS: AppTab[] = ["accounts", "config", "usage", "quota", "settings"];
 
 function AppIcon() {
   return (
@@ -68,6 +68,16 @@ function TabIcon({ tab }: { tab: AppTab }) {
       </svg>
     );
   }
+  if (tab === "config") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M5 3.5h10M5 10h10M5 16.5h10" />
+        <circle cx="8" cy="3.5" r="1.5" />
+        <circle cx="12.5" cy="10" r="1.5" />
+        <circle cx="9.5" cy="16.5" r="1.5" />
+      </svg>
+    );
+  }
   if (tab === "quota") {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -86,6 +96,7 @@ function TabIcon({ tab }: { tab: AppTab }) {
 
 const tabLabel = (tab: AppTab, t: Translate) => {
   if (tab === "accounts") return t("accountsTab");
+  if (tab === "config") return t("configTab");
   if (tab === "usage") return t("usageTab");
   if (tab === "quota") return t("quotaTab");
   return t("settingsTab");

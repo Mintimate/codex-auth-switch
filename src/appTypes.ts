@@ -1,1 +1,1 @@
-export type AppTab = "accounts" | "usage" | "quota" | "settings";
+export type AppTab = "accounts" | "config" | "usage" | "quota" | "settings";

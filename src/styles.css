@@ -2917,6 +2917,31 @@ button:disabled {
   gap: 18px;
 }
 
+.config-page .settings-grid {
+  grid-template-columns: 1fr;
+}
+
+.config-choice-control {
+  max-width: 620px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.config-inline-preview {
+  width: fit-content;
+  max-width: min(100%, 620px);
+  overflow-x: auto;
+  margin: 10px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 7px 9px;
+  color: var(--foreground);
+  font-size: 9px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
 .settings-group {
   overflow: hidden;
 }
@@ -3016,100 +3041,9 @@ button:disabled {
 }
 
 .settings-segmented button:focus-visible,
-.toggle:focus-visible,
-.context-config-details summary:focus-visible {
+.toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.context-config-details {
-  border-top: 1px solid var(--border);
-}
-
-.context-config-details summary {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 0 24px;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 680;
-  list-style: none;
-  transition:
-    color 140ms ease,
-    background 140ms ease;
-}
-
-.context-config-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.context-config-details summary:hover {
-  background: var(--surface-hover);
-  color: var(--foreground);
-}
-
-.context-config-details summary i {
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform 140ms ease;
-}
-
-.context-config-summary-open {
-  display: none;
-}
-
-.context-config-details[open] .context-config-summary-closed {
-  display: none;
-}
-
-.context-config-details[open] .context-config-summary-open {
-  display: block;
-}
-
-.context-config-details[open] summary i {
-  transform: rotate(225deg) translate(-1px, -1px);
-}
-
-.context-config-preview {
-  padding: 0 24px 20px;
-}
-
-.context-config-preview > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 8px;
-}
-
-.context-config-preview strong {
-  font-size: 11px;
-}
-
-.context-config-preview > div span {
-  color: var(--muted);
-  font-size: 9px;
-  text-align: right;
-}
-
-.context-config-preview pre {
-  overflow-x: auto;
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  padding: 13px 14px;
-  color: var(--foreground);
-  font-size: 10px;
-  line-height: 1.65;
-  white-space: pre;
 }
 
 .toggle {
@@ -4165,6 +4099,37 @@ button:disabled {
   border-left: 1px solid var(--border);
   background: var(--surface);
   padding: 38px 34px;
+}
+
+.login-config-notice {
+  margin-top: 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: 12px;
+  background: var(--warning-bg);
+  padding: 11px 12px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.login-config-notice strong,
+.login-config-notice span,
+.login-config-notice code {
+  display: block;
+}
+
+.login-config-notice strong {
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.login-config-notice code {
+  margin-top: 7px;
+  border-radius: 7px;
+  background: var(--surface);
+  padding: 6px 8px;
+  color: var(--accent-deep);
+  overflow-wrap: anywhere;
 }
 
 .login-form-pane .dialog-actions {

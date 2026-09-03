@@ -42,6 +42,11 @@ const MAX_ACTIVATION_RECORDS: usize = 10_000;
 const MAX_CONCURRENT_QUOTA_QUERIES: usize = 2;
 const ONE_MILLION_CONTEXT_WINDOW: i64 = 1_000_000;
 const ONE_MILLION_AUTO_COMPACT_LIMIT: i64 = 900_000;
+const CREDENTIAL_STORAGE_VALUES: &[&str] = &["file", "keyring", "auto"];
+const REASONING_EFFORT_VALUES: &[&str] = &["minimal", "low", "medium", "high", "xhigh"];
+const REASONING_SUMMARY_VALUES: &[&str] = &["auto", "concise", "detailed", "none"];
+const MODEL_VERBOSITY_VALUES: &[&str] = &["low", "medium", "high"];
+const WEB_SEARCH_VALUES: &[&str] = &["disabled", "cached", "indexed", "live"];
 
 // reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
 // 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
@@ -68,12 +73,51 @@ pub enum CodexContextMode {
     OneMillion,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexConfigKey {
+    CredentialStorage,
+    ReasoningEffort,
+    ReasoningSummary,
+    ModelVerbosity,
+    WebSearch,
+}
+
+impl CodexConfigKey {
+    fn definition(self) -> (&'static str, &'static [&'static str]) {
+        match self {
+            Self::CredentialStorage => ("cli_auth_credentials_store", CREDENTIAL_STORAGE_VALUES),
+            Self::ReasoningEffort => ("model_reasoning_effort", REASONING_EFFORT_VALUES),
+            Self::ReasoningSummary => ("model_reasoning_summary", REASONING_SUMMARY_VALUES),
+            Self::ModelVerbosity => ("model_verbosity", MODEL_VERBOSITY_VALUES),
+            Self::WebSearch => ("web_search", WEB_SEARCH_VALUES),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexContextConfig {
     mode: String,
     context_window: Option<i64>,
     auto_compact_token_limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexChoiceConfig {
+    value: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexManagedConfig {
+    credential_storage: CodexChoiceConfig,
+    context: CodexContextConfig,
+    reasoning_effort: CodexChoiceConfig,
+    reasoning_summary: CodexChoiceConfig,
+    model_verbosity: CodexChoiceConfig,
+    web_search: CodexChoiceConfig,
 }
 
 impl fmt::Display for ManagerError {
@@ -908,34 +952,7 @@ impl AccountManager {
         self.codex_home.join("config.toml")
     }
 
-    pub fn codex_context_config(&self) -> Result<CodexContextConfig, ManagerError> {
-        let config_path = self.config_path();
-        if !config_path.exists() {
-            return Ok(context_config_state(None, None));
-        }
-        let contents = fs::read_to_string(&config_path).map_err(|error| {
-            ManagerError::Io(format!("读取 {} 失败: {error}", config_path.display()))
-        })?;
-        if contents.trim().is_empty() {
-            return Ok(context_config_state(None, None));
-        }
-        let document = contents.parse::<DocumentMut>().map_err(|error| {
-            ManagerError::InvalidConfig(format!("Codex config.toml 格式错误: {error}"))
-        })?;
-        Ok(context_config_state(
-            document
-                .get("model_context_window")
-                .and_then(|item| item.as_integer()),
-            document
-                .get("model_auto_compact_token_limit")
-                .and_then(|item| item.as_integer()),
-        ))
-    }
-
-    pub fn set_codex_context_mode(
-        &self,
-        mode: CodexContextMode,
-    ) -> Result<CodexContextConfig, ManagerError> {
+    fn read_config_document(&self) -> Result<DocumentMut, ManagerError> {
         let config_path = self.config_path();
         let contents = if config_path.exists() {
             fs::read_to_string(&config_path).map_err(|error| {
@@ -944,9 +961,47 @@ impl AccountManager {
         } else {
             String::new()
         };
-        let mut document = contents.parse::<DocumentMut>().map_err(|error| {
+        contents.parse::<DocumentMut>().map_err(|error| {
             ManagerError::InvalidConfig(format!("Codex config.toml 格式错误: {error}"))
-        })?;
+        })
+    }
+
+    fn write_config_document(&self, document: &DocumentMut) -> Result<(), ManagerError> {
+        atomic_write(&self.config_path(), document.to_string().as_bytes())
+    }
+
+    pub fn codex_managed_config(&self) -> Result<CodexManagedConfig, ManagerError> {
+        let document = self.read_config_document()?;
+        Ok(managed_config_from_document(&document))
+    }
+
+    pub fn set_codex_config_choice(
+        &self,
+        key: CodexConfigKey,
+        next_value: &str,
+    ) -> Result<CodexManagedConfig, ManagerError> {
+        let (config_key, allowed_values) = key.definition();
+        if next_value != "default" && !allowed_values.contains(&next_value) {
+            return Err(ManagerError::InvalidConfig(
+                "不受支持的 Codex 配置值".to_string(),
+            ));
+        }
+
+        let mut document = self.read_config_document()?;
+        if next_value == "default" {
+            document.remove(config_key);
+        } else {
+            document[config_key] = toml_edit_value(next_value);
+        }
+        self.write_config_document(&document)?;
+        Ok(managed_config_from_document(&document))
+    }
+
+    pub fn set_codex_context_mode(
+        &self,
+        mode: CodexContextMode,
+    ) -> Result<CodexContextConfig, ManagerError> {
+        let mut document = self.read_config_document()?;
 
         match mode {
             CodexContextMode::Default => {
@@ -960,29 +1015,29 @@ impl AccountManager {
             }
         }
 
-        atomic_write(&config_path, document.to_string().as_bytes())?;
-        self.codex_context_config()
+        self.write_config_document(&document)?;
+        Ok(context_config_from_document(&document))
+    }
+
+    pub fn enable_file_credential_storage(&self) -> Result<AppStatus, ManagerError> {
+        self.set_codex_config_choice(CodexConfigKey::CredentialStorage, "file")?;
+        self.status()
     }
 
     fn storage_mode(&self) -> Result<String, ManagerError> {
-        let config_path = self.config_path();
-        if !config_path.exists() {
-            return Ok("file".to_string());
-        }
-        let contents = fs::read_to_string(&config_path).map_err(|error| {
-            ManagerError::Io(format!("读取 {} 失败: {error}", config_path.display()))
-        })?;
-        if contents.trim().is_empty() {
-            return Ok("file".to_string());
-        }
-        let config = contents.parse::<toml::Table>().map_err(|error| {
-            ManagerError::InvalidConfig(format!("Codex config.toml 格式错误: {error}"))
-        })?;
-        Ok(config
-            .get("cli_auth_credentials_store")
-            .and_then(toml::Value::as_str)
-            .unwrap_or("file")
-            .to_ascii_lowercase())
+        let document = self.read_config_document()?;
+        let configured_item = document.get("cli_auth_credentials_store");
+        let safe_mode = match configured_item.and_then(|item| item.as_str()) {
+            None if configured_item.is_none() => "file".to_string(),
+            Some(mode) => match mode.to_ascii_lowercase().as_str() {
+                "file" => "file".to_string(),
+                "keyring" => "keyring".to_string(),
+                "auto" => "auto".to_string(),
+                _ => "unsupported".to_string(),
+            },
+            None => "unsupported".to_string(),
+        };
+        Ok(safe_mode)
     }
 
     fn ensure_file_storage(&self) -> Result<(), ManagerError> {
@@ -1175,6 +1230,44 @@ fn context_config_state(
         mode: mode.to_string(),
         context_window,
         auto_compact_token_limit,
+    }
+}
+
+fn context_config_from_document(document: &DocumentMut) -> CodexContextConfig {
+    context_config_state(
+        document
+            .get("model_context_window")
+            .and_then(|item| item.as_integer()),
+        document
+            .get("model_auto_compact_token_limit")
+            .and_then(|item| item.as_integer()),
+    )
+}
+
+fn choice_config_state(document: &DocumentMut, config_key: CodexConfigKey) -> CodexChoiceConfig {
+    let (key, allowed_values) = config_key.definition();
+    let Some(item) = document.get(key) else {
+        return CodexChoiceConfig {
+            value: "default".to_string(),
+        };
+    };
+    let value = item
+        .as_str()
+        .filter(|value| allowed_values.contains(value))
+        .unwrap_or("custom");
+    CodexChoiceConfig {
+        value: value.to_string(),
+    }
+}
+
+fn managed_config_from_document(document: &DocumentMut) -> CodexManagedConfig {
+    CodexManagedConfig {
+        credential_storage: choice_config_state(document, CodexConfigKey::CredentialStorage),
+        context: context_config_from_document(document),
+        reasoning_effort: choice_config_state(document, CodexConfigKey::ReasoningEffort),
+        reasoning_summary: choice_config_state(document, CodexConfigKey::ReasoningSummary),
+        model_verbosity: choice_config_state(document, CodexConfigKey::ModelVerbosity),
+        web_search: choice_config_state(document, CodexConfigKey::WebSearch),
     }
 }
 pub(crate) fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, ManagerError> {
@@ -2318,6 +2411,55 @@ mod tests {
     }
 
     #[test]
+    fn enables_file_credential_storage_without_replacing_other_config() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "# keep this comment\ncli_auth_credentials_store = \"keyring\"\nmodel = \"gpt-5.6\"\n\n[features]\napps = true\n",
+        );
+
+        let status = manager.enable_file_credential_storage().unwrap();
+        assert!(status.supported);
+        assert_eq!(status.storage_mode, "file");
+
+        let contents = fs::read_to_string(manager.config_path()).unwrap();
+        assert!(contents.contains("# keep this comment"));
+        assert!(contents.contains("model = \"gpt-5.6\""));
+        assert!(contents.contains("[features]"));
+        assert!(contents.contains("apps = true"));
+        let config = contents.parse::<toml::Table>().unwrap();
+        assert_eq!(
+            config
+                .get("cli_auth_credentials_store")
+                .and_then(toml::Value::as_str),
+            Some("file")
+        );
+    }
+
+    #[test]
+    fn invalid_config_is_not_replaced_when_enabling_file_storage() {
+        let (_root, manager) = test_manager();
+        let invalid = "model = [\n";
+        write_config(&manager, invalid);
+
+        assert!(manager.enable_file_credential_storage().is_err());
+        assert_eq!(fs::read_to_string(manager.config_path()).unwrap(), invalid);
+    }
+
+    #[test]
+    fn does_not_expose_unknown_credential_storage_values() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "cli_auth_credentials_store = \"secret-looking-custom-value\"\n",
+        );
+
+        let status = manager.status().unwrap();
+        assert!(!status.supported);
+        assert_eq!(status.storage_mode, "unsupported");
+    }
+
+    #[test]
     fn parses_device_poll_interval_with_safety_margin() {
         assert_eq!(parse_interval(Some(&json!(5))), 8);
         assert_eq!(parse_interval(Some(&json!("7"))), 10);
@@ -2657,7 +2799,7 @@ mod tests {
             "model_context_window = 800000\nmodel_auto_compact_token_limit = 700000\nmodel_reasoning_effort = \"high\"\n",
         );
 
-        let before = manager.codex_context_config().unwrap();
+        let before = manager.codex_managed_config().unwrap().context;
         assert_eq!(before.mode, "custom");
         let state = manager
             .set_codex_context_mode(CodexContextMode::Default)
@@ -2680,6 +2822,62 @@ mod tests {
             .set_codex_context_mode(CodexContextMode::OneMillion)
             .is_err());
         assert_eq!(fs::read_to_string(manager.config_path()).unwrap(), invalid);
+    }
+
+    #[test]
+    fn parses_only_allowlisted_managed_config_values() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "cli_auth_credentials_store = \"file\"\nmodel_reasoning_effort = \"high\"\nmodel_reasoning_summary = \"unexpected-secret-like-value\"\nmodel_verbosity = \"low\"\nweb_search = \"cached\"\n",
+        );
+
+        let state = manager.codex_managed_config().unwrap();
+        assert_eq!(state.credential_storage.value, "file");
+        assert_eq!(state.reasoning_effort.value, "high");
+        assert_eq!(state.reasoning_summary.value, "custom");
+        assert_eq!(state.model_verbosity.value, "low");
+        assert_eq!(state.web_search.value, "cached");
+        let serialized = serde_json::to_string(&state).unwrap();
+        assert!(!serialized.contains("unexpected-secret-like-value"));
+    }
+
+    #[test]
+    fn updates_one_managed_config_choice_and_preserves_the_rest() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "# keep this comment\nmodel = \"gpt-5.6\"\nmodel_reasoning_effort = \"low\"\n\n[features]\napps = true\n",
+        );
+
+        let state = manager
+            .set_codex_config_choice(CodexConfigKey::ReasoningEffort, "xhigh")
+            .unwrap();
+        assert_eq!(state.reasoning_effort.value, "xhigh");
+        let contents = fs::read_to_string(manager.config_path()).unwrap();
+        assert!(contents.contains("# keep this comment"));
+        assert!(contents.contains("model = \"gpt-5.6\""));
+        assert!(contents.contains("apps = true"));
+        assert!(contents.contains("model_reasoning_effort = \"xhigh\""));
+
+        manager
+            .set_codex_config_choice(CodexConfigKey::ReasoningEffort, "default")
+            .unwrap();
+        let contents = fs::read_to_string(manager.config_path()).unwrap();
+        assert!(!contents.contains("model_reasoning_effort"));
+        assert!(contents.contains("model = \"gpt-5.6\""));
+    }
+
+    #[test]
+    fn rejects_a_value_for_the_wrong_managed_config_key() {
+        let (_root, manager) = test_manager();
+        write_config(&manager, "model_reasoning_effort = \"low\"\n");
+        let before = fs::read_to_string(manager.config_path()).unwrap();
+
+        assert!(manager
+            .set_codex_config_choice(CodexConfigKey::ReasoningEffort, "live")
+            .is_err());
+        assert_eq!(fs::read_to_string(manager.config_path()).unwrap(), before);
     }
 
     // OpenAI 默认提供方的 id 就是 openai，第三方按 provider id 单独成桶。

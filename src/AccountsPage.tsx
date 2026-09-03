@@ -80,7 +80,7 @@ export function AccountsPage({
           <button
             className="button primary hero-action"
             aria-describedby="add-account-guide"
-            disabled={busy || !status?.supported}
+            disabled={busy || !status}
             onClick={() =>
               onLogin(
                 t("numberedAccount", {

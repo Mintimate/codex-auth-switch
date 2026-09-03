@@ -5,6 +5,7 @@ import {
   AccountQuota,
   ModelProviderState,
   copyAuthTransfer,
+  enableFileCredentialStorage,
   getAccountQuotas,
   getLocalUsage,
   getModelProviderState,
@@ -36,6 +37,7 @@ import {
 } from "./AppDialogs";
 import { localizeBackendError, Locale, useI18n } from "./i18n";
 import { SettingsPanel } from "./SettingsPanel";
+import { CodexConfigPanel } from "./CodexConfigPanel";
 import { ThemeMode, useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
 import { UsagePanel } from "./UsagePanel";
@@ -51,6 +53,7 @@ const OAUTH_LAUNCH_ANIMATION_MS = 560;
 const storedDefaultTab = (): AppTab => {
   const value = window.localStorage.getItem(DEFAULT_TAB_STORAGE_KEY);
   return value === "accounts" ||
+    value === "config" ||
     value === "usage" ||
     value === "quota" ||
     value === "settings"
@@ -300,6 +303,20 @@ function App() {
       if (oauthTransitioningRef.current) return;
       oauthTransitioningRef.current = true;
       setOauthTransitioning(true);
+      if (!status?.supported) {
+        setBusy(t("enableFileStorageAction"));
+        setError(null);
+        try {
+          setStatus(await enableFileCredentialStorage());
+        } catch (reason) {
+          setError(localizeBackendError(messageOf(reason), locale));
+          setBusy(null);
+          setOauthTransitioning(false);
+          oauthTransitioningRef.current = false;
+          return;
+        }
+        setBusy(null);
+      }
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         await new Promise((resolve) =>
           window.setTimeout(resolve, OAUTH_LAUNCH_ANIMATION_MS),
@@ -450,19 +467,6 @@ function App() {
           <section className="loading-card">{t("loadingStatus")}</section>
         ) : (
           <div className="content-grid">
-            {!status?.supported && (
-              <section className="alert warning">
-                <strong>{t("unsupportedStorageTitle")}</strong>
-                <span>
-                  {t("unsupportedStorage", {
-                    mode: status?.storageMode ?? t("unknown"),
-                  })}
-                  <code>cli_auth_credentials_store = &quot;file&quot;</code>
-                  {locale === "zh-CN" ? "。" : "."}
-                </span>
-              </section>
-            )}
-
             {error && (
               <section className="alert error">
                 <strong>{t("operationFailed")}</strong>
@@ -518,6 +522,21 @@ function App() {
                 status={status}
                 t={t}
               />
+            )}
+
+            {activeTab === "config" && (
+              <div
+                id="config-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("configTab")}
+              >
+                <CodexConfigPanel
+                  locale={locale}
+                  onCredentialStorageChange={refresh}
+                  t={t}
+                />
+              </div>
             )}
 
             {activeTab === "usage" && (
@@ -648,6 +667,8 @@ function App() {
         onLabelChange={setLabel}
         onSubmit={() => void submitDialog()}
         privateMode={privateMode}
+        requiresFileStorage={dialog === "login" && !status?.supported}
+        storageMode={status?.storageMode ?? "unsupported"}
         t={t}
       />
     </main>

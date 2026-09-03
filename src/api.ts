@@ -55,6 +55,26 @@ export type CodexContextConfig = {
   autoCompactTokenLimit: number | null;
 };
 
+export type CodexConfigChoice = {
+  value: string;
+};
+
+export type CodexManagedConfig = {
+  credentialStorage: CodexConfigChoice;
+  context: CodexContextConfig;
+  reasoningEffort: CodexConfigChoice;
+  reasoningSummary: CodexConfigChoice;
+  modelVerbosity: CodexConfigChoice;
+  webSearch: CodexConfigChoice;
+};
+
+export type CodexConfigKey =
+  | "credentialStorage"
+  | "reasoningEffort"
+  | "reasoningSummary"
+  | "modelVerbosity"
+  | "webSearch";
+
 export type DeviceLoginResponse = {
   deviceCode: string;
   userCode: string;
@@ -417,6 +437,15 @@ const previewCodexContextConfig: CodexContextConfig = {
   autoCompactTokenLimit: null,
 };
 
+const previewCodexManagedConfig: CodexManagedConfig = {
+  credentialStorage: { value: "file" },
+  context: previewCodexContextConfig,
+  reasoningEffort: { value: "high" },
+  reasoningSummary: { value: "auto" },
+  modelVerbosity: { value: "medium" },
+  webSearch: { value: "cached" },
+};
+
 const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges">
     <rect width="29" height="29" fill="white"/>
@@ -460,22 +489,39 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "get_local_diagnostics") {
       return Promise.resolve(structuredClone(previewDiagnostics) as T);
     }
-    if (command === "get_codex_context_config") {
-      return Promise.resolve(structuredClone(previewCodexContextConfig) as T);
+    if (command === "get_codex_managed_config") {
+      return Promise.resolve(structuredClone(previewCodexManagedConfig) as T);
     }
     if (command === "set_codex_context_mode") {
       const mode = args?.mode === "oneMillion" ? "oneMillion" : "default";
-      return Promise.resolve(
-        structuredClone(
-          mode === "oneMillion"
-            ? {
-                mode,
-                contextWindow: 1_000_000,
-                autoCompactTokenLimit: 900_000,
-              }
-            : previewCodexContextConfig,
-        ) as T,
-      );
+      const context: CodexContextConfig =
+        mode === "oneMillion"
+          ? {
+              mode,
+              contextWindow: 1_000_000,
+              autoCompactTokenLimit: 900_000,
+            }
+          : previewCodexContextConfig;
+      previewCodexManagedConfig.context = context;
+      return Promise.resolve(structuredClone(context) as T);
+    }
+    if (command === "set_codex_config_choice") {
+      const key = args?.key as CodexConfigKey;
+      const value = typeof args?.value === "string" ? args.value : "default";
+      if (key in previewCodexManagedConfig) {
+        previewCodexManagedConfig[key] = { value };
+        if (key === "credentialStorage") {
+          previewStatus.storageMode = value === "default" ? "file" : value;
+          previewStatus.supported = previewStatus.storageMode === "file";
+        }
+      }
+      return Promise.resolve(structuredClone(previewCodexManagedConfig) as T);
+    }
+    if (command === "enable_file_credential_storage") {
+      previewStatus.storageMode = "file";
+      previewStatus.supported = true;
+      previewCodexManagedConfig.credentialStorage = { value: "file" };
+      return Promise.resolve(structuredClone(previewStatus) as T);
     }
     if (command === "prepare_auth_transfer") {
       return Promise.resolve({
@@ -512,12 +558,18 @@ export const getStatus = () => call<AppStatus>("get_status");
 export const getLocalDiagnostics = () =>
   call<LocalDiagnostics>("get_local_diagnostics");
 
-export const getCodexContextConfig = () =>
-  call<CodexContextConfig>("get_codex_context_config");
+export const getCodexManagedConfig = () =>
+  call<CodexManagedConfig>("get_codex_managed_config");
 
 export const setCodexContextMode = (
   mode: Exclude<CodexContextMode, "custom">,
 ) => call<CodexContextConfig>("set_codex_context_mode", { mode });
+
+export const enableFileCredentialStorage = () =>
+  call<AppStatus>("enable_file_credential_storage");
+
+export const setCodexConfigChoice = (key: CodexConfigKey, value: string) =>
+  call<CodexManagedConfig>("set_codex_config_choice", { key, value });
 
 const isMissingCommand = (error: unknown, command: string) => {
   const message = error instanceof Error ? error.message : String(error);

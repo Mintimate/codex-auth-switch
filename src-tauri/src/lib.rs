@@ -7,8 +7,8 @@ mod usage;
 
 use diagnostics::LocalDiagnostics;
 use manager::{
-    AccountManager, AccountQuota, AppStatus, CodexContextConfig, CodexContextMode,
-    DeviceLoginResponse,
+    AccountManager, AccountQuota, AppStatus, CodexConfigKey, CodexContextConfig, CodexContextMode,
+    CodexManagedConfig, DeviceLoginResponse,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -65,9 +65,22 @@ fn get_local_diagnostics(app: AppHandle) -> Result<LocalDiagnostics, String> {
 }
 
 #[tauri::command]
-fn get_codex_context_config(app: AppHandle) -> Result<CodexContextConfig, String> {
+fn get_codex_managed_config(app: AppHandle) -> Result<CodexManagedConfig, String> {
     account_manager(&app)?
-        .codex_context_config()
+        .codex_managed_config()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn set_codex_config_choice(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    key: CodexConfigKey,
+    value: String,
+) -> Result<CodexManagedConfig, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .set_codex_config_choice(key, &value)
         .map_err(|error| error.to_string())
 }
 
@@ -80,6 +93,17 @@ async fn set_codex_context_mode(
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .set_codex_context_mode(mode)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn enable_file_credential_storage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppStatus, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?
+        .enable_file_credential_storage()
         .map_err(|error| error.to_string())
 }
 
@@ -304,8 +328,10 @@ pub fn run() {
             app_update::install_app_update,
             get_status,
             get_local_diagnostics,
-            get_codex_context_config,
+            get_codex_managed_config,
             set_codex_context_mode,
+            set_codex_config_choice,
+            enable_file_credential_storage,
             get_local_usage,
             get_account_quotas,
             get_usage_overview,
