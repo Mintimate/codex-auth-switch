@@ -15,16 +15,20 @@
 <p align="center">
   <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#codex-configuration">Codex configuration</a> ·
   <a href="#security-boundaries">Security</a> ·
   <a href="#development">Development</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
 </p>
 
-![Codex Auth Switch account page](docs/images/dashboard-light.jpg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
+  <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch 1.1.1: current login, switching flow, and local account vault">
+</picture>
 
-> Screenshots use built-in preview data and contain no real accounts, tokens, or authentication data.
+> Screenshots show the Chinese interface with built-in preview data from 1.1.1. They contain no real accounts, tokens, or authentication data.
 
-Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides local Token usage, subscription quotas, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
+Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides Codex configuration editing, local Token usage, subscription quotas, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
 
 > [!IMPORTANT]
 > This project is not affiliated with, sponsored by, or endorsed by OpenAI. Codex, ChatGPT, and OpenAI are trademarks of their respective owners.
@@ -33,16 +37,31 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 
 - Save, rename, and switch local accounts while preserving rotated tokens before each switch
 - Add an account through browser-based Device Code authorization without entering a password in the app
+- Configure credential storage, the 1M context preset, reasoning effort and summaries, response verbosity, and web search
 - Summarize local session Tokens for today, 7 days, and 30 days, split by account and model provider
 - Show quota windows, recovery timelines, 7-day Tokens, and a one-year activity heatmap
+- Refresh usage and quotas independently when opening their pages, with an option to load data manually
 - Transfer Auth once through a QR code or clipboard, with legacy CAS2 import compatibility
-- Run read-only diagnostics and use light/dark themes, Chinese/English UI, and signed updates
+- Run read-only diagnostics, hide emails with privacy mode, and use light/dark themes, Chinese/English UI, and signed updates from GitHub or CNB
 
 ## Interface Preview
 
-| Token usage                                                   | Subscription quotas                                                   |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- |
-| ![Codex Auth Switch Token usage](docs/images/usage-light.jpg) | ![Codex Auth Switch subscription quotas](docs/images/quota-light.jpg) |
+| Codex configuration                                                                                                | Token usage                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| ![Codex configuration: credential storage, 1M context, model output, and web search](docs/images/config-light.jpg) | ![Token usage: local totals, daily trends, and attribution by account and provider](docs/images/usage-light.jpg) |
+
+| Subscription quotas                                                                                          | App settings                                                                                     |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| ![Subscription quotas: multiple windows, recovery timelines, and account usage](docs/images/quota-light.jpg) | ![App settings: language, privacy, theme, and automatic refresh](docs/images/settings-light.jpg) |
+
+<details>
+<summary>Diagnostics and one-time Auth transfer</summary>
+
+| Diagnostics                                                                 | One-time Auth transfer                                                                                                  |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| ![Read-only diagnostics and app updates](docs/images/diagnostics-light.jpg) | ![One-time Auth transfer dialog with a preview QR pattern containing no credentials](docs/images/auth-share-dialog.jpg) |
+
+</details>
 
 ## Download and Install
 
@@ -60,17 +79,17 @@ The macOS package uses an ad hoc signature, so first launch may require approval
 
 ### 1. Enable file-based credential storage
 
-Add the following to `CODEX_HOME/config.toml` (default: `~/.codex/config.toml`):
+Open **Codex config** in the sidebar and select **File** under **Credential storage**, or use **Enable file-based login management** when prompted on the account page. This sets the following in `CODEX_HOME/config.toml` (default: `~/.codex/config.toml`):
 
 ```toml
 cli_auth_credentials_store = "file"
 ```
 
-The app does not modify `keyring` or `auto`, and API Key authentication is never saved as a subscription account.
+The app does not change an existing storage mode automatically. Account management is unavailable when `auto` or `keyring` is selected, and API Key authentication is never saved as a subscription account.
 
 ### 2. Save or add an account
 
-Open the app to save the current Codex ChatGPT login, or select **Add account** and complete Device Code authorization in a browser.
+Open the app to save the current Codex ChatGPT login, or select **Add account**, choose a local name, and complete Device Code authorization in a browser. Successful authorization automatically saves and switches to the new account.
 
 ### 3. Switch accounts
 
@@ -79,6 +98,27 @@ Select **Switch to this account** in the local vault. The app validates the targ
 ### 4. Transfer to another device (optional)
 
 One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions on the sending device first; the receiver immediately refreshes and validates the account during import. For ongoing access on both devices, start a new OAuth authorization on the receiving device instead.
+
+## Codex Configuration
+
+The configuration page edits the local `config.toml`. Each selection updates only the corresponding supported fields, preserves other settings and comments, and displays the resulting values inline.
+
+| Setting            | Options                                                               |
+| ------------------ | --------------------------------------------------------------------- |
+| Credential storage | Default, file, auto, or keyring; account switching requires file mode |
+| Context window     | Codex defaults, or 1M context with a 900K auto-compaction threshold   |
+| Reasoning effort   | Default, minimal, low, medium, high, or extra high                    |
+| Reasoning summary  | Default, auto, concise, detailed, or off                              |
+| Response verbosity | Default, low, medium, or high                                         |
+| Web search         | Default, disabled, cached, indexed, or live                           |
+
+Selecting **Default** removes the corresponding fields so Codex can use its defaults. Existing values outside the presets appear as **Custom** and remain unchanged until you select a preset. Settings such as 1M are local configuration presets; support depends on the Codex version, model, and service in use.
+
+## Usage and Quotas
+
+**Token usage** aggregates local session metadata; **Subscription quotas** queries online account limits. The pages load independently, and opening the account page does not query subscription quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually with each page's button.
+
+When available, the quota page shows the plan, multiple quota windows, full-reset credits and expiry dates, account usage, and an activity heatmap. Not every account or data source returns all of these fields. Network errors can be retried manually; wait before retrying a rate-limited request.
 
 ## Security Boundaries
 
