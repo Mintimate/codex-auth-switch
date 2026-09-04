@@ -35,15 +35,6 @@ impl ModelProviderKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub enum QuotaRelation {
-    Confirmed,
-    Excluded,
-    Unknown,
-}
-
 // config.toml 的 [model_providers.<id>] 提供显示名，否则界面上只能看到
 // 诸如 custom 这类没有信息量的内部 id。
 #[derive(Debug, Clone, Default)]
@@ -231,7 +222,6 @@ pub struct ModelProviderUsage {
     pub kind: ModelProviderKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
-    pub quota_relation: QuotaRelation,
     pub tokens: TokenBreakdown,
 }
 
@@ -507,8 +497,6 @@ fn scan_local_usage_for_date(
                 label,
                 kind,
                 host,
-                // model_provider 本身不携带足以判断认证与最终计费方式的信息。
-                quota_relation: QuotaRelation::Unknown,
                 tokens,
             }
         })
@@ -855,8 +843,6 @@ mod tests {
         assert_eq!(third_usage.label, "Local Relay");
         assert_eq!(third_usage.host.as_deref(), Some("relay.example.com"));
         // model_provider 不能证明认证或最终计费方式。
-        assert_eq!(openai_usage.quota_relation, QuotaRelation::Unknown);
-        assert_eq!(third_usage.quota_relation, QuotaRelation::Unknown);
         assert_eq!(stats.thirty_days.total_tokens, 350);
     }
 
@@ -900,7 +886,6 @@ mod tests {
             .find(|usage| usage.kind == ModelProviderKind::Unattributed)
             .expect("unattributed provider");
         assert_eq!(unattributed.tokens.total_tokens, 50);
-        assert_eq!(unattributed.quota_relation, QuotaRelation::Unknown);
     }
 
     // host 只取主机与端口，不回传完整 base_url，避免把服务地址细节送进前端。

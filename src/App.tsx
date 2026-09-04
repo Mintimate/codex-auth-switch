@@ -116,8 +116,12 @@ function App() {
   const [quotas, setQuotas] = useState<AccountQuota[] | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [quotaError, setQuotaError] = useState<string | null>(null);
+  const usageRefreshInFlightRef = useRef(false);
+  const quotaRefreshInFlightRef = useRef(false);
 
   const refreshUsage = useCallback(async () => {
+    if (usageRefreshInFlightRef.current) return;
+    usageRefreshInFlightRef.current = true;
     setUsageLoading(true);
     setUsageError(null);
     try {
@@ -131,10 +135,13 @@ function App() {
       setUsageError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setUsageLoading(false);
+      usageRefreshInFlightRef.current = false;
     }
   }, [locale]);
 
   const refreshQuotas = useCallback(async () => {
+    if (quotaRefreshInFlightRef.current) return;
+    quotaRefreshInFlightRef.current = true;
     setQuotaLoading(true);
     setQuotaError(null);
     try {
@@ -143,6 +150,7 @@ function App() {
       setQuotaError(localizeBackendError(messageOf(reason), locale));
     } finally {
       setQuotaLoading(false);
+      quotaRefreshInFlightRef.current = false;
     }
   }, [locale]);
 
@@ -152,6 +160,7 @@ function App() {
   }, [activeTab, refreshQuotas, refreshUsage]);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
       setError(null);
       setStatus(await getStatus());
@@ -463,7 +472,7 @@ function App() {
           t={t}
         />
 
-        {loading ? (
+        {loading && !status ? (
           <section className="loading-card">{t("loadingStatus")}</section>
         ) : (
           <div className="content-grid">
@@ -495,7 +504,8 @@ function App() {
 
             {activeTab === "accounts" && (
               <AccountsPage
-                busy={Boolean(busy)}
+                busy={Boolean(busy) || loading}
+                loading={loading}
                 onImport={() => {
                   setError(null);
                   setNotice(null);

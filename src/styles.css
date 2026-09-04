@@ -1997,28 +1997,6 @@ button:disabled {
   background: var(--danger);
 }
 
-.quota-supply-scene.is-refreshing .quota-scene-node {
-  animation: quota-station-scan 1.4s ease-in-out infinite alternate;
-}
-
-.quota-supply-scene.is-refreshing
-  .quota-scene-station:nth-of-type(2)
-  .quota-scene-node {
-  animation-delay: 180ms;
-}
-
-.quota-supply-scene.is-refreshing
-  .quota-scene-station:nth-of-type(3)
-  .quota-scene-node {
-  animation-delay: 360ms;
-}
-
-.quota-supply-scene.is-refreshing
-  .quota-scene-station:nth-of-type(4)
-  .quota-scene-node {
-  animation-delay: 540ms;
-}
-
 .quota-scene-status {
   display: block;
   color: var(--muted-soft);
@@ -2089,13 +2067,6 @@ button:disabled {
   47%,
   66% {
     transform: translateY(-4px) rotate(-8deg);
-  }
-}
-
-@keyframes quota-station-scan {
-  to {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-pulse);
   }
 }
 
@@ -3339,6 +3310,43 @@ button:disabled {
 .account-list {
   display: grid;
   gap: 10px;
+}
+
+.account-list-skeleton {
+  animation: usage-content-reveal 200ms ease-out both;
+}
+
+.account-card-skeleton {
+  min-height: 126px;
+}
+
+.skeleton-account-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+}
+
+.skeleton-account-name {
+  width: min(58%, 180px);
+  height: 12px;
+}
+
+.skeleton-account-email {
+  width: min(76%, 240px);
+  height: 9px;
+  margin-top: 9px;
+}
+
+.skeleton-account-id {
+  width: min(44%, 130px);
+  height: 7px;
+  margin-top: 8px;
+}
+
+.account-skeleton-actions span {
+  width: 52px;
+  height: 27px;
+  border-radius: 9px;
 }
 
 .account-card {
@@ -5124,6 +5132,7 @@ button:disabled {
   .usage-loaded-content,
   .quota-loaded-content,
   .quota-skeleton,
+  .account-list-skeleton,
   .hero-login-guide,
   .hero-action.primary small::before,
   .dialog-backdrop,

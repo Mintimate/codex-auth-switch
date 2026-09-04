@@ -153,7 +153,7 @@ export function QuotaPanel({
         </div>
       )}
 
-      {!quotas && loading ? (
+      {loading ? (
         <QuotaSkeleton label={t("quotaLoading")} />
       ) : !quotas ? (
         <div className="usage-empty-state">
@@ -169,7 +169,6 @@ export function QuotaPanel({
             accountLabel={sceneAccountLabel}
             credits={totalCredits}
             level={sceneLevel}
-            loading={loading}
             recoveryLabel={sceneRecoveryLabel}
             t={t}
             utilization={sceneUtilization}

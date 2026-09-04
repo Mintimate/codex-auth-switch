@@ -1,3 +1,4 @@
+use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -10,17 +11,18 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    process::{Child, Command},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
+    process::{Child, ChildStdin, ChildStdout, Command},
     time::timeout,
 };
 
-const QUERY_TIMEOUT: Duration = Duration::from_secs(20);
+const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub enum AppServerError {
     Unavailable,
     QueryFailed,
+    RateLimited,
 }
 
 #[derive(Debug)]
@@ -132,36 +134,62 @@ pub async fn query_account(auth: &Value) -> Result<AccountSnapshot, AppServerErr
     let mut stdin = child.stdin.take().ok_or(AppServerError::Unavailable)?;
     let stdout = child.stdout.take().ok_or(AppServerError::Unavailable)?;
 
-    for message in [
-        json!({
-            "method": "initialize",
-            "id": 0,
-            "params": {
-                "clientInfo": {
-                    "name": "codex_auth_switch",
-                    "title": "Codex Auth Switch",
-                    "version": env!("CARGO_PKG_VERSION")
+    let mut lines = BufReader::new(stdout).lines();
+    let responses = timeout(QUERY_TIMEOUT, async {
+        request_rpc(
+            &mut stdin,
+            &mut lines,
+            json!({
+                "method": "initialize",
+                "id": 0,
+                "params": {
+                    "clientInfo": {
+                        "name": "codex_auth_switch",
+                        "title": "Codex Auth Switch",
+                        "version": env!("CARGO_PKG_VERSION")
+                    }
                 }
-            }
-        }),
-        json!({ "method": "initialized", "params": {} }),
-        json!({ "method": "account/read", "id": 1, "params": { "refreshToken": false } }),
-        json!({ "method": "account/rateLimits/read", "id": 2, "params": {} }),
-        json!({ "method": "account/usage/read", "id": 3, "params": {} }),
-    ] {
-        let mut line = serde_json::to_vec(&message).map_err(|_| AppServerError::QueryFailed)?;
-        line.push(b'\n');
-        stdin
-            .write_all(&line)
-            .await
-            .map_err(|_| AppServerError::QueryFailed)?;
-    }
-    stdin
-        .flush()
-        .await
-        .map_err(|_| AppServerError::QueryFailed)?;
-
-    let responses = timeout(QUERY_TIMEOUT, collect_responses(stdout)).await;
+            }),
+            0,
+            false,
+        )
+        .await?;
+        write_rpc(
+            &mut stdin,
+            &json!({ "method": "initialized", "params": {} }),
+        )
+        .await?;
+        let account = request_rpc(
+            &mut stdin,
+            &mut lines,
+            json!({ "method": "account/read", "id": 1, "params": { "refreshToken": false } }),
+            1,
+            false,
+        )
+        .await?;
+        let rate_limits = request_rpc(
+            &mut stdin,
+            &mut lines,
+            json!({ "method": "account/rateLimits/read", "id": 2, "params": {} }),
+            2,
+            false,
+        )
+        .await?;
+        let usage = request_rpc(
+            &mut stdin,
+            &mut lines,
+            json!({ "method": "account/usage/read", "id": 3, "params": {} }),
+            3,
+            true,
+        )
+        .await?;
+        Ok::<_, AppServerError>(RpcResponses {
+            account,
+            rate_limits,
+            usage,
+        })
+    })
+    .await;
     drop(stdin);
     let _ = child.start_kill();
     let _ = child.wait().await;
@@ -197,17 +225,11 @@ struct RpcResponses {
     usage: Option<Value>,
 }
 
-async fn collect_responses(
-    stdout: tokio::process::ChildStdout,
-) -> Result<RpcResponses, AppServerError> {
-    let mut lines = BufReader::new(stdout).lines();
-    let mut responses = RpcResponses {
-        account: None,
-        rate_limits: None,
-        usage: None,
-    };
-    let mut received = 0;
-
+async fn read_rpc_result(
+    lines: &mut Lines<BufReader<ChildStdout>>,
+    expected_id: u64,
+    optional: bool,
+) -> Result<Option<Value>, AppServerError> {
     while let Some(line) = lines
         .next_line()
         .await
@@ -219,30 +241,64 @@ async fn collect_responses(
         let Some(id) = message.get("id").and_then(Value::as_u64) else {
             continue;
         };
-        if id == 0 {
+        if id != expected_id {
             continue;
         }
-        if message.get("error").is_some() {
-            if id == 3 {
-                received += 1;
+        if let Some(error) = message.get("error") {
+            return if optional {
+                Ok(None)
             } else {
-                return Err(AppServerError::QueryFailed);
-            }
-        } else if let Some(result) = message.get("result").cloned() {
-            match id {
-                1 => responses.account = Some(result),
-                2 => responses.rate_limits = Some(result),
-                3 => responses.usage = Some(result),
-                _ => continue,
-            }
-            received += 1;
+                Err(classify_rpc_error(error))
+            };
         }
-        if received == 3 {
-            return Ok(responses);
-        }
+        return message
+            .get("result")
+            .cloned()
+            .map(Some)
+            .ok_or(AppServerError::QueryFailed);
     }
-
     Err(AppServerError::QueryFailed)
+}
+
+fn classify_rpc_error(error: &Value) -> AppServerError {
+    let code_is_rate_limited = error
+        .get("code")
+        .and_then(Value::as_i64)
+        .is_some_and(|code| code == i64::from(StatusCode::TOO_MANY_REQUESTS.as_u16()));
+    let message_is_rate_limited = error
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|message| message.contains("rate limit") || message.contains("http 429"));
+    if code_is_rate_limited || message_is_rate_limited {
+        AppServerError::RateLimited
+    } else {
+        AppServerError::QueryFailed
+    }
+}
+
+async fn write_rpc(stdin: &mut ChildStdin, message: &Value) -> Result<(), AppServerError> {
+    let mut line = serde_json::to_vec(message).map_err(|_| AppServerError::QueryFailed)?;
+    line.push(b'\n');
+    stdin
+        .write_all(&line)
+        .await
+        .map_err(|_| AppServerError::QueryFailed)
+}
+
+async fn request_rpc(
+    stdin: &mut ChildStdin,
+    lines: &mut Lines<BufReader<ChildStdout>>,
+    message: Value,
+    expected_id: u64,
+    optional: bool,
+) -> Result<Option<Value>, AppServerError> {
+    write_rpc(stdin, &message).await?;
+    stdin
+        .flush()
+        .await
+        .map_err(|_| AppServerError::QueryFailed)?;
+    read_rpc_result(lines, expected_id, optional).await
 }
 
 fn parse_result<T: for<'de> Deserialize<'de>>(value: Option<Value>) -> Result<T, AppServerError> {
@@ -310,6 +366,22 @@ fn read_refreshed_auth(codex_home: &Path, original: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classifies_rate_limited_rpc_errors() {
+        assert!(matches!(
+            classify_rpc_error(&json!({ "code": 429, "message": "request failed" })),
+            AppServerError::RateLimited
+        ));
+        assert!(matches!(
+            classify_rpc_error(&json!({ "code": -32603, "message": "rate limit exceeded" })),
+            AppServerError::RateLimited
+        ));
+        assert!(matches!(
+            classify_rpc_error(&json!({ "code": -32603, "message": "internal error" })),
+            AppServerError::QueryFailed
+        ));
+    }
 
     #[test]
     fn parses_current_official_account_shapes() {

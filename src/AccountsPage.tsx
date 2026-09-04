@@ -8,6 +8,7 @@ const shortId = (value: string) =>
 
 type AccountsPageProps = {
   busy: boolean;
+  loading: boolean;
   onImport: () => void;
   onLogin: (label: string) => void;
   onRefresh: () => void;
@@ -21,8 +22,36 @@ type AccountsPageProps = {
   t: Translate;
 };
 
+function AccountsListSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      className="account-list account-list-skeleton"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="visually-hidden">{label}</span>
+      {Array.from({ length: 4 }, (_, index) => (
+        <article className="account-card account-card-skeleton" key={index}>
+          <span className="usage-skeleton-block skeleton-account-avatar" />
+          <div className="account-main">
+            <span className="usage-skeleton-block skeleton-account-name" />
+            <span className="usage-skeleton-block skeleton-account-email" />
+            <span className="usage-skeleton-block skeleton-account-id" />
+          </div>
+          <div className="account-actions account-skeleton-actions">
+            <span className="usage-skeleton-block" />
+            <span className="usage-skeleton-block" />
+            <span className="usage-skeleton-block" />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export function AccountsPage({
   busy,
+  loading,
   onImport,
   onLogin,
   onRefresh,
@@ -122,11 +151,13 @@ export function AccountsPage({
             <h2>{t("savedAccounts")}</h2>
           </div>
           <button className="text-button" disabled={busy} onClick={onRefresh}>
-            {t("refresh")}
+            {loading ? t("refreshing") : t("refresh")}
           </button>
         </div>
 
-        {status?.accounts.length ? (
+        {loading ? (
+          <AccountsListSkeleton label={t("loadingStatus")} />
+        ) : status?.accounts.length ? (
           <div className="account-list">
             {status.accounts.map((account) => {
               const accountLabel = displayLabel(account.label);

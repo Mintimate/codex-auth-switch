@@ -17,6 +17,8 @@ use usage::{LocalUsageStats, ModelProviderState};
 
 struct AppState {
     operation_gate: Mutex<()>,
+    quota_query_gate: Mutex<()>,
+    credential_refresh_gate: Mutex<()>,
     prepared_auth_transfer: Mutex<Option<PreparedAuthTransferCache>>,
 }
 
@@ -46,6 +48,20 @@ fn account_manager(app: &AppHandle) -> Result<AccountManager, String> {
         .app_data_dir()
         .map_err(|error| format!("无法定位应用数据目录: {error}"))?;
     AccountManager::from_environment(app_data_dir).map_err(|error| error.to_string())
+}
+
+async fn query_account_quotas(
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<Vec<AccountQuota>, String> {
+    // 同一时间只运行一批额度刷新，避免多个 WebView 调用重复冲击远端服务。
+    let _quota_guard = state.quota_query_gate.lock().await;
+    // App Server 和兼容路径都可能轮换 refresh token，不能与迁移流程同时使用同一凭据。
+    let _credential_guard = state.credential_refresh_gate.lock().await;
+    account_manager(app)?
+        .account_quotas(&state.operation_gate)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -112,9 +128,8 @@ async fn get_local_usage(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<LocalUsageStats, String> {
-    let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
-        .local_usage()
+        .local_usage(&state.operation_gate)
         .await
         .map_err(|error| error.to_string())
 }
@@ -124,11 +139,7 @@ async fn get_account_quotas(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<AccountQuota>, String> {
-    let _guard = state.operation_gate.lock().await;
-    account_manager(&app)?
-        .account_quotas()
-        .await
-        .map_err(|error| error.to_string())
+    query_account_quotas(&app, state.inner()).await
 }
 
 #[tauri::command]
@@ -147,16 +158,12 @@ async fn get_usage_overview(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<UsageOverview, String> {
-    let _guard = state.operation_gate.lock().await;
     let manager = account_manager(&app)?;
     let local = manager
-        .local_usage()
+        .local_usage(&state.operation_gate)
         .await
         .map_err(|error| error.to_string())?;
-    let quotas = manager
-        .account_quotas()
-        .await
-        .map_err(|error| error.to_string())?;
+    let quotas = query_account_quotas(&app, state.inner()).await?;
     Ok(UsageOverview { quotas, local })
 }
 
@@ -238,6 +245,7 @@ async fn prepare_auth_transfer(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<AuthTransferPreparation, String> {
+    let _credential_guard = state.credential_refresh_gate.lock().await;
     let _guard = state.operation_gate.lock().await;
     *state.prepared_auth_transfer.lock().await = None;
     let prepared = account_manager(&app)?
@@ -290,6 +298,7 @@ async fn import_auth_from_clipboard(
     })
     .await
     .map_err(|_| "无法访问系统剪贴板".to_string())??;
+    let _credential_guard = state.credential_refresh_gate.lock().await;
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .import_auth_share_text(&text)
@@ -305,6 +314,7 @@ async fn import_auth_from_qr(
     state: State<'_, AppState>,
     image: String,
 ) -> Result<AppStatus, String> {
+    let _credential_guard = state.credential_refresh_gate.lock().await;
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .import_auth_share_qr(&image)
@@ -319,6 +329,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             operation_gate: Mutex::new(()),
+            quota_query_gate: Mutex::new(()),
+            credential_refresh_gate: Mutex::new(()),
             prepared_auth_transfer: Mutex::new(None),
         })
         .manage(app_update::AppUpdateState::default())

@@ -1,6 +1,6 @@
 [package]
 name = "codex-auth-switch"
-version = "1.1.0"
+version = "1.1.1"
 description = "A local desktop switcher for Codex ChatGPT sign-in profiles"
 authors = ["Codex Auth Switch contributors"]
 edition = "2021"

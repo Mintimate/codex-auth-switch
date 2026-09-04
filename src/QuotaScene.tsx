@@ -7,7 +7,6 @@ type QuotaSceneProps = {
   accountLabel: string;
   credits: number;
   level: QuotaSceneLevel;
-  loading: boolean;
   recoveryLabel: string;
   t: Translate;
   utilization: number | null;
@@ -49,7 +48,6 @@ export function QuotaScene({
   accountLabel,
   credits,
   level,
-  loading,
   recoveryLabel,
   t,
   utilization,
@@ -60,7 +58,7 @@ export function QuotaScene({
 
   return (
     <section
-      className={`quota-supply-scene level-${level}${loading ? " is-refreshing" : ""}`}
+      className={`quota-supply-scene level-${level}`}
       role="img"
       aria-label={t("quotaSceneAria", {
         account: accountLabel,
@@ -113,7 +111,7 @@ export function QuotaScene({
         </div>
       </div>
       <span className="quota-scene-status" aria-hidden="true">
-        {loading ? t("quotaScenePatrolling") : t("quotaSceneReady")}
+        {t("quotaSceneReady")}
       </span>
     </section>
   );

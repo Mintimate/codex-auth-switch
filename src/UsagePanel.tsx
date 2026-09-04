@@ -147,7 +147,7 @@ export function UsagePanel({
         </div>
       )}
 
-      {!usage && loading ? (
+      {loading ? (
         <UsageSkeleton label={t("usageLoading")} />
       ) : !usage ? (
         <div className="usage-empty-state">
@@ -275,13 +275,9 @@ export function UsagePanel({
                         ? t("modelProviderUnattributed")
                         : provider.label;
                 const quotaHint =
-                  provider.quotaRelation === "confirmed"
-                    ? t("modelProviderQuotaConfirmed")
-                    : provider.quotaRelation === "excluded"
-                      ? t("modelProviderQuotaExcluded")
-                      : provider.kind === "unattributed"
-                        ? t("modelProviderUnattributedHint")
-                        : t("modelProviderQuotaUnknown");
+                  provider.kind === "unattributed"
+                    ? t("modelProviderUnattributedHint")
+                    : t("modelProviderQuotaUnknown");
                 return (
                   <article
                     className={`local-attribution-row provider-${provider.kind}`}

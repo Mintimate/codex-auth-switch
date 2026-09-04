@@ -74,6 +74,8 @@ const backendErrorTranslations: Record<string, string> = {
   "当前不是 ChatGPT 订阅登录，API Key 登录不会被保存":
     "The current login is not a ChatGPT subscription login. API Key logins are not saved.",
   "Codex auth.json 缺少 tokens": "Codex auth.json is missing tokens",
+  "Codex auth.json 中的账号身份不一致":
+    "Codex auth.json contains mismatched account identities",
   "无法识别当前 ChatGPT 账号 ID":
     "Could not identify the current ChatGPT account ID",
   账号缺少可用的访问凭据: "The account has no usable access credentials",
@@ -85,6 +87,8 @@ const backendErrorTranslations: Record<string, string> = {
   额度查询超时: "The quota query timed out",
   无法连接额度服务: "Could not connect to the quota service",
   额度查询网络失败: "The quota query failed due to a network error",
+  "额度服务请求过于频繁，请稍后重试":
+    "The quota service is receiving too many requests. Try again later.",
   额度服务返回了无法识别的响应:
     "The quota service returned an unrecognized response",
   无法定位用户主目录: "Could not locate the user home directory",
@@ -122,6 +126,7 @@ const backendErrorTranslations: Record<string, string> = {
     "The legacy transfer contains mismatched account identities. Nothing was imported.",
   请求超时: "The request timed out",
   无法连接登录服务: "Could not connect to the login service",
+  无法初始化登录服务客户端: "Could not initialize the login service client",
   网络请求失败: "The network request failed",
   登录服务返回了无法识别的凭据响应:
     "The login service returned an unrecognized credential response",

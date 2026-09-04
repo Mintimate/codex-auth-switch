@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import packageMetadata from "../package.json";
 
 export type AccountSummary = {
   id: string;
@@ -159,7 +160,6 @@ export type LocalUsageStats = {
     label: string;
     kind: ModelProviderKind;
     host?: string | null;
-    quotaRelation: QuotaRelation;
     tokens: TokenBreakdown;
   }[];
   byAccount: {
@@ -174,8 +174,6 @@ export type LocalUsageStats = {
 };
 
 export type ModelProviderKind = "openai" | "thirdParty" | "unattributed";
-export type QuotaRelation = "confirmed" | "excluded" | "unknown";
-
 export type ModelProviderOption = {
   id: string;
   label: string;
@@ -369,7 +367,6 @@ const previewLocalUsage: LocalUsageStats = {
       label: "OpenAI 默认提供方",
       kind: "openai",
       host: null,
-      quotaRelation: "unknown",
       tokens: tokens(331_600),
     },
     {
@@ -377,7 +374,6 @@ const previewLocalUsage: LocalUsageStats = {
       label: "本地模型代理",
       kind: "thirdParty",
       host: "relay.example.com",
-      quotaRelation: "unknown",
       tokens: tokens(1_510_760),
     },
   ],
@@ -530,12 +526,12 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
       } as T);
     }
     if (command === "get_app_version") {
-      return Promise.resolve("0.7.1" as T);
+      return Promise.resolve(packageMetadata.version as T);
     }
     if (command === "check_app_update") {
       return Promise.resolve({
         status: "upToDate",
-        currentVersion: "0.7.1",
+        currentVersion: packageMetadata.version,
         version: null,
         body: null,
         date: null,

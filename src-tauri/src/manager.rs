@@ -8,8 +8,8 @@ use crate::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
-use futures_util::future::{join, join_all};
-use reqwest::{Client, StatusCode};
+use futures_util::future::join_all;
+use reqwest::{header::RETRY_AFTER, Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -20,7 +20,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Semaphore;
+use tokio::{sync::Mutex, sync::Semaphore, time::sleep};
 use toml_edit::{value as toml_edit_value, DocumentMut};
 
 const VAULT_VERSION: u32 = 1;
@@ -37,7 +37,10 @@ const DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 const DEVICE_CODE_DEFAULT_EXPIRES_IN: u64 = 900;
 const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 const USER_AGENT: &str = "codex-auth-switch";
+const OAUTH_QUERY_TIMEOUT_SECS: u64 = 45;
 const USAGE_QUERY_TIMEOUT_SECS: u64 = 10;
+const QUOTA_RETRY_BASE_DELAY_MS: u64 = 400;
+const QUOTA_RETRY_MAX_DELAY_SECS: u64 = 5;
 const MAX_ACTIVATION_RECORDS: usize = 10_000;
 const MAX_CONCURRENT_QUOTA_QUERIES: usize = 2;
 const ONE_MILLION_CONTEXT_WINDOW: i64 = 1_000_000;
@@ -50,7 +53,7 @@ const WEB_SEARCH_VALUES: &[&str] = &["disabled", "cached", "indexed", "live"];
 
 // reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
 // 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
-// 额度查询单独用一个带超时的客户端，OAuth 流程保持无超时（令牌刷新不能被 10 秒掐断）。
+// OAuth 与额度查询使用不同超时：令牌交换允许更长等待，但不能无限占用操作锁。
 static OAUTH_CLIENT: OnceLock<Client> = OnceLock::new();
 static QUOTA_CLIENT: OnceLock<Client> = OnceLock::new();
 
@@ -322,7 +325,9 @@ type QuotaQueryResult = Result<QuotaDetails, QuotaQueryError>;
 
 // 并发查询阶段不碰 vault，只把结果和「需要回写的刷新令牌」带回串行阶段统一落盘。
 struct QuotaOutcome {
-    index: usize,
+    profile_id: String,
+    account_id: String,
+    original_auth: Value,
     queried_at: u64,
     result: QuotaQueryResult,
     refreshed_auth: Option<Value>,
@@ -680,7 +685,7 @@ impl AccountManager {
         self.ensure_file_storage()?;
         validate_label(label)?;
 
-        let response = oauth_client()
+        let response = oauth_client()?
             .post(DEVICE_AUTH_USERCODE_URL)
             .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID }))
             .send()
@@ -727,7 +732,7 @@ impl AccountManager {
             ));
         }
 
-        let response = oauth_client()
+        let response = oauth_client()?
             .post(DEVICE_AUTH_TOKEN_URL)
             .json(&serde_json::json!({
                 "device_auth_id": device_code,
@@ -771,78 +776,91 @@ impl AccountManager {
         self.status().map(Some)
     }
 
-    pub async fn account_quotas(&self) -> Result<Vec<AccountQuota>, ManagerError> {
-        let (mut vault, active_account_id) = self.load_usage_vault()?;
-
-        // 先把要查询的凭据取成快照，避免并发任务借用 vault 而锁住后面的回写。
-        let quota_targets = vault
-            .profiles
-            .iter()
-            .map(|profile| (profile.account_id.clone(), profile.auth.clone()))
-            .collect::<Vec<_>>();
-
-        let outcomes = {
-            let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_QUOTA_QUERIES));
-            let tasks = quota_targets
+    pub async fn account_quotas(
+        &self,
+        operation_gate: &Mutex<()>,
+    ) -> Result<Vec<AccountQuota>, ManagerError> {
+        // 锁内只读取账号快照。远端查询不占用全局操作锁，账号切换和登录轮询无需等待整批查询。
+        let quota_targets = {
+            let _guard = operation_gate.lock().await;
+            let (vault, _) = self.load_usage_vault()?;
+            vault
+                .profiles
                 .into_iter()
-                .enumerate()
-                .map(|(index, (account_id, auth))| {
+                .map(|profile| (profile.id, profile.account_id, profile.auth))
+                .collect::<Vec<_>>()
+        };
+
+        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_QUOTA_QUERIES));
+        let outcomes = join_all(
+            quota_targets
+                .into_iter()
+                .map(|(profile_id, account_id, auth)| {
                     let semaphore = Arc::clone(&semaphore);
                     async move {
-                        // acquire_owned 让 permit 自持 Arc，避免 permit 借用外层局部变量的生命周期问题。
-                        let Ok(_permit) = semaphore.acquire_owned().await else {
-                            return QuotaOutcome {
-                                index,
-                                queried_at: unix_timestamp(),
-                                result: Err(QuotaQueryError::Message(
+                        let permit = semaphore.acquire_owned().await;
+                        let queried_at = unix_timestamp();
+                        let (result, refreshed_auth) = match permit {
+                            Ok(_permit) => query_account_details(&auth, &account_id).await,
+                            Err(_) => (
+                                Err(QuotaQueryError::Message(
                                     "额度查询并发控制不可用".to_string(),
                                 )),
-                                refreshed_auth: None,
-                            };
+                                None,
+                            ),
                         };
-                        let queried_at = unix_timestamp();
-                        let (result, refreshed_auth) =
-                            query_account_details(&auth, &account_id).await;
-
                         QuotaOutcome {
-                            index,
+                            profile_id,
+                            account_id,
+                            original_auth: auth,
                             queried_at,
                             result,
                             refreshed_auth,
                         }
                     }
-                });
-            join_all(tasks).await
-        };
+                }),
+        )
+        .await;
 
+        // 查询期间账号库可能已经发生变化。重新加载后按稳定 ID 合并，绝不回写过期快照。
+        let _guard = operation_gate.lock().await;
+        let mut vault = self.load_vault()?;
+        let live_auth = self.read_live_auth().ok();
+        let active_account_id = live_auth
+            .as_ref()
+            .and_then(|auth| validate_chatgpt_auth(auth).ok())
+            .map(|identity| identity.account_id);
         let mut quotas = Vec::with_capacity(outcomes.len());
         let mut vault_changed = false;
         for outcome in outcomes {
             let QuotaOutcome {
-                index,
+                profile_id,
+                account_id,
+                original_auth,
                 queried_at,
                 result,
                 refreshed_auth,
             } = outcome;
-
-            if let Some(auth) = refreshed_auth {
-                let profile = vault
-                    .profiles
-                    .get_mut(index)
-                    .ok_or(ManagerError::ProfileNotFound)?;
-                let account_id = profile.account_id.clone();
-                profile.auth = auth.clone();
-                profile.updated_at = unix_timestamp();
-                vault_changed = true;
-                if active_account_id.as_deref() == Some(account_id.as_str()) {
-                    self.write_live_auth(&auth)?;
-                }
+            if let Some(auth) = refreshed_auth.as_ref() {
+                vault_changed |= self.persist_refreshed_quota_auth(
+                    &mut vault,
+                    &account_id,
+                    &original_auth,
+                    auth,
+                    live_auth.as_ref(),
+                    active_account_id.as_deref(),
+                )?;
             }
 
-            let profile = vault
+            let Some(profile_index) = vault
                 .profiles
-                .get(index)
-                .ok_or(ManagerError::ProfileNotFound)?;
+                .iter()
+                .position(|profile| profile.id == profile_id && profile.account_id == account_id)
+            else {
+                continue;
+            };
+
+            let profile = &vault.profiles[profile_index];
             let quota = match result {
                 Ok(details) => AccountQuota {
                     profile_id: profile.id.clone(),
@@ -899,8 +917,46 @@ impl AccountManager {
         Ok(quotas)
     }
 
-    pub async fn local_usage(&self) -> Result<LocalUsageStats, ManagerError> {
-        let (vault, _) = self.load_usage_vault()?;
+    fn persist_refreshed_quota_auth(
+        &self,
+        vault: &mut Vault,
+        account_id: &str,
+        original_auth: &Value,
+        refreshed_auth: &Value,
+        live_auth: Option<&Value>,
+        active_account_id: Option<&str>,
+    ) -> Result<bool, ManagerError> {
+        let active_is_target = active_account_id == Some(account_id);
+        let active_auth_unchanged = !active_is_target || live_auth == Some(original_auth);
+        if !active_auth_unchanged {
+            return Ok(false);
+        }
+
+        if active_is_target {
+            // 当前账号即使已从本地账号库移除，Codex 仍会继续使用 auth.json。
+            self.write_live_auth(refreshed_auth)?;
+        }
+
+        let Some(profile) = vault
+            .profiles
+            .iter_mut()
+            .find(|profile| profile.account_id == account_id && profile.auth == *original_auth)
+        else {
+            return Ok(false);
+        };
+        profile.auth = refreshed_auth.clone();
+        profile.updated_at = unix_timestamp();
+        Ok(true)
+    }
+
+    pub async fn local_usage(
+        &self,
+        operation_gate: &Mutex<()>,
+    ) -> Result<LocalUsageStats, ManagerError> {
+        let (vault, _) = {
+            let _guard = operation_gate.lock().await;
+            self.load_usage_vault()?
+        };
         let accounts = vault
             .profiles
             .iter()
@@ -1300,11 +1356,34 @@ pub(crate) fn validate_chatgpt_auth(auth: &Value) -> Result<AuthIdentity, Manage
         .get("access_token")
         .and_then(Value::as_str)
         .and_then(parse_claims);
-    let account_id = tokens
+    let declared_account_id = tokens
         .get("account_id")
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
-        .map(str::to_string)
+        .map(str::to_string);
+    let claimed_account_ids = [
+        id_claims.as_ref().and_then(direct_account_id_from_claims),
+        access_claims
+            .as_ref()
+            .and_then(direct_account_id_from_claims),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if claimed_account_ids.first().is_some_and(|first| {
+        claimed_account_ids
+            .iter()
+            .any(|account_id| account_id != first)
+    }) || declared_account_id.as_ref().is_some_and(|declared| {
+        claimed_account_ids
+            .iter()
+            .any(|account_id| account_id != declared)
+    }) {
+        return Err(ManagerError::InvalidAuth(
+            "Codex auth.json 中的账号身份不一致".to_string(),
+        ));
+    }
+    let account_id = declared_account_id
         .or_else(|| account_id_from_claims(id_claims.as_ref()))
         .or_else(|| account_id_from_claims(access_claims.as_ref()))
         .ok_or_else(|| ManagerError::InvalidAuth("无法识别当前 ChatGPT 账号 ID".to_string()))?;
@@ -1364,57 +1443,68 @@ fn parse_claims(token: &str) -> Option<TokenClaims> {
 
 fn account_id_from_claims(claims: Option<&TokenClaims>) -> Option<String> {
     let claims = claims?;
-    claims
-        .chatgpt_account_id
-        .clone()
-        .or_else(|| {
-            claims
-                .openai_auth
-                .as_ref()
-                .and_then(|auth| auth.chatgpt_account_id.clone())
-        })
-        .or_else(|| {
-            claims
-                .organizations
-                .first()
-                .and_then(|organization| organization.id.clone())
-        })
+    direct_account_id_from_claims(claims).or_else(|| {
+        claims
+            .organizations
+            .first()
+            .and_then(|organization| organization.id.clone())
+    })
+}
+
+fn direct_account_id_from_claims(claims: &TokenClaims) -> Option<String> {
+    claims.chatgpt_account_id.clone().or_else(|| {
+        claims
+            .openai_auth
+            .as_ref()
+            .and_then(|auth| auth.chatgpt_account_id.clone())
+    })
 }
 
 async fn query_account_details(
     auth: &Value,
     account_id: &str,
 ) -> (QuotaQueryResult, Option<Value>) {
-    if let Ok(snapshot) = codex_app_server::query_account(auth).await {
-        if snapshot
-            .rate_limits
-            .account_id
-            .as_deref()
-            .is_some_and(|response_id| response_id != account_id)
-        {
+    match codex_app_server::query_account(auth).await {
+        Err(codex_app_server::AppServerError::RateLimited) => {
             return (
                 Err(QuotaQueryError::Message(
-                    "官方账户响应与本地账号不一致，请重新登录".to_string(),
+                    "额度服务请求过于频繁，请稍后重试".to_string(),
                 )),
                 None,
             );
         }
-        let refreshed_auth = match snapshot.refreshed_auth.as_ref() {
-            Some(auth) => match canonical_chatgpt_auth(auth).and_then(|auth| {
-                let identity = validate_chatgpt_auth(&auth)?;
-                if identity.account_id != account_id {
-                    return Err(ManagerError::InvalidAuth(
+        Err(_) => {}
+        Ok(snapshot) => {
+            if snapshot
+                .rate_limits
+                .account_id
+                .as_deref()
+                .is_some_and(|response_id| response_id != account_id)
+            {
+                return (
+                    Err(QuotaQueryError::Message(
                         "官方账户响应与本地账号不一致，请重新登录".to_string(),
-                    ));
-                }
-                Ok(auth)
-            }) {
-                Ok(auth) => Some(auth),
-                Err(error) => return (Err(QuotaQueryError::Message(error.to_string())), None),
-            },
-            None => None,
-        };
-        return (Ok(official_quota_details(snapshot)), refreshed_auth);
+                    )),
+                    None,
+                );
+            }
+            let refreshed_auth = match snapshot.refreshed_auth.as_ref() {
+                Some(auth) => match canonical_chatgpt_auth(auth).and_then(|auth| {
+                    let identity = validate_chatgpt_auth(&auth)?;
+                    if identity.account_id != account_id {
+                        return Err(ManagerError::InvalidAuth(
+                            "官方账户响应与本地账号不一致，请重新登录".to_string(),
+                        ));
+                    }
+                    Ok(auth)
+                }) {
+                    Ok(auth) => Some(auth),
+                    Err(error) => return (Err(QuotaQueryError::Message(error.to_string())), None),
+                },
+                None => None,
+            };
+            return (Ok(official_quota_details(snapshot)), refreshed_auth);
+        }
     }
 
     let mut result = query_account_quota_compatibility(auth, account_id).await;
@@ -1529,13 +1619,10 @@ async fn query_account_quota_compatibility(auth: &Value, account_id: &str) -> Qu
         .filter(|token| !token.trim().is_empty())
         .ok_or_else(|| QuotaQueryError::Message("账号缺少可用的访问凭据".to_string()))?;
     let client = quota_client()?;
-    let (usage, reset_credits) = join(
-        query_usage_windows(client, access_token, account_id),
-        query_reset_credits(client, access_token, account_id),
-    )
-    .await;
-    let (primary, secondary, available_count) = usage?;
-    let reset_credits = match reset_credits {
+    let (primary, secondary, available_count) =
+        query_usage_windows(client, access_token, account_id).await?;
+    // 重置次数是附加信息，顺序查询可避免每个账号同时冲击两个兼容端点。
+    let reset_credits = match query_reset_credits(client, access_token, account_id).await {
         Ok(response) => Some(to_usage_reset_credits(response, available_count)),
         Err(_) => available_count.map(|available_count| UsageResetCredits {
             available_count,
@@ -1553,28 +1640,102 @@ async fn query_account_quota_compatibility(auth: &Value, account_id: &str) -> Qu
     })
 }
 
+fn quota_retry_delay(response: Option<&Response>, account_id: &str) -> Option<Duration> {
+    let retry_after = response
+        .and_then(|response| response.headers().get(RETRY_AFTER))
+        .and_then(|value| value.to_str().ok());
+    quota_retry_delay_value(retry_after, account_id, Utc::now())
+}
+
+fn quota_retry_delay_value(
+    retry_after: Option<&str>,
+    account_id: &str,
+    now: chrono::DateTime<Utc>,
+) -> Option<Duration> {
+    if let Some(value) = retry_after {
+        let delay = parse_retry_after(value, now);
+        return match delay {
+            Some(delay) if delay <= Duration::from_secs(QUOTA_RETRY_MAX_DELAY_SECS) => Some(delay),
+            Some(_) => None,
+            None => Some(default_quota_retry_delay(account_id)),
+        };
+    }
+    Some(default_quota_retry_delay(account_id))
+}
+
+fn parse_retry_after(value: &str, now: chrono::DateTime<Utc>) -> Option<Duration> {
+    if let Ok(seconds) = value.trim().parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let retry_at = chrono::NaiveDateTime::parse_from_str(value.trim(), "%a, %d %b %Y %H:%M:%S GMT")
+        .ok()?
+        .and_utc();
+    let seconds = retry_at.signed_duration_since(now).num_seconds().max(0);
+    Some(Duration::from_secs(seconds as u64))
+}
+
+fn default_quota_retry_delay(account_id: &str) -> Duration {
+    let jitter = account_id
+        .bytes()
+        .fold(0_u64, |sum, byte| sum.wrapping_add(u64::from(byte)))
+        % 200;
+    Duration::from_millis(QUOTA_RETRY_BASE_DELAY_MS + jitter)
+}
+
+async fn send_quota_request(
+    client: &Client,
+    url: &str,
+    access_token: &str,
+    account_id: &str,
+    service_name: &str,
+) -> Result<Response, QuotaQueryError> {
+    for attempt in 0..2 {
+        let response = client
+            .get(url)
+            .bearer_auth(access_token)
+            .header("Accept", "application/json")
+            .header("ChatGPT-Account-Id", account_id)
+            .send()
+            .await;
+        match response {
+            Ok(response)
+                if attempt == 0
+                    && (response.status() == StatusCode::TOO_MANY_REQUESTS
+                        || response.status().is_server_error()) =>
+            {
+                let Some(delay) = quota_retry_delay(Some(&response), account_id) else {
+                    return Ok(response);
+                };
+                sleep(delay).await;
+            }
+            Ok(response) => return Ok(response),
+            Err(error) if attempt == 0 && (error.is_timeout() || error.is_connect()) => {
+                sleep(default_quota_retry_delay(account_id)).await;
+            }
+            Err(error) => {
+                let message = if error.is_timeout() {
+                    format!("{service_name}查询超时")
+                } else if error.is_connect() {
+                    format!("无法连接{service_name}服务")
+                } else {
+                    format!("{service_name}查询网络失败")
+                };
+                return Err(QuotaQueryError::Message(message));
+            }
+        }
+    }
+    Err(QuotaQueryError::Message(format!(
+        "{service_name}服务暂不可用"
+    )))
+}
+
 async fn query_usage_windows(
     client: &Client,
     access_token: &str,
     account_id: &str,
 ) -> Result<(Option<UsageWindow>, Option<UsageWindow>, Option<u64>), QuotaQueryError> {
-    let response = client
-        .get(CODEX_USAGE_URL)
-        .bearer_auth(access_token)
-        .header("Accept", "application/json")
-        .header("ChatGPT-Account-Id", account_id)
-        .send()
-        .await
-        .map_err(|error| {
-            let message = if error.is_timeout() {
-                "额度查询超时"
-            } else if error.is_connect() {
-                "无法连接额度服务"
-            } else {
-                "额度查询网络失败"
-            };
-            QuotaQueryError::Message(message.to_string())
-        })?;
+    let response =
+        send_quota_request(client, CODEX_USAGE_URL, access_token, account_id, "额度").await?;
 
     if matches!(
         response.status(),
@@ -1611,23 +1772,14 @@ async fn query_reset_credits(
     access_token: &str,
     account_id: &str,
 ) -> Result<CodexResetCreditsResponse, QuotaQueryError> {
-    let response = client
-        .get(CODEX_RESET_CREDITS_URL)
-        .bearer_auth(access_token)
-        .header("Accept", "application/json")
-        .header("ChatGPT-Account-Id", account_id)
-        .send()
-        .await
-        .map_err(|error| {
-            let message = if error.is_timeout() {
-                "重置额度查询超时"
-            } else if error.is_connect() {
-                "无法连接重置额度服务"
-            } else {
-                "重置额度查询网络失败"
-            };
-            QuotaQueryError::Message(message.to_string())
-        })?;
+    let response = send_quota_request(
+        client,
+        CODEX_RESET_CREDITS_URL,
+        access_token,
+        account_id,
+        "重置额度",
+    )
+    .await?;
 
     if matches!(
         response.status(),
@@ -1729,7 +1881,7 @@ async fn exchange_refresh_token(
     refresh_token: &str,
     failure_hint: &str,
 ) -> Result<OAuthTokenResponse, ManagerError> {
-    let response = oauth_client()
+    let response = oauth_client()?
         .post(OAUTH_TOKEN_URL)
         .form(&[
             ("grant_type", "refresh_token"),
@@ -1757,13 +1909,16 @@ async fn exchange_refresh_token(
     Ok(refreshed)
 }
 
-fn oauth_client() -> &'static Client {
-    OAUTH_CLIENT.get_or_init(|| {
-        Client::builder()
-            .user_agent(USER_AGENT)
-            .build()
-            .unwrap_or_else(|_| Client::new())
-    })
+fn oauth_client() -> Result<&'static Client, ManagerError> {
+    if let Some(client) = OAUTH_CLIENT.get() {
+        return Ok(client);
+    }
+    let client = Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(Duration::from_secs(OAUTH_QUERY_TIMEOUT_SECS))
+        .build()
+        .map_err(|_| ManagerError::Network("无法初始化登录服务客户端".to_string()))?;
+    Ok(OAUTH_CLIENT.get_or_init(|| client))
 }
 
 fn quota_client() -> Result<&'static Client, QuotaQueryError> {
@@ -1775,7 +1930,6 @@ fn quota_client() -> Result<&'static Client, QuotaQueryError> {
         .timeout(Duration::from_secs(USAGE_QUERY_TIMEOUT_SECS))
         .build()
         .map_err(|_| QuotaQueryError::Message("无法初始化额度查询".to_string()))?;
-    // 并发首次调用可能各建一个客户端，OnceLock 只保留第一个，多余的实例会被安全丢弃。
     Ok(QUOTA_CLIENT.get_or_init(|| client))
 }
 
@@ -1803,7 +1957,7 @@ async fn exchange_code_for_tokens(
     authorization_code: &str,
     code_verifier: &str,
 ) -> Result<OAuthTokenResponse, ManagerError> {
-    let response = oauth_client()
+    let response = oauth_client()?
         .post(OAUTH_TOKEN_URL)
         .form(&[
             ("grant_type", "authorization_code"),
@@ -2383,6 +2537,63 @@ mod tests {
     }
 
     #[test]
+    fn quota_refresh_updates_live_auth_after_active_profile_is_removed() {
+        let (_root, manager) = test_manager();
+        let original = auth("account-a", "a@example.com", "refresh-a");
+        let refreshed = auth("account-a", "a@example.com", "refresh-a-rotated");
+        manager.write_live_auth(&original).unwrap();
+        let mut vault = Vault::default();
+
+        let vault_changed = manager
+            .persist_refreshed_quota_auth(
+                &mut vault,
+                "account-a",
+                &original,
+                &refreshed,
+                Some(&original),
+                Some("account-a"),
+            )
+            .unwrap();
+
+        assert!(!vault_changed);
+        assert!(vault.profiles.is_empty());
+        assert_eq!(
+            manager
+                .read_live_auth()
+                .unwrap()
+                .pointer("/tokens/refresh_token")
+                .and_then(Value::as_str),
+            Some("refresh-a-rotated")
+        );
+    }
+
+    #[test]
+    fn quota_refresh_does_not_overwrite_a_newer_live_auth() {
+        let (_root, manager) = test_manager();
+        let original = auth("account-a", "a@example.com", "refresh-a");
+        let newer = auth("account-a", "a@example.com", "refresh-a-newer");
+        let stale_refresh = auth("account-a", "a@example.com", "refresh-a-stale");
+        manager.write_live_auth(&newer).unwrap();
+        let mut vault = Vault::default();
+        upsert_profile(&mut vault, newer.clone(), Some("个人账号")).unwrap();
+
+        let vault_changed = manager
+            .persist_refreshed_quota_auth(
+                &mut vault,
+                "account-a",
+                &original,
+                &stale_refresh,
+                Some(&newer),
+                Some("account-a"),
+            )
+            .unwrap();
+
+        assert!(!vault_changed);
+        assert_eq!(manager.read_live_auth().unwrap(), newer);
+        assert_eq!(vault.profiles[0].auth, newer);
+    }
+
+    #[test]
     fn rejects_api_key_authentication() {
         let (_root, manager) = test_manager();
         manager
@@ -2486,6 +2697,16 @@ mod tests {
             Some("account-a")
         );
         assert!(value.get("last_refresh").and_then(Value::as_str).is_some());
+    }
+
+    #[test]
+    fn rejects_auth_with_mismatched_account_id_claims() {
+        let mut value = auth("account-a", "a@example.com", "refresh-a");
+        value["tokens"]["access_token"] = Value::String(fake_jwt("account-b", "b@example.com"));
+
+        let error = validate_chatgpt_auth(&value).unwrap_err().to_string();
+
+        assert!(error.contains("账号身份不一致"));
     }
 
     #[test]
@@ -2643,6 +2864,26 @@ mod tests {
         assert_eq!(primary.window_minutes, Some(300));
         assert_eq!(primary.resets_at, Some(1787533200));
         assert!(rate_limit.secondary_window.is_none());
+    }
+
+    #[test]
+    fn parses_retry_after_and_falls_back_for_invalid_values() {
+        let now = chrono::DateTime::parse_from_rfc3339("2015-10-21T07:27:56Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(
+            quota_retry_delay_value(Some("3"), "account-a", now),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(
+            quota_retry_delay_value(Some("Wed, 21 Oct 2015 07:28:00 GMT"), "account-a", now,),
+            Some(Duration::from_secs(4))
+        );
+        assert_eq!(
+            quota_retry_delay_value(Some("invalid"), "account-a", now),
+            Some(default_quota_retry_delay("account-a"))
+        );
+        assert_eq!(quota_retry_delay_value(Some("30"), "account-a", now), None);
     }
 
     #[test]
