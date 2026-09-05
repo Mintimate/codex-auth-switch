@@ -1,4 +1,10 @@
-"$":
+$:
+  vscode:
+    - docker:
+        image: docker.cnb.cool/bring/environment/fullstack:rust
+      services:
+        - vscode
+        - docker
   tag_push:
     - name: 从 GitHub 镜像版本发布
       runner:

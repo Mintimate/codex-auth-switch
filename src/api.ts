@@ -196,6 +196,20 @@ export type AppUpdateStatus =
 
 export type AppUpdateSource = "github" | "cnb";
 
+export type ProxyMode = "off" | "system" | "manual";
+
+export type NetworkProxySettings = {
+  mode: ProxyMode;
+  proxyUrl: string;
+  noProxy: string;
+};
+
+export const defaultNetworkProxySettings = (): NetworkProxySettings => ({
+  mode: "system",
+  proxyUrl: "",
+  noProxy: "",
+});
+
 export type AppUpdateCheckResult = {
   status: AppUpdateStatus;
   currentVersion: string;
@@ -494,6 +508,14 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "get_local_diagnostics") {
       return Promise.resolve(structuredClone(previewDiagnostics) as T);
     }
+    if (command === "get_network_proxy") {
+      return Promise.resolve(defaultNetworkProxySettings() as T);
+    }
+    if (command === "set_network_proxy") {
+      const settings = (args?.settings ??
+        defaultNetworkProxySettings()) as NetworkProxySettings;
+      return Promise.resolve(structuredClone(settings) as T);
+    }
     if (command === "get_codex_managed_config") {
       return Promise.resolve(structuredClone(previewCodexManagedConfig) as T);
     }
@@ -670,6 +692,12 @@ export const removeAccount = (profileId: string) =>
 
 export const copyAuthTransfer = (profileId: string) =>
   call<void>("copy_auth_transfer", { profileId });
+
+export const getNetworkProxy = () =>
+  call<NetworkProxySettings>("get_network_proxy");
+
+export const setNetworkProxy = (settings: NetworkProxySettings) =>
+  call<NetworkProxySettings>("set_network_proxy", { settings });
 
 export const prepareAuthTransfer = (profileId: string) =>
   call<AuthTransferPreparation>("prepare_auth_transfer", { profileId });
