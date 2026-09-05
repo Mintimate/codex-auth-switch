@@ -1,4 +1,4 @@
-import { AccountQuota } from "./api";
+import { AccountQuota, AccountSummary } from "./api";
 import { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
 import { QuotaCard } from "./QuotaCard";
@@ -11,6 +11,10 @@ import {
 } from "./quotaView";
 
 type QuotaPanelProps = {
+  accounts: AccountSummary[];
+  refreshingIds: string[];
+  refreshErrors: Record<string, string>;
+  onRefreshAccount: (profileId: string) => void;
   activeAccountId: string | null;
   error: string | null;
   loading: boolean;
@@ -41,45 +45,11 @@ function QuotaSummary({
   );
 }
 
-function QuotaSkeleton({ label }: { label: string }) {
-  return (
-    <div className="quota-skeleton" role="status" aria-live="polite">
-      <span className="visually-hidden">{label}</span>
-      <div className="quota-summary-grid" aria-hidden="true">
-        {Array.from({ length: 4 }, (_, index) => (
-          <article className="quota-summary" key={index}>
-            <span className="usage-skeleton-block skeleton-metric-label" />
-            <span className="usage-skeleton-block skeleton-quota-summary" />
-            <span className="usage-skeleton-block skeleton-subheading" />
-          </article>
-        ))}
-      </div>
-      <div className="quota-dashboard-grid" aria-hidden="true">
-        <div className="quota-account-list">
-          {Array.from({ length: 2 }, (_, index) => (
-            <article className="quota-card usage-skeleton-quota" key={index}>
-              <span className="usage-skeleton-block skeleton-heading" />
-              <span className="usage-skeleton-block skeleton-subheading" />
-              <span className="usage-skeleton-block skeleton-track" />
-              <span className="usage-skeleton-block skeleton-track" />
-            </article>
-          ))}
-        </div>
-        <article className="quota-timeline-card">
-          <span className="usage-skeleton-block skeleton-heading" />
-          {Array.from({ length: 4 }, (_, index) => (
-            <span
-              className="usage-skeleton-block quota-event-skeleton"
-              key={index}
-            />
-          ))}
-        </article>
-      </div>
-    </div>
-  );
-}
-
 export function QuotaPanel({
+  accounts,
+  refreshingIds,
+  refreshErrors,
+  onRefreshAccount,
   activeAccountId,
   error,
   loading,
@@ -91,8 +61,11 @@ export function QuotaPanel({
 }: QuotaPanelProps) {
   const displayLabel = (label: string) =>
     privateMode ? redactEmails(label, t("emailHidden")) : label;
-  const events = quotaEvents(quotas ?? [], t);
-  const successful = quotas?.filter((quota) => quota.success) ?? [];
+  const visibleQuotas = (quotas ?? []).filter((quota) =>
+    accounts.some((account) => account.id === quota.profileId),
+  );
+  const events = quotaEvents(visibleQuotas, t);
+  const successful = visibleQuotas.filter((quota) => quota.success);
   const totalCredits = successful.reduce(
     (total, quota) => total + (quota.resetCredits?.availableCount ?? 0),
     0,
@@ -124,12 +97,12 @@ export function QuotaPanel({
   const sceneRecoveryLabel = nextReset
     ? formatRelative(nextReset.at, locale)
     : t("noneSoon");
-  const sortedQuotas = [...(quotas ?? [])].sort((left, right) => {
-    if (left.accountId === activeAccountId) return -1;
-    if (right.accountId === activeAccountId) return 1;
-    if (left.success !== right.success) return left.success ? -1 : 1;
-    return (quotaUtilization(left) ?? 101) - (quotaUtilization(right) ?? 101);
-  });
+  // 查询过程中按账号库顺序保持卡片位置，避免结果到达时按钮跳动。
+  const sortedAccounts = [...accounts].sort(
+    (left, right) =>
+      Number(right.accountId === activeAccountId) -
+      Number(left.accountId === activeAccountId),
+  );
 
   return (
     <section className="quota-section">
@@ -139,7 +112,11 @@ export function QuotaPanel({
           <h2>{t("quotaTitle")}</h2>
           <p>{t("quotaDescription")}</p>
         </div>
-        <button className="text-button" disabled={loading} onClick={onRefresh}>
+        <button
+          className="text-button"
+          disabled={loading || !accounts.length}
+          onClick={onRefresh}
+        >
           {loading ? t("queryingQuota") : t("refreshQuota")}
         </button>
       </div>
@@ -153,17 +130,12 @@ export function QuotaPanel({
         </div>
       )}
 
-      {loading ? (
-        <QuotaSkeleton label={t("quotaLoading")} />
-      ) : !quotas ? (
-        <div className="usage-empty-state">
-          <strong>{t("quotaNotLoaded")}</strong>
-          <p>{t("quotaNotLoadedHint")}</p>
-          <button type="button" className="button primary" onClick={onRefresh}>
-            {t("loadQuota")}
-          </button>
-        </div>
-      ) : quotas.length ? (
+      {loading && (
+        <p className="quota-refresh-progress" role="status" aria-live="polite">
+          {t("quotaAccountsRefreshing", { count: refreshingIds.length })}
+        </p>
+      )}
+      {accounts.length ? (
         <div className="quota-loaded-content">
           <QuotaScene
             accountLabel={sceneAccountLabel}
@@ -177,7 +149,7 @@ export function QuotaPanel({
           <div className="quota-summary-grid">
             <QuotaSummary
               label={t("queryableAccounts")}
-              value={`${successful.length}/${quotas.length}`}
+              value={`${successful.length}/${accounts.length}`}
               detail={t("queryableAccountsHint")}
             />
             <QuotaSummary
@@ -226,13 +198,21 @@ export function QuotaPanel({
                 </div>
               </div>
               <div className="quota-account-list">
-                {sortedQuotas.map((quota) => (
+                {sortedAccounts.map((account) => (
                   <QuotaCard
                     activeAccountId={activeAccountId}
-                    accountLabel={displayLabel(quota.label)}
-                    key={quota.profileId}
+                    account={account}
+                    accountLabel={displayLabel(account.label)}
+                    key={account.id}
                     locale={locale}
-                    quota={quota}
+                    quota={
+                      visibleQuotas.find(
+                        (quota) => quota.profileId === account.id,
+                      ) ?? null
+                    }
+                    refreshing={refreshingIds.includes(account.id)}
+                    refreshError={refreshErrors[account.id] ?? null}
+                    onRefresh={() => onRefreshAccount(account.id)}
                     t={t}
                   />
                 ))}

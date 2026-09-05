@@ -2,6 +2,9 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppStatus,
+  UsageCacheInfo,
+  getUsageCacheInfo,
+  clearUsageCache,
   AppUpdateCheckResult,
   AppUpdateSource,
   LocalDiagnosticCheck,
@@ -159,6 +162,36 @@ export function SettingsPanel({
   themeOptions,
   privateMode,
 }: SettingsPanelProps) {
+  const [usageCache, setUsageCache] = useState<UsageCacheInfo | null>(null);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<
+    "usageCacheCleared" | "usageCacheFailed" | null
+  >(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getUsageCacheInfo()
+      .then((info) => {
+        if (!cancelled) setUsageCache(info);
+      })
+      .catch(() => {
+        if (!cancelled) setCacheMessage("usageCacheFailed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const clearCache = async () => {
+    setClearingCache(true);
+    setCacheMessage(null);
+    try {
+      setUsageCache(await clearUsageCache());
+      setCacheMessage("usageCacheCleared");
+    } catch {
+      setCacheMessage("usageCacheFailed");
+    } finally {
+      setClearingCache(false);
+    }
+  };
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [updateSource, setUpdateSource] =
     useState<AppUpdateSource>(storedUpdateSource);
@@ -406,6 +439,31 @@ export function SettingsPanel({
               onClick={() => onAutoRefreshUsageChange(!autoRefreshUsage)}
             >
               <span />
+            </button>
+          </div>
+          <div className="settings-row">
+            <div>
+              <strong>{t("usageCacheTitle")}</strong>
+              <span>{t("usageCacheHint")}</span>
+              {usageCache && (
+                <span>
+                  {t("usageCacheSize", {
+                    size: new Intl.NumberFormat(locale, {
+                      maximumFractionDigits: 2,
+                    }).format(usageCache.bytes / 1048576),
+                    limit: usageCache.maxBytes / 1048576,
+                  })}
+                </span>
+              )}
+              {cacheMessage && <span role="status">{t(cacheMessage)}</span>}
+            </div>
+            <button
+              type="button"
+              className="button secondary compact cache-clear-button"
+              disabled={clearingCache}
+              onClick={() => void clearCache()}
+            >
+              {t(clearingCache ? "clearingUsageCache" : "clearUsageCache")}
             </button>
           </div>
         </section>

@@ -5,8 +5,9 @@ import {
   AccountQuota,
   ModelProviderState,
   copyAuthTransfer,
+  cancelDeviceLogin,
   enableFileCredentialStorage,
-  getAccountQuotas,
+  refreshAccountQuotas,
   getLocalUsage,
   getModelProviderState,
   prepareAuthTransfer,
@@ -114,10 +115,18 @@ function App() {
     null,
   );
   const [quotas, setQuotas] = useState<AccountQuota[] | null>(null);
-  const [quotaLoading, setQuotaLoading] = useState(false);
+  const [quotaRefreshingIds, setQuotaRefreshingIds] = useState<string[]>([]);
+  const [quotaRefreshErrors, setQuotaRefreshErrors] = useState<
+    Record<string, string>
+  >({});
+  const quotaLoading = quotaRefreshingIds.length > 0;
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const [quotaError, setQuotaError] = useState<string | null>(null);
   const usageRefreshInFlightRef = useRef(false);
-  const quotaRefreshInFlightRef = useRef(false);
+  const quotaRefreshInFlightRef = useRef(new Set<string>());
+  const quotaRequestIdsRef = useRef(new Map<string, number>());
+  const nextQuotaRequestRef = useRef(0);
 
   const refreshUsage = useCallback(async () => {
     if (usageRefreshInFlightRef.current) return;
@@ -139,20 +148,91 @@ function App() {
     }
   }, [locale]);
 
-  const refreshQuotas = useCallback(async () => {
-    if (quotaRefreshInFlightRef.current) return;
-    quotaRefreshInFlightRef.current = true;
-    setQuotaLoading(true);
-    setQuotaError(null);
-    try {
-      setQuotas(await getAccountQuotas());
-    } catch (reason) {
-      setQuotaError(localizeBackendError(messageOf(reason), locale));
-    } finally {
-      setQuotaLoading(false);
-      quotaRefreshInFlightRef.current = false;
-    }
-  }, [locale]);
+  const refreshQuotas = useCallback(
+    async (profileId?: string) => {
+      const current = statusRef.current;
+      if (!current?.supported) return;
+      const ids = current.accounts
+        .map((account) => account.id)
+        .filter(
+          (id) =>
+            (!profileId || id === profileId) &&
+            !quotaRefreshInFlightRef.current.has(id),
+        );
+      if (!ids.length) return;
+      const requestId = ++nextQuotaRequestRef.current;
+      const pending = new Set(ids);
+      for (const id of ids) {
+        quotaRefreshInFlightRef.current.add(id);
+        quotaRequestIdsRef.current.set(id, requestId);
+      }
+      setQuotaRefreshingIds([...quotaRefreshInFlightRef.current]);
+      setQuotas((current) => current ?? []);
+      setQuotaError(null);
+      setQuotaRefreshErrors((current) => {
+        const next = { ...current };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+      const accept = (quota: AccountQuota) => {
+        if (
+          !ids.includes(quota.profileId) ||
+          quotaRequestIdsRef.current.get(quota.profileId) !== requestId
+        )
+          return;
+        pending.delete(quota.profileId);
+        quotaRefreshInFlightRef.current.delete(quota.profileId);
+        setQuotaRefreshingIds([...quotaRefreshInFlightRef.current]);
+        if (
+          !statusRef.current?.accounts.some(
+            (account) => account.id === quota.profileId,
+          )
+        )
+          return;
+        setQuotas((current) => {
+          const previous = current?.find(
+            (item) => item.profileId === quota.profileId,
+          );
+          // 刷新失败保留上次成功快照，错误单独显示。
+          const next = !quota.success && previous?.success ? previous : quota;
+          return [
+            ...(current ?? []).filter(
+              (item) => item.profileId !== quota.profileId,
+            ),
+            next,
+          ];
+        });
+        setQuotaRefreshErrors((current) => {
+          const next = { ...current };
+          if (quota.success) delete next[quota.profileId];
+          else next[quota.profileId] = quota.error ?? "额度查询失败";
+          return next;
+        });
+      };
+      try {
+        const results = await refreshAccountQuotas(ids, accept);
+        results.forEach(accept);
+      } catch (reason) {
+        const message = localizeBackendError(messageOf(reason), locale);
+        setQuotaError(message);
+        setQuotaRefreshErrors((current) => {
+          const next = { ...current };
+          pending.forEach((id) => {
+            if (quotaRequestIdsRef.current.get(id) === requestId)
+              next[id] = message;
+          });
+          return next;
+        });
+      } finally {
+        ids.forEach((id) => {
+          if (quotaRequestIdsRef.current.get(id) === requestId)
+            quotaRefreshInFlightRef.current.delete(id);
+        });
+        setQuotaRefreshingIds([...quotaRefreshInFlightRef.current]);
+      }
+    },
+    [locale],
+  );
 
   const refreshActiveData = useCallback(() => {
     if (activeTab === "usage") void refreshUsage();
@@ -176,8 +256,9 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (autoRefreshUsage && status?.supported) refreshActiveData();
-  }, [autoRefreshUsage, refreshActiveData, status?.supported]);
+    if (autoRefreshUsage && (activeTab === "usage" || status?.supported))
+      refreshActiveData();
+  }, [autoRefreshUsage, activeTab, refreshActiveData, status?.supported]);
 
   useEffect(() => {
     window.localStorage.setItem(DEFAULT_TAB_STORAGE_KEY, defaultTab);
@@ -205,6 +286,23 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  const loginCallbacksRef = useRef({ locale, t, refreshActiveData });
+  loginCallbacksRef.current = { locale, t, refreshActiveData };
+
+  const closeDeviceLogin = async () => {
+    if (!deviceLogin) return;
+    const deviceCode = deviceLogin.response.deviceCode;
+    setDeviceLogin(null);
+    setBusy(t("cancel"));
+    try {
+      setStatus(await cancelDeviceLogin(deviceCode));
+    } catch (reason) {
+      setError(localizeBackendError(messageOf(reason), locale));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   useEffect(() => {
     if (!deviceLogin) return;
 
@@ -212,28 +310,42 @@ function App() {
     let timer: number | undefined;
     const poll = async () => {
       if (Date.now() >= deviceLogin.expiresAt) {
-        setError(t("loginCodeExpired"));
+        setError(loginCallbacksRef.current.t("loginCodeExpired"));
         setDeviceLogin(null);
+        try {
+          setStatus(await cancelDeviceLogin(deviceLogin.response.deviceCode));
+        } catch (reason) {
+          setError(
+            localizeBackendError(
+              messageOf(reason),
+              loginCallbacksRef.current.locale,
+            ),
+          );
+        }
         return;
       }
 
       try {
         const nextStatus = await pollDeviceLogin(
           deviceLogin.response.deviceCode,
-          deviceLogin.response.userCode,
-          deviceLogin.label,
         );
         if (cancelled) return;
         if (nextStatus) {
+          statusRef.current = nextStatus;
           setStatus(nextStatus);
           setDeviceLogin(null);
-          setNotice(t("newAccountSaved"));
-          refreshActiveData();
+          setNotice(loginCallbacksRef.current.t("newAccountSaved"));
+          loginCallbacksRef.current.refreshActiveData();
           return;
         }
       } catch (reason) {
         if (cancelled) return;
-        setError(localizeBackendError(messageOf(reason), locale));
+        setError(
+          localizeBackendError(
+            messageOf(reason),
+            loginCallbacksRef.current.locale,
+          ),
+        );
         setDeviceLogin(null);
         return;
       }
@@ -252,7 +364,7 @@ function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [deviceLogin, locale, refreshActiveData, t]);
+  }, [deviceLogin]);
 
   const run = async (
     description: string,
@@ -263,7 +375,9 @@ function App() {
     setError(null);
     setNotice(null);
     try {
-      setStatus(await action());
+      const nextStatus = await action();
+      statusRef.current = nextStatus;
+      setStatus(nextStatus);
       onSuccess?.();
       setNotice(t("operationComplete", { action: description }));
       refreshActiveData();
@@ -556,18 +670,16 @@ function App() {
                 role="tabpanel"
                 aria-label={t("usageTab")}
               >
-                {status?.supported ? (
-                  <UsagePanel
-                    usage={usage}
-                    loading={usageLoading}
-                    error={usageError}
-                    locale={locale}
-                    onRefresh={() => void refreshUsage()}
-                    privateMode={privateMode}
-                    t={t}
-                    modelProvider={modelProvider}
-                  />
-                ) : null}
+                <UsagePanel
+                  usage={usage}
+                  loading={usageLoading}
+                  error={usageError}
+                  locale={locale}
+                  onRefresh={() => void refreshUsage()}
+                  privateMode={privateMode}
+                  t={t}
+                  modelProvider={modelProvider}
+                />
               </div>
             )}
 
@@ -580,6 +692,10 @@ function App() {
               >
                 {status?.supported ? (
                   <QuotaPanel
+                    accounts={status.accounts}
+                    refreshingIds={quotaRefreshingIds}
+                    refreshErrors={quotaRefreshErrors}
+                    onRefreshAccount={(id) => void refreshQuotas(id)}
                     activeAccountId={status.activeAccountId}
                     quotas={quotas}
                     loading={quotaLoading}
@@ -589,7 +705,18 @@ function App() {
                     privateMode={privateMode}
                     t={t}
                   />
-                ) : null}
+                ) : (
+                  <div className="usage-empty-state">
+                    <strong>{t("quotaStorageUnsupported")}</strong>
+                    <p>{t("quotaStorageUnsupportedHint")}</p>
+                    <button
+                      className="button primary"
+                      onClick={() => setActiveTab("config")}
+                    >
+                      {t("codexConfigPageTitle")}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -665,7 +792,7 @@ function App() {
 
       <DeviceLoginDialog
         login={deviceLogin}
-        onClose={() => setDeviceLogin(null)}
+        onClose={() => void closeDeviceLogin()}
         t={t}
       />
 

@@ -67,6 +67,10 @@ const backendErrorTranslations: Record<string, string> = {
   "刷新后的凭据与待迁移账号不一致，请重新登录":
     "The refreshed credentials do not match the account being transferred. Log in again.",
   找不到指定账号: "The selected account could not be found",
+  "登录已取消，请重新发起登录":
+    "Login was cancelled. Start the login flow again.",
+  "Codex config.toml 格式错误，请检查配置语法":
+    "Invalid Codex config.toml. Check the configuration syntax.",
   "登录验证码已过期，请重新发起登录":
     "The login code expired. Start the login flow again.",
   账号名称不能为空: "The account name cannot be empty",

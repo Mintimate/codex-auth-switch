@@ -147,7 +147,7 @@ export function UsagePanel({
         </div>
       )}
 
-      {loading ? (
+      {loading && !usage ? (
         <UsageSkeleton label={t("usageLoading")} />
       ) : !usage ? (
         <div className="usage-empty-state">

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import packageMetadata from "../package.json";
 
 export type AccountSummary = {
@@ -449,6 +449,8 @@ const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
   </svg>
 `)}`;
 
+let previewCacheBytes = 256 * 1024;
+
 const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
@@ -464,6 +466,13 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     }
     if (command === "poll_device_login") {
       return Promise.resolve(null as T);
+    }
+    if (command === "get_usage_cache_info" || command === "clear_usage_cache") {
+      if (command === "clear_usage_cache") previewCacheBytes = 0;
+      return Promise.resolve({
+        bytes: previewCacheBytes,
+        maxBytes: 8 * 1024 * 1024,
+      } as T);
     }
     if (command === "get_local_usage") {
       return Promise.resolve(structuredClone(previewLocalUsage) as T);
@@ -603,6 +612,34 @@ export const getAccountQuotas = async () => {
   }
 };
 
+export const refreshAccountQuotas = async (
+  profileIds: string[],
+  onUpdate: (quota: AccountQuota) => void,
+) => {
+  if (import.meta.env.DEV && !isTauri()) {
+    const results = structuredClone(
+      previewQuotas.filter((quota) => profileIds.includes(quota.profileId)),
+    );
+    for (const quota of results) {
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      quota.queriedAt = Math.floor(Date.now() / 1000);
+      onUpdate(quota);
+    }
+    return results;
+  }
+  const channel = new Channel<AccountQuota>();
+  channel.onmessage = onUpdate;
+  return invoke<AccountQuota[]>("refresh_account_quotas", {
+    profileIds,
+    onUpdate: channel,
+  });
+};
+
+export type UsageCacheInfo = { bytes: number; maxBytes: number };
+export const getUsageCacheInfo = () =>
+  call<UsageCacheInfo>("get_usage_cache_info");
+export const clearUsageCache = () => call<UsageCacheInfo>("clear_usage_cache");
+
 export const getAppVersion = () => call<string>("get_app_version");
 
 export const checkAppUpdate = (source: AppUpdateSource) =>
@@ -616,16 +653,11 @@ export const saveCurrent = (label: string) =>
 export const startDeviceLogin = (label: string) =>
   call<DeviceLoginResponse>("start_device_login", { label });
 
-export const pollDeviceLogin = (
-  deviceCode: string,
-  userCode: string,
-  label: string,
-) =>
-  call<AppStatus | null>("poll_device_login", {
-    deviceCode,
-    userCode,
-    label,
-  });
+export const pollDeviceLogin = (deviceCode: string) =>
+  call<AppStatus | null>("poll_device_login", { deviceCode });
+
+export const cancelDeviceLogin = (deviceCode: string) =>
+  call<AppStatus>("cancel_device_login", { deviceCode });
 
 export const switchAccount = (profileId: string) =>
   call<AppStatus>("switch_account", { profileId });

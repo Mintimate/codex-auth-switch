@@ -1,4 +1,4 @@
-import { AccountQuota, UsageWindow } from "./api";
+import { AccountQuota, AccountSummary, UsageWindow } from "./api";
 import { DailyUsageHeatmap } from "./DailyUsageHeatmap";
 import { Locale, localizeBackendError, Translate } from "./i18n";
 import {
@@ -20,7 +20,11 @@ type QuotaCardProps = {
   activeAccountId: string | null;
   accountLabel: string;
   locale: Locale;
-  quota: AccountQuota;
+  quota: AccountQuota | null;
+  account: AccountSummary;
+  refreshing: boolean;
+  refreshError: string | null;
+  onRefresh: () => void;
   t: Translate;
 };
 
@@ -66,32 +70,56 @@ function QuotaWindowRow({
 export function QuotaCard({
   activeAccountId,
   accountLabel,
+  account,
+  refreshing,
+  refreshError,
+  onRefresh,
   locale,
   quota,
   t,
 }: QuotaCardProps) {
-  const level = quotaLevel(quota);
-  const buckets = quotaBuckets(quota);
-  const plan = formatPlan(quota.planType);
-  const sevenDayUsage = quota.officialUsage
+  const level = quota ? quotaLevel(quota) : "unknown";
+  const buckets = quota ? quotaBuckets(quota) : [];
+  const plan = formatPlan(quota?.planType ?? null);
+  const sevenDayUsage = quota?.officialUsage
     ? recentTokenUsage(quota.officialUsage.dailyUsageBuckets, 7)
     : null;
 
   return (
-    <article className={`quota-card level-${level}`}>
+    <article className={`quota-card level-${level}`} aria-busy={refreshing}>
       <div className="quota-account quota-account-status">
         <div>
           <strong>{accountLabel}</strong>
           <span>
-            {quota.accountId === activeAccountId
+            {account.accountId === activeAccountId
               ? t("currentAccount")
               : t("savedAccount")}
           </span>
         </div>
-        <b className={`quota-status level-${level}`}>{levelLabel(level, t)}</b>
+        <div className="quota-card-actions">
+          <b className={`quota-status level-${level}`}>
+            {levelLabel(level, t)}
+          </b>
+          <button
+            className="text-button"
+            disabled={refreshing}
+            onClick={onRefresh}
+            aria-label={t("refreshAccountQuotaLabel", {
+              account: accountLabel,
+            })}
+          >
+            {refreshing ? t("queryingQuota") : t("refreshAccountQuota")}
+          </button>
+        </div>
       </div>
 
-      {quota.success ? (
+      {refreshError && quota?.success && (
+        <p className="quota-error" role="status">
+          {t("quotaRefreshFailedCached")}{" "}
+          {localizeBackendError(refreshError, locale)}
+        </p>
+      )}
+      {quota?.success ? (
         <>
           <div className="quota-account-facts">
             <div>
@@ -246,18 +274,24 @@ export function QuotaCard({
             </div>
           </div>
         </>
-      ) : (
-        <p className="quota-error">
-          {quota.error
-            ? localizeBackendError(quota.error, locale)
-            : t("quotaQueryFailed")}
+      ) : refreshError || quota?.error ? (
+        <p className="quota-error" role="status">
+          {localizeBackendError(
+            refreshError ?? quota?.error ?? "额度查询失败",
+            locale,
+          )}
         </p>
+      ) : (
+        <div className="quota-pending" role="status">
+          {refreshing && <span className="inline-spinner" />}
+          <p>{refreshing ? t("quotaLoading") : t("quotaAccountNotLoaded")}</p>
+        </div>
       )}
-      <small className="quota-queried-at">
-        {t("quotaQueriedAt", {
-          date: formatDate(quota.queriedAt, locale),
-        })}
-      </small>
+      {quota && (
+        <small className="quota-queried-at">
+          {t("quotaQueriedAt", { date: formatDate(quota.queriedAt, locale) })}
+        </small>
+      )}
     </article>
   );
 }

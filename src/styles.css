@@ -5183,3 +5183,27 @@ button:disabled {
     transform: none;
   }
 }
+
+.quota-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.quota-pending {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 80px;
+  color: var(--muted);
+}
+.quota-refresh-progress {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cache-clear-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
