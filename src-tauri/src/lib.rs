@@ -1,8 +1,10 @@
 mod app_update;
 mod auth_share;
 mod codex_app_server;
+mod device_login;
 mod diagnostics;
 mod manager;
+mod query_gate;
 mod usage;
 
 use diagnostics::LocalDiagnostics;
@@ -16,9 +18,9 @@ use tokio::sync::Mutex;
 use usage::{LocalUsageStats, ModelProviderState};
 
 struct AppState {
+    device_login: device_login::DeviceLoginState,
     operation_gate: Mutex<()>,
-    quota_query_gate: Mutex<()>,
-    credential_refresh_gate: Mutex<()>,
+    query_gate: query_gate::QueryGate,
     prepared_auth_transfer: Mutex<Option<PreparedAuthTransferCache>>,
 }
 
@@ -54,12 +56,8 @@ async fn query_account_quotas(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<Vec<AccountQuota>, String> {
-    // 同一时间只运行一批额度刷新，避免多个 WebView 调用重复冲击远端服务。
-    let _quota_guard = state.quota_query_gate.lock().await;
-    // App Server 和兼容路径都可能轮换 refresh token，不能与迁移流程同时使用同一凭据。
-    let _credential_guard = state.credential_refresh_gate.lock().await;
     account_manager(app)?
-        .account_quotas(&state.operation_gate)
+        .account_quotas(&state.operation_gate, &state.query_gate)
         .await
         .map_err(|error| error.to_string())
 }
@@ -134,12 +132,50 @@ async fn get_local_usage(
         .map_err(|error| error.to_string())
 }
 
+async fn cache_info(app: &AppHandle, clear: bool) -> Result<usage::UsageCacheInfo, String> {
+    let path = account_manager(app)?.usage_cache_path();
+    tauri::async_runtime::spawn_blocking(move || usage::usage_cache_info(&path, clear))
+        .await
+        .map_err(|_| "读取本地用量缓存失败".to_string())?
+        .map_err(|_| "处理本地用量缓存失败".to_string())
+}
+
+#[tauri::command]
+async fn get_usage_cache_info(app: AppHandle) -> Result<usage::UsageCacheInfo, String> {
+    cache_info(&app, false).await
+}
+
+#[tauri::command]
+async fn clear_usage_cache(app: AppHandle) -> Result<usage::UsageCacheInfo, String> {
+    cache_info(&app, true).await
+}
+
 #[tauri::command]
 async fn get_account_quotas(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<AccountQuota>, String> {
     query_account_quotas(&app, state.inner()).await
+}
+
+#[tauri::command]
+async fn refresh_account_quotas(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_ids: Vec<String>,
+    on_update: tauri::ipc::Channel<AccountQuota>,
+) -> Result<Vec<AccountQuota>, String> {
+    account_manager(&app)?
+        .account_quotas_with_updates(
+            &state.operation_gate,
+            &state.query_gate,
+            Some(&profile_ids),
+            |quota| {
+                let _ = on_update.send(quota);
+            },
+        )
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -180,11 +216,17 @@ async fn save_current(
 }
 
 #[tauri::command]
-async fn start_device_login(app: AppHandle, label: String) -> Result<DeviceLoginResponse, String> {
-    account_manager(&app)?
+async fn start_device_login(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    label: String,
+) -> Result<DeviceLoginResponse, String> {
+    let response = account_manager(&app)?
         .start_device_login(&label)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    state.device_login.register(&response, label).await;
+    Ok(response)
 }
 
 #[tauri::command]
@@ -192,13 +234,25 @@ async fn poll_device_login(
     app: AppHandle,
     state: State<'_, AppState>,
     device_code: String,
-    user_code: String,
-    label: String,
 ) -> Result<Option<AppStatus>, String> {
-    let _guard = state.operation_gate.lock().await;
-    account_manager(&app)?
-        .poll_device_login(&device_code, &user_code, &label)
+    state
+        .device_login
+        .poll(&account_manager(&app)?, &state.operation_gate, &device_code)
         .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn cancel_device_login(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    device_code: String,
+) -> Result<AppStatus, String> {
+    state.device_login.cancel(&device_code).await;
+    let _guard = state.operation_gate.lock().await;
+    // 若提交先于取消完成，向前端返回真实登录状态。
+    account_manager(&app)?
+        .status()
         .map_err(|error| error.to_string())
 }
 
@@ -245,7 +299,7 @@ async fn prepare_auth_transfer(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<AuthTransferPreparation, String> {
-    let _credential_guard = state.credential_refresh_gate.lock().await;
+    let _credential_guard = state.query_gate.exclusive().await;
     let _guard = state.operation_gate.lock().await;
     *state.prepared_auth_transfer.lock().await = None;
     let prepared = account_manager(&app)?
@@ -298,7 +352,7 @@ async fn import_auth_from_clipboard(
     })
     .await
     .map_err(|_| "无法访问系统剪贴板".to_string())??;
-    let _credential_guard = state.credential_refresh_gate.lock().await;
+    let _credential_guard = state.query_gate.exclusive().await;
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .import_auth_share_text(&text)
@@ -314,7 +368,7 @@ async fn import_auth_from_qr(
     state: State<'_, AppState>,
     image: String,
 ) -> Result<AppStatus, String> {
-    let _credential_guard = state.credential_refresh_gate.lock().await;
+    let _credential_guard = state.query_gate.exclusive().await;
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .import_auth_share_qr(&image)
@@ -328,12 +382,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
+            device_login: device_login::DeviceLoginState::default(),
             operation_gate: Mutex::new(()),
-            quota_query_gate: Mutex::new(()),
-            credential_refresh_gate: Mutex::new(()),
+            query_gate: query_gate::QueryGate::default(),
             prepared_auth_transfer: Mutex::new(None),
         })
         .manage(app_update::AppUpdateState::default())
+        .setup(|app| {
+            if let Ok(manager) = account_manager(app.handle()) {
+                let path = manager.usage_cache_path();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = usage::usage_cache_info(&path, false);
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             app_update::get_app_version,
             app_update::check_app_update,
@@ -345,12 +408,16 @@ pub fn run() {
             set_codex_config_choice,
             enable_file_credential_storage,
             get_local_usage,
+            get_usage_cache_info,
+            clear_usage_cache,
             get_account_quotas,
+            refresh_account_quotas,
             get_usage_overview,
             get_model_provider_state,
             save_current,
             start_device_login,
             poll_device_login,
+            cancel_device_login,
             switch_account,
             rename_account,
             remove_account,

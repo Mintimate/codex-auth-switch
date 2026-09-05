@@ -30,6 +30,11 @@ pub struct AccountSnapshot {
     pub plan_type: Option<String>,
     pub rate_limits: RateLimitsResponse,
     pub usage: Option<AccountUsage>,
+}
+
+// 凭据轮换与额度 RPC 的成败无关，不能让错误分支丢掉临时目录里的新凭据。
+pub struct AccountQueryOutcome {
+    pub result: Result<AccountSnapshot, AppServerError>,
     pub refreshed_auth: Option<Value>,
 }
 
@@ -122,15 +127,39 @@ enum Account {
     Other,
 }
 
-pub async fn query_account(auth: &Value) -> Result<AccountSnapshot, AppServerError> {
-    let temp_home = tempfile::Builder::new()
+pub async fn query_account(auth: &Value) -> AccountQueryOutcome {
+    let temp_home = match tempfile::Builder::new()
         .prefix("codex-auth-switch-")
         .tempdir()
-        .map_err(|_| AppServerError::Unavailable)?;
-    write_private_json(&temp_home.path().join("auth.json"), auth)
-        .map_err(|_| AppServerError::Unavailable)?;
+    {
+        Ok(home) => home,
+        Err(_) => {
+            return AccountQueryOutcome {
+                result: Err(AppServerError::Unavailable),
+                refreshed_auth: None,
+            }
+        }
+    };
+    let result = match write_private_json(&temp_home.path().join("auth.json"), auth) {
+        Ok(()) => query_account_in_home(temp_home.path()).await,
+        Err(_) => Err(AppServerError::Unavailable),
+    };
+    finish_query(temp_home.path(), auth, result)
+}
 
-    let mut child = spawn_app_server(temp_home.path())?;
+fn finish_query(
+    home: &Path,
+    original: &Value,
+    result: Result<AccountSnapshot, AppServerError>,
+) -> AccountQueryOutcome {
+    AccountQueryOutcome {
+        result,
+        refreshed_auth: read_refreshed_auth(home, original),
+    }
+}
+
+async fn query_account_in_home(home: &Path) -> Result<AccountSnapshot, AppServerError> {
+    let mut child = spawn_app_server(home)?;
     let mut stdin = child.stdin.take().ok_or(AppServerError::Unavailable)?;
     let stdout = child.stdout.take().ok_or(AppServerError::Unavailable)?;
 
@@ -209,13 +238,11 @@ pub async fn query_account(auth: &Value) -> Result<AccountSnapshot, AppServerErr
         _ => None,
     }
     .or_else(|| rate_limits.rate_limits.plan_type.clone());
-    let refreshed_auth = read_refreshed_auth(temp_home.path(), auth);
 
     Ok(AccountSnapshot {
         plan_type,
         rate_limits,
         usage,
-        refreshed_auth,
     })
 }
 
@@ -366,6 +393,28 @@ fn read_refreshed_auth(codex_home: &Path, original: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preserves_rotated_credentials_when_rpc_fails_or_times_out() {
+        for error in [AppServerError::RateLimited, AppServerError::QueryFailed] {
+            let home = tempfile::TempDir::new().unwrap();
+            let original = json!({"tokens":{"refresh_token":"synthetic-original"}});
+            let rotated = json!({"tokens":{"refresh_token":"synthetic-rotated"}});
+            write_private_json(&home.path().join("auth.json"), &rotated).unwrap();
+            let outcome = finish_query(home.path(), &original, Err(error));
+            assert!(outcome.result.is_err());
+            assert!(outcome.refreshed_auth.as_ref() == Some(&rotated));
+        }
+    }
+
+    #[test]
+    fn failed_query_does_not_invent_a_credential_update() {
+        let home = tempfile::TempDir::new().unwrap();
+        let auth = json!({"tokens":{"refresh_token":"synthetic-original"}});
+        write_private_json(&home.path().join("auth.json"), &auth).unwrap();
+        let outcome = finish_query(home.path(), &auth, Err(AppServerError::QueryFailed));
+        assert!(outcome.refreshed_auth.is_none());
+    }
 
     #[test]
     fn classifies_rate_limited_rpc_errors() {

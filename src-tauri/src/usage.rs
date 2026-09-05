@@ -1,10 +1,11 @@
 use chrono::{DateTime, Days, Local, NaiveDate};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
     fs::{self, File},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
@@ -152,7 +153,7 @@ pub(crate) struct AccountLabel {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenBreakdown {
     pub input_tokens: u64,
@@ -295,18 +296,430 @@ struct EventMessagePayload {
     info: Option<Value>,
 }
 
-pub(crate) fn scan_local_usage(
+const USAGE_CACHE_VERSION: u32 = 2;
+pub(crate) const USAGE_CACHE_FILE: &str = "usage-cache.v2.json.gz";
+const MAX_CACHE_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_CACHE_DECODED_BYTES: u64 = 64 * 1024 * 1024;
+const CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const CHECKPOINT_BYTES: u64 = 4096;
+static USAGE_CACHE_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[derive(Default, Serialize, Deserialize)]
+struct UsageCache {
+    version: u32,
+    codex_home: PathBuf,
+    files: HashMap<PathBuf, CachedSession>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct FileStamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    created: Option<SystemTime>,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+}
+
+impl FileStamp {
+    fn from_metadata(metadata: &fs::Metadata) -> Self {
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+            created: metadata.created().ok(),
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+        }
+    }
+    fn same_file(&self, other: &Self) -> bool {
+        #[cfg(unix)]
+        if self.device != other.device || self.inode != other.inode {
+            return false;
+        }
+        self.created == other.created
+    }
+}
+
+// 缓存不保留 JSONL 原文、提示词、回复或认证数据。
+#[derive(Serialize, Deserialize)]
+struct CachedSession {
+    stamp: FileStamp,
+    offset: u64,
+    prefix_hash: u64,
+    boundary_hash: u64,
+    previous_total: Option<TokenBreakdown>,
+    provider_id: Option<String>,
+    events: Vec<CachedUsageEvent>,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(from = "(u64, [u64; 6])", into = "(u64, [u64; 6])")]
+struct CachedUsageEvent {
+    timestamp: u64,
+    tokens: TokenBreakdown,
+}
+
+impl From<(u64, [u64; 6])> for CachedUsageEvent {
+    fn from((timestamp, n): (u64, [u64; 6])) -> Self {
+        Self {
+            timestamp,
+            tokens: TokenBreakdown {
+                input_tokens: n[0],
+                cached_input_tokens: n[1],
+                cache_write_input_tokens: n[2],
+                output_tokens: n[3],
+                reasoning_output_tokens: n[4],
+                total_tokens: n[5],
+            },
+        }
+    }
+}
+impl From<CachedUsageEvent> for (u64, [u64; 6]) {
+    fn from(event: CachedUsageEvent) -> Self {
+        let t = event.tokens;
+        (
+            event.timestamp,
+            [
+                t.input_tokens,
+                t.cached_input_tokens,
+                t.cache_write_input_tokens,
+                t.output_tokens,
+                t.reasoning_output_tokens,
+                t.total_tokens,
+            ],
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CacheRead {
+    Reused,
+    Appended,
+    Rescanned,
+}
+
+fn checkpoint(file: &mut File, start: u64, length: u64) -> std::io::Result<u64> {
+    use std::hash::{Hash, Hasher};
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = vec![0; length as usize];
+    file.read_exact(&mut bytes)?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Ok(hasher.finish())
+}
+
+impl UsageCache {
+    fn update_file(&mut self, path: &Path) -> std::io::Result<CacheRead> {
+        let mut file = File::open(path)?;
+        let stamp = FileStamp::from_metadata(&file.metadata()?);
+        let old = self.files.remove(path);
+        if old
+            .as_ref()
+            .is_some_and(|old| old.stamp == stamp && old.offset <= stamp.len)
+        {
+            self.files.insert(path.to_path_buf(), old.unwrap());
+            return Ok(CacheRead::Reused);
+        }
+        let can_append = if let Some(old) = old.as_ref() {
+            old.stamp.same_file(&stamp)
+                && stamp.len > old.stamp.len
+                && old.offset <= old.stamp.len
+                && checkpoint(&mut file, 0, old.offset.min(CHECKPOINT_BYTES))? == old.prefix_hash
+                && checkpoint(
+                    &mut file,
+                    old.offset.saturating_sub(CHECKPOINT_BYTES),
+                    old.offset.min(CHECKPOINT_BYTES),
+                )? == old.boundary_hash
+        } else {
+            false
+        };
+        let mode = if can_append {
+            CacheRead::Appended
+        } else {
+            CacheRead::Rescanned
+        };
+        let mut cached = if can_append {
+            old.unwrap()
+        } else {
+            CachedSession {
+                stamp: stamp.clone(),
+                offset: 0,
+                prefix_hash: 0,
+                boundary_hash: 0,
+                previous_total: None,
+                provider_id: None,
+                events: Vec::new(),
+            }
+        };
+        file.seek(SeekFrom::Start(cached.offset))?;
+        // 只读取本次快照长度；写到一半的尾行留到下次读取，避免重计或漏计。
+        let mut reader = BufReader::new((&mut file).take(stamp.len - cached.offset));
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            let read = reader.read_until(b'\n', &mut line)?;
+            if read == 0 || line.last() != Some(&b'\n') {
+                break;
+            }
+            cached.offset += read as u64;
+            let Ok(line) = std::str::from_utf8(&line) else {
+                continue;
+            };
+            if !line.contains("\"session_meta\"") && !line.contains("\"token_count\"") {
+                continue;
+            }
+            let Ok(event) = serde_json::from_str::<SessionEvent>(line) else {
+                continue;
+            };
+            let payload = match event.kind {
+                SessionEventKind::SessionMeta(payload) => {
+                    if cached.provider_id.is_none() {
+                        cached.provider_id = payload
+                            .model_provider
+                            .map(|id| id.trim().to_string())
+                            .filter(|id| !id.is_empty());
+                    }
+                    continue;
+                }
+                SessionEventKind::EventMessage(payload) if payload.kind == "token_count" => payload,
+                _ => continue,
+            };
+            let Some(info) = payload.info.as_ref().filter(|info| info.is_object()) else {
+                continue;
+            };
+            let current_total = info
+                .get("total_token_usage")
+                .and_then(parse_token_breakdown);
+            let delta = info
+                .get("last_token_usage")
+                .and_then(parse_token_breakdown)
+                .or_else(|| {
+                    current_total.map(|current| {
+                        cached
+                            .previous_total
+                            .map_or(current, |previous| current.saturating_sub(previous))
+                    })
+                });
+            if let Some(total) = current_total {
+                cached.previous_total = Some(total);
+            }
+            if let (Some(tokens), Some((_, timestamp))) =
+                (delta, event.timestamp.as_deref().and_then(parse_event_time))
+            {
+                cached.events.push(CachedUsageEvent { timestamp, tokens });
+            }
+        }
+        drop(reader);
+        cached.prefix_hash = checkpoint(&mut file, 0, cached.offset.min(CHECKPOINT_BYTES))?;
+        cached.boundary_hash = checkpoint(
+            &mut file,
+            cached.offset.saturating_sub(CHECKPOINT_BYTES),
+            cached.offset.min(CHECKPOINT_BYTES),
+        )?;
+        cached.stamp = stamp;
+        self.files.insert(path.to_path_buf(), cached);
+        Ok(mode)
+    }
+
+    fn refresh(&mut self, codex_home: &Path, today: NaiveDate) -> bool {
+        let previous_count = self.files.len();
+        let paths = collect_recent_session_files(codex_home);
+        self.files
+            .retain(|path, _| paths.binary_search(path).is_ok());
+        let mut changed = self.files.len() != previous_count;
+        for path in paths {
+            match self.update_file(&path) {
+                Ok(CacheRead::Reused) => {}
+                Ok(_) => changed = true,
+                Err(_) => {
+                    self.files.remove(&path);
+                    changed = true;
+                }
+            }
+        }
+        let cutoff = today
+            .checked_sub_days(Days::new(FILE_SCAN_GRACE_DAYS))
+            .unwrap_or(today);
+        for file in self.files.values_mut() {
+            let count = file.events.len();
+            file.events
+                .retain(|event| event_date(event.timestamp).is_some_and(|date| date >= cutoff));
+            changed |= count != file.events.len();
+        }
+        changed
+    }
+}
+
+fn event_date(timestamp: u64) -> Option<NaiveDate> {
+    DateTime::from_timestamp(i64::try_from(timestamp).ok()?, 0)
+        .map(|date| date.with_timezone(&Local).date_naive())
+}
+
+pub(crate) fn scan_local_usage_cached(
     codex_home: &Path,
+    cache_path: &Path,
     activations: &[ActivationRecord],
     accounts: &[AccountLabel],
     catalog: &ProviderCatalog,
 ) -> LocalUsageStats {
+    let _guard = USAGE_CACHE_GATE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     let today = Local::now().date_naive();
-    scan_local_usage_for_date(codex_home, activations, accounts, catalog, today)
+    let _ = maintain_usage_cache(cache_path);
+    let loaded = File::open(cache_path)
+        .ok()
+        .and_then(|file| {
+            let decoder = GzDecoder::new(file.take(MAX_CACHE_BYTES + 1));
+            let mut json = serde_json::Deserializer::from_reader(BufReader::new(
+                decoder.take(MAX_CACHE_DECODED_BYTES + 1),
+            ));
+            let cache = UsageCache::deserialize(&mut json).ok()?;
+            json.end().ok()?;
+            Some(cache)
+        })
+        .filter(|cache| cache.version == USAGE_CACHE_VERSION && cache.codex_home == codex_home);
+    let needs_save = loaded.is_none();
+    let mut cache = loaded.unwrap_or_else(|| UsageCache {
+        version: USAGE_CACHE_VERSION,
+        codex_home: codex_home.to_path_buf(),
+        files: HashMap::new(),
+    });
+    let changed = cache.refresh(codex_home, today);
+    let stats = aggregate_local_usage(&cache, activations, accounts, catalog, today);
+    if changed || needs_save {
+        if let Some(bytes) =
+            bounded_cache_bytes(&mut cache, MAX_CACHE_BYTES, MAX_CACHE_DECODED_BYTES)
+        {
+            // 容量淘汰只影响下次读取速度，当前返回值始终使用完整统计。
+            let _ = crate::manager::atomic_write(cache_path, &bytes);
+        }
+    }
+    stats
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UsageCacheInfo {
+    pub bytes: u64,
+    pub max_bytes: u64,
+}
+
+// 只处理应用自己创建的两个固定文件，不遍历或删除 Codex 会话与账号库。
+fn remove_cache_file(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+fn maintain_usage_cache(path: &Path) -> std::io::Result<()> {
+    remove_cache_file(&path.with_file_name("usage-cache.v1.json"))?;
+    if let Ok(meta) = fs::metadata(path) {
+        let expired = meta
+            .modified()
+            .ok()
+            .and_then(|time| SystemTime::now().duration_since(time).ok())
+            .is_some_and(|age| age >= CACHE_MAX_AGE);
+        if meta.len() > MAX_CACHE_BYTES || expired {
+            remove_cache_file(path)?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn usage_cache_info(path: &Path, clear: bool) -> std::io::Result<UsageCacheInfo> {
+    let _guard = USAGE_CACHE_GATE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    maintain_usage_cache(path)?;
+    if clear {
+        remove_cache_file(path)?;
+    }
+    let bytes = match fs::metadata(path) {
+        Ok(meta) => meta.len(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(error) => return Err(error),
+    };
+    Ok(UsageCacheInfo {
+        bytes,
+        max_bytes: MAX_CACHE_BYTES,
+    })
+}
+
+struct LimitedWriter<W> {
+    inner: W,
+    remaining: u64,
+}
+impl<W: Write> Write for LimitedWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() as u64 > self.remaining {
+            return Err(std::io::Error::other("usage cache capacity exceeded"));
+        }
+        let count = self.inner.write(bytes)?;
+        self.remaining -= count as u64;
+        Ok(count)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+fn encode_cache(cache: &UsageCache, max_disk: u64, max_decoded: u64) -> Option<Vec<u8>> {
+    let compressed = LimitedWriter {
+        inner: Vec::new(),
+        remaining: max_disk,
+    };
+    let encoder = GzEncoder::new(compressed, Compression::fast());
+    let mut writer = LimitedWriter {
+        inner: encoder,
+        remaining: max_decoded,
+    };
+    serde_json::to_writer(&mut writer, cache).ok()?;
+    Some(writer.inner.finish().ok()?.inner)
+}
+
+fn bounded_cache_bytes(cache: &mut UsageCache, max_disk: u64, max_decoded: u64) -> Option<Vec<u8>> {
+    loop {
+        if let Some(bytes) = encode_cache(cache, max_disk, max_decoded) {
+            return Some(bytes);
+        }
+        if cache.files.is_empty() {
+            return None;
+        }
+        let mut oldest = cache
+            .files
+            .iter()
+            .map(|(path, entry)| (path.clone(), entry.stamp.modified))
+            .collect::<Vec<_>>();
+        oldest.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        // 批量淘汰较旧文件，避免每移除一个文件都重新压缩整个缓存。
+        for (path, _) in oldest.into_iter().take(cache.files.len().div_ceil(2)) {
+            cache.files.remove(&path);
+        }
+    }
+}
+
+#[cfg(test)]
 fn scan_local_usage_for_date(
     codex_home: &Path,
+    activations: &[ActivationRecord],
+    accounts: &[AccountLabel],
+    catalog: &ProviderCatalog,
+    today: NaiveDate,
+) -> LocalUsageStats {
+    let mut cache = UsageCache::default();
+    cache.refresh(codex_home, today);
+    aggregate_local_usage(&cache, activations, accounts, catalog, today)
+}
+
+fn aggregate_local_usage(
+    cache: &UsageCache,
     activations: &[ActivationRecord],
     accounts: &[AccountLabel],
     catalog: &ProviderCatalog,
@@ -342,64 +755,14 @@ fn scan_local_usage_for_date(
     let mut files_scanned = 0u32;
     let mut events_count = 0u32;
 
-    for path in collect_recent_session_files(codex_home) {
-        let file = match File::open(&path) {
-            Ok(file) => file,
-            Err(_) => continue,
-        };
+    for file in cache.files.values() {
         files_scanned = files_scanned.saturating_add(1);
-        let mut previous_total: Option<TokenBreakdown> = None;
-        let mut provider_id = None;
         let mut file_tokens = TokenBreakdown::default();
         let mut file_daily_tokens: BTreeMap<NaiveDate, u64> = BTreeMap::new();
-
-        for line in BufReader::new(file).lines().map_while(Result::ok) {
-            if !line.contains("\"session_meta\"") && !line.contains("\"token_count\"") {
-                continue;
-            }
-            let event: SessionEvent = match serde_json::from_str(&line) {
-                Ok(value) => value,
-                Err(_) => continue,
-            };
-
-            let payload = match event.kind {
-                SessionEventKind::SessionMeta(payload) => {
-                    if provider_id.is_none() {
-                        provider_id = payload
-                            .model_provider
-                            .map(|provider| provider.trim().to_string())
-                            .filter(|provider| !provider.is_empty());
-                    }
-                    continue;
-                }
-                SessionEventKind::EventMessage(payload) if payload.kind == "token_count" => payload,
-                _ => continue,
-            };
-
-            let Some(info) = payload.info.as_ref().filter(|info| info.is_object()) else {
-                continue;
-            };
-            let current_total = info
-                .get("total_token_usage")
-                .and_then(parse_token_breakdown);
-            let token_delta = info
-                .get("last_token_usage")
-                .and_then(parse_token_breakdown)
-                .or_else(|| {
-                    current_total.map(|current| match previous_total {
-                        Some(previous) => current.saturating_sub(previous),
-                        None => current,
-                    })
-                });
-            if let Some(current) = current_total {
-                previous_total = Some(current);
-            }
-            let Some(token_delta) = token_delta else {
-                continue;
-            };
-            let Some((event_date, event_timestamp)) =
-                event.timestamp.as_deref().and_then(parse_event_time)
-            else {
+        for event in &file.events {
+            let token_delta = event.tokens;
+            let event_timestamp = event.timestamp;
+            let Some(event_date) = event_date(event_timestamp) else {
                 continue;
             };
             if event_date < thirty_day_start || event_date > today {
@@ -438,7 +801,7 @@ fn scan_local_usage_for_date(
             }
         }
 
-        let usage_id = match provider_id.as_deref() {
+        let usage_id = match file.provider_id.as_deref() {
             Some(provider) => catalog.usage_id(provider),
             None => UNATTRIBUTED_PROVIDER_ID.to_string(),
         };
@@ -648,6 +1011,268 @@ mod tests {
     use serde_json::json;
     use std::io::Write;
     use tempfile::TempDir;
+
+    fn cumulative_line(total: u64) -> String {
+        format!(
+            "{}\n",
+            json!({"timestamp": Local::now().to_rfc3339(), "type":"event_msg", "payload": {
+                "type":"token_count", "info":{"total_token_usage":{"total_tokens":total}}
+            }})
+        )
+    }
+
+    fn cached_total(cache: &UsageCache) -> u64 {
+        aggregate_local_usage(
+            cache,
+            &[],
+            &[],
+            &ProviderCatalog::default(),
+            Local::now().date_naive(),
+        )
+        .today
+        .total_tokens
+    }
+
+    #[test]
+    fn cache_reuses_files_and_counts_only_complete_appended_events() {
+        let root = TempDir::new().unwrap();
+        let path = root.path().join("session.jsonl");
+        fs::write(&path, cumulative_line(100)).unwrap();
+        let mut cache = UsageCache::default();
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Rescanned);
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Reused);
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(cumulative_line(150).as_bytes()).unwrap();
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Appended);
+        assert_eq!(cached_total(&cache), 150);
+        let partial = cumulative_line(200);
+        let split = partial.len() / 2;
+        file.write_all(&partial.as_bytes()[..split]).unwrap();
+        cache.update_file(&path).unwrap();
+        assert_eq!(cached_total(&cache), 150);
+        file.write_all(&partial.as_bytes()[split..]).unwrap();
+        cache.update_file(&path).unwrap();
+        assert_eq!(cached_total(&cache), 200);
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Reused);
+        assert_eq!(cached_total(&cache), 200);
+    }
+
+    #[test]
+    fn cache_rebuilds_after_truncation_same_size_edit_and_replacement() {
+        let root = TempDir::new().unwrap();
+        let path = root.path().join("session.jsonl");
+        let original = cumulative_line(100);
+        fs::write(&path, original.repeat(2)).unwrap();
+        let mut cache = UsageCache::default();
+        cache.update_file(&path).unwrap();
+        fs::write(&path, &original).unwrap();
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Rescanned);
+        let edited = original.replace(":100", ":200");
+        assert_eq!(edited.len(), original.len());
+        fs::write(&path, &edited).unwrap();
+        File::open(&path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(2)),
+            )
+            .unwrap();
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Rescanned);
+        assert_eq!(cached_total(&cache), 200);
+        fs::rename(&path, root.path().join("old.jsonl")).unwrap();
+        fs::write(&path, cumulative_line(300)).unwrap();
+        assert_eq!(cache.update_file(&path).unwrap(), CacheRead::Rescanned);
+        assert_eq!(cached_total(&cache), 300);
+    }
+
+    #[test]
+    fn cache_survives_restart_excludes_raw_content_and_removes_deleted_files() {
+        let root = TempDir::new().unwrap();
+        let sessions = root.path().join("sessions");
+        fs::create_dir(&sessions).unwrap();
+        let path = sessions.join("session.jsonl");
+        fs::write(
+            &path,
+            format!(
+                "{}{}{}",
+                json!({"type":"response_item","payload":{"text":"PRIVATE_PROMPT_MARKER"}}),
+                "\n",
+                cumulative_line(100)
+            ),
+        )
+        .unwrap();
+        let cache_path = root.path().join("app").join(USAGE_CACHE_FILE);
+        let first = scan_local_usage_cached(
+            root.path(),
+            &cache_path,
+            &[],
+            &[],
+            &ProviderCatalog::default(),
+        );
+        assert_eq!(first.today.total_tokens, 100);
+        let bytes = fs::read(&cache_path).unwrap();
+        let mut decoded = String::new();
+        GzDecoder::new(bytes.as_slice())
+            .read_to_string(&mut decoded)
+            .unwrap();
+        assert!(!decoded.contains("PRIVATE_PROMPT_MARKER"));
+        let mut loaded: UsageCache =
+            serde_json::from_reader(GzDecoder::new(bytes.as_slice())).unwrap();
+        assert_eq!(loaded.update_file(&path).unwrap(), CacheRead::Reused);
+        let modified = fs::metadata(&cache_path).unwrap().modified().unwrap();
+        assert_eq!(
+            scan_local_usage_cached(
+                root.path(),
+                &cache_path,
+                &[],
+                &[],
+                &ProviderCatalog::default()
+            )
+            .today
+            .total_tokens,
+            100
+        );
+        assert_eq!(
+            fs::metadata(&cache_path).unwrap().modified().unwrap(),
+            modified
+        );
+        fs::remove_file(&path).unwrap();
+        assert_eq!(
+            scan_local_usage_cached(
+                root.path(),
+                &cache_path,
+                &[],
+                &[],
+                &ProviderCatalog::default()
+            )
+            .today
+            .total_tokens,
+            0
+        );
+        fs::write(&cache_path, b"corrupted cache").unwrap();
+        fs::write(&path, cumulative_line(300)).unwrap();
+        assert_eq!(
+            scan_local_usage_cached(
+                root.path(),
+                &cache_path,
+                &[],
+                &[],
+                &ProviderCatalog::default()
+            )
+            .today
+            .total_tokens,
+            300
+        );
+    }
+
+    #[test]
+    fn cached_counts_are_reaggregated_for_new_account_history_and_date() {
+        let root = TempDir::new().unwrap();
+        let path = root.path().join("session.jsonl");
+        fs::write(&path, cumulative_line(100)).unwrap();
+        let mut cache = UsageCache::default();
+        cache.update_file(&path).unwrap();
+        let today = Local::now().date_naive();
+        let history = [ActivationRecord {
+            account_id: "account-a".into(),
+            activated_at: 0,
+        }];
+        let stats =
+            aggregate_local_usage(&cache, &history, &[], &ProviderCatalog::default(), today);
+        assert_eq!(stats.by_account[0].tokens.total_tokens, 100);
+        let tomorrow = today.checked_add_days(Days::new(1)).unwrap();
+        let stats = aggregate_local_usage(&cache, &[], &[], &ProviderCatalog::default(), tomorrow);
+        assert_eq!(stats.today.total_tokens, 0);
+        assert_eq!(stats.seven_days.total_tokens, 100);
+        assert_eq!(stats.unassigned.total_tokens, 100);
+    }
+
+    #[test]
+    fn cache_cleanup_removes_only_owned_cache_files_and_expires_old_data() {
+        let root = TempDir::new().unwrap();
+        let path = root.path().join(USAGE_CACHE_FILE);
+        let legacy = root.path().join("usage-cache.v1.json");
+        let credentials = root.path().join("accounts.v1.json");
+        let session = root.path().join("session.jsonl");
+        fs::write(&credentials, "synthetic-preserve").unwrap();
+        fs::write(&session, cumulative_line(10)).unwrap();
+        fs::write(&legacy, "legacy-statistics").unwrap();
+        fs::write(&path, "cache").unwrap();
+        assert_eq!(usage_cache_info(&path, false).unwrap().bytes, 5);
+        assert!(!legacy.exists());
+        File::open(&path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(SystemTime::now() - CACHE_MAX_AGE - Duration::from_secs(1)),
+            )
+            .unwrap();
+        assert_eq!(usage_cache_info(&path, false).unwrap().bytes, 0);
+        File::create(&path)
+            .unwrap()
+            .set_len(MAX_CACHE_BYTES + 1)
+            .unwrap();
+        assert_eq!(usage_cache_info(&path, false).unwrap().bytes, 0);
+        fs::write(&path, "cache").unwrap();
+        assert_eq!(usage_cache_info(&path, true).unwrap().bytes, 0);
+        assert_eq!(usage_cache_info(&path, true).unwrap().bytes, 0);
+        assert_eq!(
+            fs::read_to_string(&credentials).unwrap(),
+            "synthetic-preserve"
+        );
+        assert!(session.exists());
+    }
+
+    #[test]
+    fn bounded_cache_evicts_older_files_without_changing_full_scan_totals() {
+        let root = TempDir::new().unwrap();
+        let mut cache = UsageCache {
+            version: USAGE_CACHE_VERSION,
+            codex_home: root.path().into(),
+            files: HashMap::new(),
+        };
+        for i in 0..4 {
+            let path = root.path().join(format!("{i}.jsonl"));
+            fs::write(&path, cumulative_line(10)).unwrap();
+            File::open(&path)
+                .unwrap()
+                .set_times(
+                    fs::FileTimes::new()
+                        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(i)),
+                )
+                .unwrap();
+            cache.update_file(&path).unwrap();
+        }
+        let full = cached_total(&cache);
+        let decoded_len = serde_json::to_vec(&cache).unwrap().len() as u64;
+        let bytes = bounded_cache_bytes(&mut cache, 1024, decoded_len * 3 / 4).unwrap();
+        assert!(bytes.len() <= 1024);
+        let mut decoded = Vec::new();
+        GzDecoder::new(bytes.as_slice())
+            .read_to_end(&mut decoded)
+            .unwrap();
+        assert!(decoded.len() as u64 <= decoded_len * 3 / 4);
+        let loaded: UsageCache = serde_json::from_slice(&decoded).unwrap();
+        assert_eq!(full, 40);
+        assert_eq!(loaded.files.len(), 2);
+        assert!(loaded.files.contains_key(&root.path().join("3.jsonl")));
+        assert!(!loaded.files.contains_key(&root.path().join("0.jsonl")));
+    }
+
+    #[test]
+    fn cache_prunes_expired_events_even_when_session_is_unchanged() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("sessions")).unwrap();
+        let path = root.path().join("sessions/session.jsonl");
+        fs::write(&path, cumulative_line(10)).unwrap();
+        let mut cache = UsageCache::default();
+        cache.update_file(&path).unwrap();
+        let today = Local::now().date_naive();
+        let later = today
+            .checked_add_days(Days::new(FILE_SCAN_GRACE_DAYS + 1))
+            .unwrap();
+        assert!(cache.refresh(root.path(), later));
+        assert!(cache.files[&path].events.is_empty());
+    }
 
     fn write_event(file: &mut File, timestamp: &str, info: Value) {
         writeln!(

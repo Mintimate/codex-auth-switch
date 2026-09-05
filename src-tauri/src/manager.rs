@@ -1,26 +1,26 @@
 use crate::{
     auth_share::{self, ImportedAuth},
     codex_app_server,
+    query_gate::{QueryGate, QueryPermit},
     usage::{
-        provider_label, scan_local_usage, AccountLabel, ActivationRecord, LocalUsageStats,
+        provider_label, scan_local_usage_cached, AccountLabel, ActivationRecord, LocalUsageStats,
         ModelProviderKind, ModelProviderOption, ModelProviderState, ProviderCatalog,
     },
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
-use futures_util::future::join_all;
+use futures_util::{stream, Stream, StreamExt};
 use reqwest::{header::RETRY_AFTER, Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    env, fmt,
-    fs::{self, File, OpenOptions},
+    env, fmt, fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::OnceLock,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::{sync::Mutex, sync::Semaphore, time::sleep};
+use tokio::{sync::Mutex, time::sleep};
 use toml_edit::{value as toml_edit_value, DocumentMut};
 
 const VAULT_VERSION: u32 = 1;
@@ -66,6 +66,7 @@ pub enum ManagerError {
     ProfileNotFound,
     Network(String),
     DeviceCodeExpired,
+    DeviceLoginCancelled,
     TokenExchange(String),
 }
 
@@ -136,6 +137,7 @@ impl fmt::Display for ManagerError {
                 "当前 Codex 凭据存储模式为 {mode}；请先在 config.toml 中设置 cli_auth_credentials_store = \"file\""
             ),
             Self::ProfileNotFound => formatter.write_str("找不到指定账号"),
+            Self::DeviceLoginCancelled => formatter.write_str("登录已取消，请重新发起登录"),
             Self::DeviceCodeExpired => {
                 formatter.write_str("登录验证码已过期，请重新发起登录")
             }
@@ -325,6 +327,7 @@ type QuotaQueryResult = Result<QuotaDetails, QuotaQueryError>;
 
 // 并发查询阶段不碰 vault，只把结果和「需要回写的刷新令牌」带回串行阶段统一落盘。
 struct QuotaOutcome {
+    query_permit: Option<QueryPermit>,
     profile_id: String,
     account_id: String,
     original_auth: Value,
@@ -350,6 +353,8 @@ struct Vault {
     profiles: Vec<ProfileRecord>,
     #[serde(default)]
     activations: Vec<ActivationRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_activation: Option<ActivationRecord>,
     // 早期版本记录过计费来源时间线，现已改为按会话读 model_provider。
     // 保留字段以免旧账号库反序列化失败，但不再读写。
     #[allow(dead_code)]
@@ -371,6 +376,7 @@ impl Default for Vault {
             version: VAULT_VERSION,
             profiles: Vec::new(),
             activations: Vec::new(),
+            pending_activation: None,
             legacy_sources: Vec::new(),
         }
     }
@@ -506,7 +512,7 @@ impl AccountManager {
 
         if let Ok(current_auth) = self.read_live_auth() {
             if validate_chatgpt_auth(&current_auth).is_ok() {
-                upsert_profile(&mut vault, current_auth, None)?;
+                refresh_saved_profile(&mut vault, current_auth)?;
             }
         }
 
@@ -517,9 +523,7 @@ impl AccountManager {
             .cloned()
             .ok_or(ManagerError::ProfileNotFound)?;
 
-        record_activation(&mut vault, &target.account_id, unix_timestamp());
-        self.save_vault(&vault)?;
-        self.write_live_auth(&target.auth)?;
+        self.commit_activation(&mut vault, &target.auth)?;
         self.status()
     }
 
@@ -578,7 +582,7 @@ impl AccountManager {
         let mut vault = self.load_vault()?;
         if let Ok(current_auth) = self.read_live_auth() {
             if validate_chatgpt_auth(&current_auth).is_ok() {
-                upsert_profile(&mut vault, current_auth, None)?;
+                refresh_saved_profile(&mut vault, current_auth)?;
                 self.save_vault(&vault)?;
             }
         }
@@ -660,7 +664,7 @@ impl AccountManager {
 
         if let Ok(current_auth) = self.read_live_auth() {
             if validate_chatgpt_auth(&current_auth).is_ok() {
-                upsert_profile(&mut vault, current_auth, None)?;
+                refresh_saved_profile(&mut vault, current_auth)?;
             }
         }
         let already_saved = vault
@@ -672,9 +676,7 @@ impl AccountManager {
             auth.clone(),
             (!already_saved).then_some(label).flatten(),
         )?;
-        record_activation(&mut vault, &identity.account_id, unix_timestamp());
-        self.save_vault(&vault)?;
-        self.write_live_auth(&auth)?;
+        self.commit_activation(&mut vault, &auth)?;
         self.status()
     }
 
@@ -718,14 +720,13 @@ impl AccountManager {
         })
     }
 
-    pub async fn poll_device_login(
+    // 网络阶段只产生后端凭据，提交前由登录会话检查取消与过期状态。
+    pub(crate) async fn poll_device_auth(
         &self,
         device_code: &str,
         user_code: &str,
-        label: &str,
-    ) -> Result<Option<AppStatus>, ManagerError> {
+    ) -> Result<Option<Value>, ManagerError> {
         self.ensure_file_storage()?;
-        let label = validate_label(label)?.to_string();
         if device_code.trim().is_empty() || user_code.trim().is_empty() {
             return Err(ManagerError::InvalidConfig(
                 "登录验证码状态无效，请重新发起登录".to_string(),
@@ -762,159 +763,234 @@ impl AccountManager {
         let auth = materialize_codex_auth(tokens)?;
         validate_chatgpt_auth(&auth)?;
 
+        Ok(Some(auth))
+    }
+
+    pub(crate) fn complete_device_login(
+        &self,
+        auth: Value,
+        label: &str,
+    ) -> Result<AppStatus, ManagerError> {
+        self.ensure_file_storage()?;
+        let label = validate_label(label)?;
+        let auth = canonical_chatgpt_auth(&auth)?;
         let mut vault = self.load_vault()?;
         if let Ok(current_auth) = self.read_live_auth() {
-            if validate_chatgpt_auth(&current_auth).is_ok() {
-                upsert_profile(&mut vault, current_auth, None)?;
-            }
+            refresh_saved_profile(&mut vault, current_auth)?;
         }
-        upsert_profile(&mut vault, auth.clone(), Some(&label))?;
-        let identity = validate_chatgpt_auth(&auth)?;
-        record_activation(&mut vault, &identity.account_id, unix_timestamp());
-        self.save_vault(&vault)?;
-        self.write_live_auth(&auth)?;
-        self.status().map(Some)
+        upsert_profile(&mut vault, auth.clone(), Some(label))?;
+        self.commit_activation(&mut vault, &auth)?;
+        self.status()
+    }
+
+    // 先保存新凭据与待完成记录，再替换认证。激活历史只描述已完成的切换。
+    // 若在替换后中断，下次读取根据实际 auth.json 恢复历史，无需回滚已轮换凭据。
+    fn commit_activation(&self, vault: &mut Vault, auth: &Value) -> Result<(), ManagerError> {
+        let identity = validate_chatgpt_auth(auth)?;
+        let activated_at = unix_timestamp();
+        vault.pending_activation = Some(ActivationRecord {
+            account_id: identity.account_id.clone(),
+            activated_at,
+        });
+        self.save_vault(vault)?;
+        self.write_live_auth(auth)?;
+        record_activation(vault, &identity.account_id, activated_at);
+        vault.pending_activation = None;
+        self.save_vault(vault)
     }
 
     pub async fn account_quotas(
         &self,
         operation_gate: &Mutex<()>,
+        query_gate: &QueryGate,
     ) -> Result<Vec<AccountQuota>, ManagerError> {
+        self.account_quotas_with_updates(operation_gate, query_gate, None, |_| {})
+            .await
+    }
+
+    pub async fn account_quotas_with_updates(
+        &self,
+        operation_gate: &Mutex<()>,
+        query_gate: &QueryGate,
+        profile_ids: Option<&[String]>,
+        on_update: impl Fn(AccountQuota),
+    ) -> Result<Vec<AccountQuota>, ManagerError> {
+        self.ensure_file_storage()?;
         // 锁内只读取账号快照。远端查询不占用全局操作锁，账号切换和登录轮询无需等待整批查询。
         let quota_targets = {
             let _guard = operation_gate.lock().await;
-            let (vault, _) = self.load_usage_vault()?;
-            vault
-                .profiles
-                .into_iter()
-                .map(|profile| (profile.id, profile.account_id, profile.auth))
-                .collect::<Vec<_>>()
+            self.quota_targets(profile_ids)?
         };
 
-        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_QUOTA_QUERIES));
-        let outcomes = join_all(
-            quota_targets
-                .into_iter()
-                .map(|(profile_id, account_id, auth)| {
-                    let semaphore = Arc::clone(&semaphore);
-                    async move {
-                        let permit = semaphore.acquire_owned().await;
-                        let queried_at = unix_timestamp();
-                        let (result, refreshed_auth) = match permit {
-                            Ok(_permit) => query_account_details(&auth, &account_id).await,
-                            Err(_) => (
-                                Err(QuotaQueryError::Message(
-                                    "额度查询并发控制不可用".to_string(),
-                                )),
-                                None,
-                            ),
-                        };
-                        QuotaOutcome {
-                            profile_id,
-                            account_id,
-                            original_auth: auth,
-                            queried_at,
-                            result,
-                            refreshed_auth,
-                        }
-                    }
-                }),
-        )
-        .await;
+        let outcomes = stream::iter(quota_targets.into_iter().map(
+            |(profile_id, _, _)| async move {
+                let permit = query_gate.acquire(&profile_id).await;
+                // 等待同账号查询期间凭据可能已轮换，拿到锁后重新取最新快照。
+                let (_, account_id, auth) = {
+                    let _guard = operation_gate.lock().await;
+                    self.quota_targets(Some(&[profile_id.clone()]))?
+                        .pop()
+                        .ok_or(ManagerError::ProfileNotFound)?
+                };
+                let queried_at = unix_timestamp();
+                let (result, refreshed_auth) = query_account_details(&auth, &account_id).await;
+                Ok(QuotaOutcome {
+                    query_permit: Some(permit),
+                    profile_id,
+                    account_id,
+                    original_auth: auth,
+                    queried_at,
+                    result,
+                    refreshed_auth,
+                })
+            },
+        ))
+        .buffer_unordered(MAX_CONCURRENT_QUOTA_QUERIES);
+        self.collect_quota_outcomes(outcomes, operation_gate, on_update)
+            .await
+    }
 
-        // 查询期间账号库可能已经发生变化。重新加载后按稳定 ID 合并，绝不回写过期快照。
-        let _guard = operation_gate.lock().await;
+    fn quota_targets(
+        &self,
+        profile_ids: Option<&[String]>,
+    ) -> Result<Vec<(String, String, Value)>, ManagerError> {
+        let (vault, _) = self.load_usage_vault()?;
+        if profile_ids.is_some_and(|ids| {
+            ids.iter()
+                .any(|id| !vault.profiles.iter().any(|profile| &profile.id == id))
+        }) {
+            return Err(ManagerError::ProfileNotFound);
+        }
+        Ok(vault
+            .profiles
+            .into_iter()
+            .filter(|profile| profile_ids.is_none_or(|ids| ids.contains(&profile.id)))
+            .map(|profile| (profile.id, profile.account_id, profile.auth))
+            .collect::<Vec<_>>())
+    }
+
+    async fn collect_quota_outcomes(
+        &self,
+        outcomes: impl Stream<Item = Result<QuotaOutcome, ManagerError>>,
+        operation_gate: &Mutex<()>,
+        on_update: impl Fn(AccountQuota),
+    ) -> Result<Vec<AccountQuota>, ManagerError> {
+        futures_util::pin_mut!(outcomes);
+        let mut quotas = Vec::new();
+        let mut first_error = None;
+        while let Some(outcome) = outcomes.next().await {
+            // 每个账号完成就持久化；即使某次写入失败也继续收取其他已发出的刷新结果。
+            let _guard = operation_gate.lock().await;
+            match outcome.and_then(|outcome| self.merge_quota_outcome(outcome)) {
+                Ok(Some(quota)) => {
+                    on_update(quota.clone());
+                    quotas.push(quota);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        Ok(quotas)
+    }
+
+    fn merge_quota_outcome(
+        &self,
+        outcome: QuotaOutcome,
+    ) -> Result<Option<AccountQuota>, ManagerError> {
+        // 查询期间可能发生切换或移除，按稳定 ID 和原始凭据合并最新账号库。
         let mut vault = self.load_vault()?;
         let live_auth = self.read_live_auth().ok();
         let active_account_id = live_auth
             .as_ref()
             .and_then(|auth| validate_chatgpt_auth(auth).ok())
             .map(|identity| identity.account_id);
-        let mut quotas = Vec::with_capacity(outcomes.len());
-        let mut vault_changed = false;
-        for outcome in outcomes {
-            let QuotaOutcome {
-                profile_id,
-                account_id,
-                original_auth,
-                queried_at,
-                result,
-                refreshed_auth,
-            } = outcome;
-            if let Some(auth) = refreshed_auth.as_ref() {
-                vault_changed |= self.persist_refreshed_quota_auth(
-                    &mut vault,
-                    &account_id,
-                    &original_auth,
-                    auth,
-                    live_auth.as_ref(),
-                    active_account_id.as_deref(),
-                )?;
+        let QuotaOutcome {
+            query_permit: _query_permit,
+            profile_id,
+            account_id,
+            original_auth,
+            queried_at,
+            result,
+            refreshed_auth,
+        } = outcome;
+        if let Some(auth) = refreshed_auth.as_ref() {
+            let vault_changed = self.persist_refreshed_quota_auth(
+                &mut vault,
+                &account_id,
+                &original_auth,
+                auth,
+                live_auth.as_ref(),
+                active_account_id.as_deref(),
+            )?;
+            if vault_changed {
+                self.save_vault(&vault)?;
             }
-
-            let Some(profile_index) = vault
-                .profiles
-                .iter()
-                .position(|profile| profile.id == profile_id && profile.account_id == account_id)
-            else {
-                continue;
-            };
-
-            let profile = &vault.profiles[profile_index];
-            let quota = match result {
-                Ok(details) => AccountQuota {
-                    profile_id: profile.id.clone(),
-                    account_id: profile.account_id.clone(),
-                    label: profile.label.clone(),
-                    primary: details.primary,
-                    secondary: details.secondary,
-                    buckets: details.buckets,
-                    reset_credits: details.reset_credits,
-                    plan_type: details.plan_type,
-                    official_usage: details.official_usage,
-                    source: Some(details.source),
-                    success: true,
-                    error: None,
-                    queried_at,
-                },
-                Err(QuotaQueryError::Unauthorized) => AccountQuota {
-                    profile_id: profile.id.clone(),
-                    account_id: profile.account_id.clone(),
-                    label: profile.label.clone(),
-                    primary: None,
-                    secondary: None,
-                    buckets: Vec::new(),
-                    reset_credits: None,
-                    plan_type: None,
-                    official_usage: None,
-                    source: None,
-                    success: false,
-                    error: Some("订阅凭据已失效，请重新登录该账号".to_string()),
-                    queried_at,
-                },
-                Err(QuotaQueryError::Message(message)) => AccountQuota {
-                    profile_id: profile.id.clone(),
-                    account_id: profile.account_id.clone(),
-                    label: profile.label.clone(),
-                    primary: None,
-                    secondary: None,
-                    buckets: Vec::new(),
-                    reset_credits: None,
-                    plan_type: None,
-                    official_usage: None,
-                    source: None,
-                    success: false,
-                    error: Some(message),
-                    queried_at,
-                },
-            };
-            quotas.push(quota);
-        }
-        if vault_changed {
-            self.save_vault(&vault)?;
         }
 
-        Ok(quotas)
+        let Some(profile_index) = vault
+            .profiles
+            .iter()
+            .position(|profile| profile.id == profile_id && profile.account_id == account_id)
+        else {
+            return Ok(None);
+        };
+
+        let profile = &vault.profiles[profile_index];
+        let quota = match result {
+            Ok(details) => AccountQuota {
+                profile_id: profile.id.clone(),
+                account_id: profile.account_id.clone(),
+                label: profile.label.clone(),
+                primary: details.primary,
+                secondary: details.secondary,
+                buckets: details.buckets,
+                reset_credits: details.reset_credits,
+                plan_type: details.plan_type,
+                official_usage: details.official_usage,
+                source: Some(details.source),
+                success: true,
+                error: None,
+                queried_at,
+            },
+            Err(QuotaQueryError::Unauthorized) => AccountQuota {
+                profile_id: profile.id.clone(),
+                account_id: profile.account_id.clone(),
+                label: profile.label.clone(),
+                primary: None,
+                secondary: None,
+                buckets: Vec::new(),
+                reset_credits: None,
+                plan_type: None,
+                official_usage: None,
+                source: None,
+                success: false,
+                error: Some("订阅凭据已失效，请重新登录该账号".to_string()),
+                queried_at,
+            },
+            Err(QuotaQueryError::Message(message)) => AccountQuota {
+                profile_id: profile.id.clone(),
+                account_id: profile.account_id.clone(),
+                label: profile.label.clone(),
+                primary: None,
+                secondary: None,
+                buckets: Vec::new(),
+                reset_credits: None,
+                plan_type: None,
+                official_usage: None,
+                source: None,
+                success: false,
+                error: Some(message),
+                queried_at,
+            },
+        };
+        Ok(Some(quota))
     }
 
     fn persist_refreshed_quota_auth(
@@ -953,9 +1029,17 @@ impl AccountManager {
         &self,
         operation_gate: &Mutex<()>,
     ) -> Result<LocalUsageStats, ManagerError> {
-        let (vault, _) = {
+        let vault = {
             let _guard = operation_gate.lock().await;
-            self.load_usage_vault()?
+            // 会话统计不依赖当前凭据，也不能因账号库损坏而阻止读取计数。
+            let mut vault = read_json::<Vault>(&self.vault_path, "本地账号库")
+                .ok()
+                .filter(|vault| vault.version == VAULT_VERSION)
+                .unwrap_or_default();
+            if self.storage_mode().ok().as_deref() == Some("file") {
+                self.recover_pending_activation(&mut vault);
+            }
+            vault
         };
         let accounts = vault
             .profiles
@@ -970,11 +1054,17 @@ impl AccountManager {
         let codex_home = self.codex_home.clone();
         let activations = vault.activations.clone();
         let catalog = self.provider_catalog();
+        let cache_path = self.usage_cache_path();
         tauri::async_runtime::spawn_blocking(move || {
-            scan_local_usage(&codex_home, &activations, &accounts, &catalog)
+            scan_local_usage_cached(&codex_home, &cache_path, &activations, &accounts, &catalog)
         })
         .await
         .map_err(|error| ManagerError::Io(format!("读取本地会话用量失败: {error}")))
+    }
+
+    pub(crate) fn usage_cache_path(&self) -> PathBuf {
+        self.vault_path
+            .with_file_name(crate::usage::USAGE_CACHE_FILE)
     }
 
     fn load_usage_vault(&self) -> Result<(Vault, Option<String>), ManagerError> {
@@ -983,7 +1073,7 @@ impl AccountManager {
         let mut vault_changed = false;
         let active_account_id = if let Ok(auth) = self.read_live_auth() {
             if let Ok(identity) = validate_chatgpt_auth(&auth) {
-                vault_changed |= upsert_profile(&mut vault, auth, None)?;
+                vault_changed |= refresh_saved_profile(&mut vault, auth)?;
                 Some(identity.account_id)
             } else {
                 None
@@ -1010,6 +1100,7 @@ impl AccountManager {
 
     fn read_config_document(&self) -> Result<DocumentMut, ManagerError> {
         let config_path = self.config_path();
+        recover_legacy_backup(&config_path)?;
         let contents = if config_path.exists() {
             fs::read_to_string(&config_path).map_err(|error| {
                 ManagerError::Io(format!("读取 {} 失败: {error}", config_path.display()))
@@ -1017,8 +1108,9 @@ impl AccountManager {
         } else {
             String::new()
         };
-        contents.parse::<DocumentMut>().map_err(|error| {
-            ManagerError::InvalidConfig(format!("Codex config.toml 格式错误: {error}"))
+        contents.parse::<DocumentMut>().map_err(|_| {
+            // TOML 错误的 Display 会附带源文件内容，其中可能包含凭据。
+            ManagerError::InvalidConfig("Codex config.toml 格式错误，请检查配置语法".to_string())
         })
     }
 
@@ -1107,7 +1199,6 @@ impl AccountManager {
 
     // 每个会话文件自带 model_provider；这里只回显当前配置与已登记提供方。
     pub fn model_provider_state(&self) -> Result<ModelProviderState, ManagerError> {
-        self.ensure_file_storage()?;
         let catalog = self.provider_catalog();
         let active_provider = read_model_provider(&self.config_path());
         let active_id = match active_provider.as_deref() {
@@ -1142,17 +1233,32 @@ impl AccountManager {
     }
 
     fn load_vault(&self) -> Result<Vault, ManagerError> {
+        recover_legacy_backup(&self.vault_path)?;
         if !self.vault_path.exists() {
             return Ok(Vault::default());
         }
-        let vault = read_json::<Vault>(&self.vault_path, "本地账号库")?;
+        let mut vault = read_json::<Vault>(&self.vault_path, "本地账号库")?;
         if vault.version != VAULT_VERSION {
             return Err(ManagerError::InvalidConfig(format!(
                 "不支持的账号库版本 {}",
                 vault.version
             )));
         }
+        self.recover_pending_activation(&mut vault);
         Ok(vault)
+    }
+
+    // 只修复内存视图，供状态和本地用量共用，不写回或同步凭据。
+    fn recover_pending_activation(&self, vault: &mut Vault) {
+        if let Some(pending) = vault.pending_activation.take() {
+            let active = self
+                .read_live_auth()
+                .ok()
+                .and_then(|auth| validate_chatgpt_auth(&auth).ok());
+            if active.is_some_and(|identity| identity.account_id == pending.account_id) {
+                record_activation(vault, &pending.account_id, pending.activated_at);
+            }
+        }
     }
 
     fn save_vault(&self, vault: &Vault) -> Result<(), ManagerError> {
@@ -1171,6 +1277,21 @@ fn validate_label(label: &str) -> Result<&str, ManagerError> {
         ));
     }
     Ok(label)
+}
+
+// 自动同步只维护已保存账号；新增由保存、登录和导入明确发起。
+fn refresh_saved_profile(vault: &mut Vault, auth: Value) -> Result<bool, ManagerError> {
+    let Ok(identity) = validate_chatgpt_auth(&auth) else {
+        return Ok(false);
+    };
+    if !vault
+        .profiles
+        .iter()
+        .any(|profile| profile.account_id == identity.account_id)
+    {
+        return Ok(false);
+    }
+    upsert_profile(vault, auth, None)
 }
 
 fn upsert_profile(
@@ -1464,13 +1585,21 @@ async fn query_account_details(
     auth: &Value,
     account_id: &str,
 ) -> (QuotaQueryResult, Option<Value>) {
-    match codex_app_server::query_account(auth).await {
+    let outcome = codex_app_server::query_account(auth).await;
+    let mut refreshed_auth = match outcome.refreshed_auth {
+        Some(auth) => match checked_refreshed_auth(&auth, account_id) {
+            Ok(auth) => Some(auth),
+            Err(error) => return (Err(QuotaQueryError::Message(error.to_string())), None),
+        },
+        None => None,
+    };
+    match outcome.result {
         Err(codex_app_server::AppServerError::RateLimited) => {
             return (
                 Err(QuotaQueryError::Message(
                     "额度服务请求过于频繁，请稍后重试".to_string(),
                 )),
-                None,
+                refreshed_auth,
             );
         }
         Err(_) => {}
@@ -1479,38 +1608,27 @@ async fn query_account_details(
                 .rate_limits
                 .account_id
                 .as_deref()
-                .is_some_and(|response_id| response_id != account_id)
+                .is_some_and(|id| id != account_id)
             {
                 return (
                     Err(QuotaQueryError::Message(
                         "官方账户响应与本地账号不一致，请重新登录".to_string(),
                     )),
-                    None,
+                    refreshed_auth,
                 );
             }
-            let refreshed_auth = match snapshot.refreshed_auth.as_ref() {
-                Some(auth) => match canonical_chatgpt_auth(auth).and_then(|auth| {
-                    let identity = validate_chatgpt_auth(&auth)?;
-                    if identity.account_id != account_id {
-                        return Err(ManagerError::InvalidAuth(
-                            "官方账户响应与本地账号不一致，请重新登录".to_string(),
-                        ));
-                    }
-                    Ok(auth)
-                }) {
-                    Ok(auth) => Some(auth),
-                    Err(error) => return (Err(QuotaQueryError::Message(error.to_string())), None),
-                },
-                None => None,
-            };
             return (Ok(official_quota_details(snapshot)), refreshed_auth);
         }
     }
 
-    let mut result = query_account_quota_compatibility(auth, account_id).await;
-    let mut refreshed_auth = None;
+    // App Server 即使失败也可能已经轮换令牌，兼容路径必须从新凭据继续。
+    let current_auth = refreshed_auth.as_ref().unwrap_or(auth);
+    let mut result = query_account_quota_compatibility(current_auth, account_id).await;
     if matches!(result, Err(QuotaQueryError::Unauthorized)) {
-        match refresh_codex_auth(auth).await {
+        match refresh_codex_auth(current_auth)
+            .await
+            .and_then(|auth| checked_refreshed_auth(&auth, account_id))
+        {
             Ok(next_auth) => {
                 result = query_account_quota_compatibility(&next_auth, account_id).await;
                 refreshed_auth = Some(next_auth);
@@ -1521,12 +1639,21 @@ async fn query_account_details(
     (result, refreshed_auth)
 }
 
+fn checked_refreshed_auth(auth: &Value, account_id: &str) -> Result<Value, ManagerError> {
+    let auth = canonical_chatgpt_auth(auth)?;
+    if validate_chatgpt_auth(&auth)?.account_id != account_id {
+        return Err(ManagerError::InvalidAuth(
+            "官方账户响应与本地账号不一致，请重新登录".to_string(),
+        ));
+    }
+    Ok(auth)
+}
+
 fn official_quota_details(snapshot: codex_app_server::AccountSnapshot) -> QuotaDetails {
     let codex_app_server::AccountSnapshot {
         plan_type,
         rate_limits,
         usage,
-        refreshed_auth: _,
     } = snapshot;
     let mut buckets = rate_limits
         .rate_limits_by_limit_id
@@ -2150,6 +2277,7 @@ fn read_json<T: serde::de::DeserializeOwned>(
     path: &Path,
     description: &str,
 ) -> Result<T, ManagerError> {
+    recover_legacy_backup(path)?;
     let contents = fs::read(path).map_err(|error| {
         ManagerError::Io(format!(
             "读取 {description}（{}）失败: {error}",
@@ -2157,7 +2285,7 @@ fn read_json<T: serde::de::DeserializeOwned>(
         ))
     })?;
     serde_json::from_slice(&contents)
-        .map_err(|error| ManagerError::InvalidAuth(format!("{description} 格式错误: {error}")))
+        .map_err(|_| ManagerError::InvalidAuth(format!("{description} 格式错误，请检查文件内容")))
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ManagerError> {
@@ -2167,7 +2295,24 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ManagerError> 
     atomic_write(path, &contents)
 }
 
-fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerError> {
+// 兼容旧版 Windows 两步替换中断后留下的备份。目标存在时不覆盖、不删除备份。
+#[cfg(windows)]
+fn recover_legacy_backup(path: &Path) -> Result<(), ManagerError> {
+    let backup = path.with_extension("cam-backup");
+    if !path.exists() && backup.is_file() {
+        fs::rename(&backup, path)
+            .map_err(|error| ManagerError::Io(format!("恢复旧认证备份失败: {error}")))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn recover_legacy_backup(_path: &Path) -> Result<(), ManagerError> {
+    Ok(())
+}
+
+pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerError> {
+    recover_legacy_backup(path)?;
     let parent = path
         .parent()
         .ok_or_else(|| ManagerError::Io(format!("无法定位 {} 的父目录", path.display())))?;
@@ -2176,72 +2321,30 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerError> {
     })?;
     secure_directory(parent)?;
 
-    let suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("credentials");
-    let temporary = parent.join(format!(
-        ".{file_name}.cam-{}-{suffix}.tmp",
-        std::process::id()
-    ));
-    let result = (|| {
-        let mut file = open_secure_file(&temporary)?;
-        file.write_all(contents)
-            .map_err(|error| ManagerError::Io(format!("写入临时认证文件失败: {error}")))?;
-        file.sync_all()
-            .map_err(|error| ManagerError::Io(format!("同步临时认证文件失败: {error}")))?;
-        replace_file(&temporary, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
-}
-
-fn open_secure_file(path: &Path) -> Result<File, ManagerError> {
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
+    let mut temporary = tempfile::Builder::new()
+        .prefix(&format!(".{file_name}.cam-"))
+        .suffix(".tmp")
+        .tempfile_in(parent)
+        .map_err(|error| ManagerError::Io(format!("创建临时认证文件失败: {error}")))?;
+    temporary
+        .write_all(contents)
+        .map_err(|error| ManagerError::Io(format!("写入临时认证文件失败: {error}")))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|error| ManagerError::Io(format!("同步临时认证文件失败: {error}")))?;
+    // tempfile 在 Windows 使用 MoveFileExW(REPLACE_EXISTING)，不会先移走目标文件。
+    temporary.persist(path).map_err(|error| {
+        ManagerError::Io(format!("原子替换 {} 失败: {}", path.display(), error.error))
+    })?;
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options
-        .open(path)
-        .map_err(|error| ManagerError::Io(format!("创建临时认证文件失败: {error}")))
-}
-
-#[cfg(unix)]
-fn replace_file(source: &Path, destination: &Path) -> Result<(), ManagerError> {
-    fs::rename(source, destination).map_err(|error| {
-        ManagerError::Io(format!("原子替换 {} 失败: {error}", destination.display()))
-    })
-}
-
-#[cfg(windows)]
-fn replace_file(source: &Path, destination: &Path) -> Result<(), ManagerError> {
-    let backup = destination.with_extension("cam-backup");
-    if backup.exists() {
-        fs::remove_file(&backup)
-            .map_err(|error| ManagerError::Io(format!("清理旧认证备份失败: {error}")))?;
-    }
-    if destination.exists() {
-        fs::rename(destination, &backup)
-            .map_err(|error| ManagerError::Io(format!("创建认证备份失败: {error}")))?;
-    }
-    if let Err(error) = fs::rename(source, destination) {
-        if backup.exists() {
-            let _ = fs::rename(&backup, destination);
-        }
-        return Err(ManagerError::Io(format!("替换认证文件失败: {error}")));
-    }
-    if backup.exists() {
-        let _ = fs::remove_file(backup);
-    }
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| ManagerError::Io(format!("同步认证目录失败: {error}")))?;
     Ok(())
 }
 
@@ -2270,6 +2373,377 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
     use tempfile::TempDir;
+
+    #[test]
+    fn local_usage_and_provider_state_work_without_file_credentials() {
+        for mode in ["auto", "keyring"] {
+            let (_root, manager) = test_manager();
+            manager
+                .write_live_auth(&auth("account-a", "a@example.com", "synthetic-a"))
+                .unwrap();
+            manager.save_current("账号 A").unwrap();
+            write_config(
+                &manager,
+                &format!("cli_auth_credentials_store = \"{mode}\"\nmodel_provider = \"custom\"\n"),
+            );
+            let sessions = manager.codex_home.join("sessions");
+            fs::create_dir_all(&sessions).unwrap();
+            fs::write(sessions.join("session.jsonl"), format!("{}\n", json!({
+                "timestamp": Utc::now().to_rfc3339(), "type":"event_msg",
+                "payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":123}}}
+            }))).unwrap();
+            let auth_before = fs::read(manager.auth_path()).unwrap();
+            let vault_before = fs::read(&manager.vault_path).unwrap();
+            let stats =
+                tauri::async_runtime::block_on(manager.local_usage(&Mutex::new(()))).unwrap();
+            assert_eq!(stats.today.total_tokens, 123);
+            assert_eq!(
+                manager.model_provider_state().unwrap().active_id,
+                "provider:custom"
+            );
+            assert!(fs::read(manager.auth_path()).unwrap() == auth_before);
+            assert!(fs::read(&manager.vault_path).unwrap() == vault_before);
+            // 配置或账号库损坏时，原始会话计数也应保持可读。
+            fs::write(&manager.vault_path, b"invalid vault").unwrap();
+            write_config(&manager, "invalid toml = [");
+            assert_eq!(
+                tauri::async_runtime::block_on(manager.local_usage(&Mutex::new(())))
+                    .unwrap()
+                    .today
+                    .total_tokens,
+                123
+            );
+            assert!(manager.model_provider_state().is_ok());
+        }
+    }
+
+    #[test]
+    fn quota_selection_contains_only_requested_saved_accounts() {
+        let (_root, manager) = test_manager();
+        for id in ["account-a", "account-b"] {
+            manager
+                .write_live_auth(&auth(id, "test@example.com", "synthetic-refresh"))
+                .unwrap();
+            manager.save_current(id).unwrap();
+        }
+        let targets = manager.quota_targets(Some(&["account-a".into()])).unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].0, "account-a");
+        assert_eq!(manager.quota_targets(None).unwrap().len(), 2);
+        assert!(manager.quota_targets(Some(&[])).unwrap().is_empty());
+        assert!(matches!(
+            manager.quota_targets(Some(&["missing".into()])),
+            Err(ManagerError::ProfileNotFound)
+        ));
+    }
+
+    #[test]
+    fn quota_updates_are_delivered_and_persisted_before_the_batch_finishes() {
+        tauri::async_runtime::block_on(async {
+            let (_root, manager) = test_manager();
+            let original = auth("account-a", "a@example.com", "synthetic-a");
+            let rotated = auth("account-a", "a@example.com", "synthetic-rotated");
+            manager.write_live_auth(&original).unwrap();
+            manager.save_current("账号 A").unwrap();
+            let second = auth("account-b", "b@example.com", "synthetic-b");
+            manager.write_live_auth(&second).unwrap();
+            manager.save_current("账号 B").unwrap();
+            let (arrived_tx, arrived_rx) = tokio::sync::oneshot::channel();
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+            let arrived_tx = std::sync::Mutex::new(Some(arrived_tx));
+            let first = QuotaOutcome {
+                query_permit: None,
+                profile_id: "account-a".into(),
+                account_id: "account-a".into(),
+                original_auth: original,
+                queried_at: unix_timestamp(),
+                result: Err(QuotaQueryError::Unauthorized),
+                refreshed_auth: Some(rotated.clone()),
+            };
+            let outcomes = stream::once(async { Ok(first) }).chain(stream::once(async {
+                release_rx.await.unwrap();
+                Ok(QuotaOutcome {
+                    query_permit: None,
+                    profile_id: "account-b".into(),
+                    account_id: "account-b".into(),
+                    original_auth: second,
+                    queried_at: unix_timestamp(),
+                    result: Err(QuotaQueryError::Unauthorized),
+                    refreshed_auth: None,
+                })
+            }));
+            let gate = Mutex::new(());
+            let collect = manager.collect_quota_outcomes(outcomes, &gate, |quota| {
+                if quota.profile_id == "account-a" {
+                    arrived_tx.lock().unwrap().take().unwrap().send(()).unwrap();
+                }
+            });
+            let observe = async {
+                arrived_rx.await.unwrap();
+                assert!(
+                    manager
+                        .load_vault()
+                        .unwrap()
+                        .profiles
+                        .iter()
+                        .find(|profile| profile.id == "account-a")
+                        .unwrap()
+                        .auth
+                        == rotated
+                );
+                release_tx.send(()).unwrap();
+            };
+            let (result, ()) = futures_util::future::join(collect, observe).await;
+            assert_eq!(result.unwrap().len(), 2);
+        });
+    }
+
+    #[test]
+    fn config_and_vault_parse_errors_do_not_include_source_values() {
+        let (_root, manager) = test_manager();
+        write_config(
+            &manager,
+            "bearer_token = \"SYNTHETIC_SECRET_MARKER\" invalid\n",
+        );
+        let error = manager.codex_managed_config().unwrap_err().to_string();
+        assert!(!error.contains("SYNTHETIC_SECRET_MARKER"));
+        assert!(!error.contains("bearer_token"));
+        fs::create_dir_all(manager.vault_path.parent().unwrap()).unwrap();
+        fs::write(
+            &manager.vault_path,
+            r#"{"version":"SYNTHETIC_SECRET_MARKER","profiles":[]}"#,
+        )
+        .unwrap();
+        assert!(!manager
+            .load_vault()
+            .unwrap_err()
+            .to_string()
+            .contains("SYNTHETIC_SECRET_MARKER"));
+    }
+
+    #[test]
+    fn passive_refresh_and_switch_do_not_restore_a_removed_profile() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("account-b", "b@example.com", "synthetic-b"))
+            .unwrap();
+        manager.save_current("保留账号").unwrap();
+        manager
+            .write_live_auth(&auth("account-a", "a@example.com", "synthetic-a"))
+            .unwrap();
+        manager.save_current("待移除账号").unwrap();
+        manager.remove_account("account-a").unwrap();
+        // 用量和额度共用此入口；读取当前登录仍有效，但不重新保存。
+        let (vault, active) = manager.load_usage_vault().unwrap();
+        assert_eq!(active.as_deref(), Some("account-a"));
+        assert!(vault
+            .profiles
+            .iter()
+            .all(|profile| profile.id != "account-a"));
+        manager.switch_account("account-b").unwrap();
+        assert!(manager
+            .status()
+            .unwrap()
+            .accounts
+            .iter()
+            .all(|profile| profile.id != "account-a"));
+    }
+
+    #[test]
+    fn failed_switch_does_not_record_target_activation() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("account-a", "a@example.com", "synthetic-a"))
+            .unwrap();
+        manager.save_current("账号 A").unwrap();
+        manager
+            .write_live_auth(&auth("account-b", "b@example.com", "synthetic-b"))
+            .unwrap();
+        manager.save_current("账号 B").unwrap();
+        fs::remove_file(manager.auth_path()).unwrap();
+        fs::create_dir(manager.auth_path()).unwrap();
+        assert!(manager.switch_account("account-a").is_err());
+        let vault = manager.load_vault().unwrap();
+        assert_eq!(vault.activations.last().unwrap().account_id, "account-b");
+        let persisted: Vault = read_json(&manager.vault_path, "测试账号库").unwrap();
+        assert_eq!(
+            persisted.activations.last().unwrap().account_id,
+            "account-b"
+        );
+    }
+
+    #[test]
+    fn activation_journal_recovers_only_after_auth_was_replaced() {
+        let (_root, manager) = test_manager();
+        let original = auth("account-a", "a@example.com", "synthetic-a");
+        let next = auth("account-b", "b@example.com", "synthetic-b");
+        manager.write_live_auth(&original).unwrap();
+        manager.save_current("账号 A").unwrap();
+        let mut vault = manager.load_vault().unwrap();
+        upsert_profile(&mut vault, next.clone(), Some("账号 B")).unwrap();
+        let activated_at = unix_timestamp();
+        vault.pending_activation = Some(ActivationRecord {
+            account_id: "account-b".into(),
+            activated_at,
+        });
+        manager.save_vault(&vault).unwrap();
+        // 模拟替换之前中断，不应声称 B 已激活。
+        assert_eq!(
+            manager
+                .load_vault()
+                .unwrap()
+                .activations
+                .last()
+                .unwrap()
+                .account_id,
+            "account-a"
+        );
+        // 模拟替换之后、最终账号库保存之前中断。
+        manager.write_live_auth(&next).unwrap();
+        let recovered = manager.load_vault().unwrap();
+        assert_eq!(
+            recovered.activations.last().unwrap().account_id,
+            "account-b"
+        );
+        assert_eq!(
+            recovered.activations.last().unwrap().activated_at,
+            activated_at
+        );
+        assert!(recovered.pending_activation.is_none());
+        manager.save_vault(&recovered).unwrap();
+        assert_eq!(
+            manager.load_vault().unwrap().activations.len(),
+            recovered.activations.len()
+        );
+    }
+
+    #[test]
+    fn local_usage_recovers_a_completed_pending_switch_without_writing_credentials() {
+        tauri::async_runtime::block_on(async {
+            let (_root, manager) = test_manager();
+            let original = auth("account-a", "a@example.com", "synthetic-a");
+            let next = auth("account-b", "b@example.com", "synthetic-b");
+            manager.write_live_auth(&original).unwrap();
+            manager.save_current("账号 A").unwrap();
+            let mut vault = manager.load_vault().unwrap();
+            let now = unix_timestamp();
+            vault.activations[0].activated_at = now - 100;
+            upsert_profile(&mut vault, next.clone(), Some("账号 B")).unwrap();
+            vault.pending_activation = Some(ActivationRecord {
+                account_id: "account-b".into(),
+                activated_at: now - 10,
+            });
+            manager.save_vault(&vault).unwrap();
+            let sessions = manager.codex_home.join("sessions");
+            fs::create_dir_all(&sessions).unwrap();
+            fs::write(sessions.join("session.jsonl"), format!("{}\n", json!({"timestamp":Utc::now().to_rfc3339(),"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":123}}}}))).unwrap();
+            // 写 auth 之前中断：仍归 A；写 auth 之后中断：恢复 B 的原切换时间。
+            for (live, expected) in [(original, "account-a"), (next, "account-b")] {
+                manager.write_live_auth(&live).unwrap();
+                let auth_before = fs::read(manager.auth_path()).unwrap();
+                let vault_before = fs::read(&manager.vault_path).unwrap();
+                let stats = manager.local_usage(&Mutex::new(())).await.unwrap();
+                assert_eq!(stats.today.total_tokens, 123);
+                assert_eq!(stats.by_account[0].account_id, expected);
+                assert_eq!(fs::read(manager.auth_path()).unwrap(), auth_before);
+                assert_eq!(fs::read(&manager.vault_path).unwrap(), vault_before);
+            }
+        });
+    }
+
+    #[test]
+    fn failed_import_and_device_login_do_not_claim_activation() {
+        for device_login in [false, true] {
+            let (_root, manager) = test_manager();
+            manager
+                .write_live_auth(&auth("account-a", "a@example.com", "synthetic-a"))
+                .unwrap();
+            manager.save_current("账号 A").unwrap();
+            fs::remove_file(manager.auth_path()).unwrap();
+            fs::create_dir(manager.auth_path()).unwrap();
+            let next = auth("account-b", "b@example.com", "synthetic-b");
+            let result = if device_login {
+                manager.complete_device_login(next, "账号 B")
+            } else {
+                manager.import_materialized_auth(next, Some("账号 B"))
+            };
+            assert!(result.is_err());
+            assert_eq!(
+                manager
+                    .load_vault()
+                    .unwrap()
+                    .activations
+                    .last()
+                    .unwrap()
+                    .account_id,
+                "account-a"
+            );
+        }
+    }
+
+    #[test]
+    fn failed_quota_query_still_persists_rotated_credentials() {
+        let (_root, manager) = test_manager();
+        let original = auth("account-a", "a@example.com", "synthetic-a");
+        let rotated = auth("account-a", "a@example.com", "synthetic-rotated");
+        manager.write_live_auth(&original).unwrap();
+        manager.save_current("账号 A").unwrap();
+        let quota = manager
+            .merge_quota_outcome(QuotaOutcome {
+                query_permit: None,
+                profile_id: "account-a".into(),
+                account_id: "account-a".into(),
+                original_auth: original,
+                queried_at: unix_timestamp(),
+                result: Err(QuotaQueryError::Message("测试查询失败".into())),
+                refreshed_auth: Some(rotated.clone()),
+            })
+            .unwrap()
+            .unwrap();
+        assert!(!quota.success);
+        assert!(manager.read_live_auth().unwrap() == rotated);
+        assert!(manager.load_vault().unwrap().profiles[0].auth == rotated);
+    }
+
+    #[test]
+    fn rejects_rotated_credentials_for_another_account() {
+        assert!(checked_refreshed_auth(
+            &auth("account-b", "b@example.com", "synthetic-b"),
+            "account-a"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn atomic_replacement_preserves_destination_on_failure_and_cleans_temporary_file() {
+        let root = TempDir::new().unwrap();
+        let destination = root.path().join("auth.json");
+        atomic_write(&destination, b"original").unwrap();
+        atomic_write(&destination, b"replacement").unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"replacement");
+        assert!(!destination.with_extension("cam-backup").exists());
+        fs::remove_file(&destination).unwrap();
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("keep"), b"untouched").unwrap();
+        assert!(atomic_write(&destination, b"replacement").is_err());
+        assert_eq!(fs::read(destination.join("keep")).unwrap(), b"untouched");
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn recovers_legacy_windows_backup_without_overwriting_an_existing_file() {
+        let root = TempDir::new().unwrap();
+        let destination = root.path().join("auth.json");
+        let backup = destination.with_extension("cam-backup");
+        fs::write(&backup, b"previous").unwrap();
+        recover_legacy_backup(&destination).unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"previous");
+        fs::write(&backup, b"older").unwrap();
+        recover_legacy_backup(&destination).unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"previous");
+        assert_eq!(fs::read(&backup).unwrap(), b"older");
+    }
 
     fn fake_jwt(account_id: &str, email: &str) -> String {
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
@@ -2930,7 +3404,6 @@ mod tests {
                     tokens: 45_678,
                 }],
             }),
-            refreshed_auth: None,
         };
 
         let details = official_quota_details(snapshot);
