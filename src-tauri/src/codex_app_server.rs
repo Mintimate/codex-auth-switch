@@ -365,7 +365,10 @@ fn apply_proxy_env(command: &mut Command) {
                 command.env_remove(name);
             }
         }
-        ChildProxyEnv::Inject { http_proxy, no_proxy } => {
+        ChildProxyEnv::Inject {
+            http_proxy,
+            no_proxy,
+        } => {
             command
                 .env("HTTP_PROXY", &http_proxy)
                 .env("http_proxy", &http_proxy)
@@ -373,8 +376,13 @@ fn apply_proxy_env(command: &mut Command) {
                 .env("https_proxy", &http_proxy)
                 .env("ALL_PROXY", &http_proxy)
                 .env("all_proxy", &http_proxy);
-            if !no_proxy.is_empty() {
-                command.env("NO_PROXY", &no_proxy).env("no_proxy", &no_proxy);
+            // 留空时也要移除父进程继承的 NO_PROXY，避免旧的绕过规则继续生效。
+            if no_proxy.is_empty() {
+                command.env_remove("NO_PROXY").env_remove("no_proxy");
+            } else {
+                command
+                    .env("NO_PROXY", &no_proxy)
+                    .env("no_proxy", &no_proxy);
             }
         }
     }

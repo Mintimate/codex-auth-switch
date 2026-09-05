@@ -1,7 +1,6 @@
 use crate::{
     auth_share::{self, ImportedAuth},
-    codex_app_server,
-    proxy,
+    codex_app_server, proxy,
     query_gate::{QueryGate, QueryPermit},
     usage::{
         provider_label, scan_local_usage_cached, AccountLabel, ActivationRecord, LocalUsageStats,
@@ -2321,14 +2320,14 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerEr
         .prefix(&format!(".{file_name}.cam-"))
         .suffix(".tmp")
         .tempfile_in(parent)
-        .map_err(|error| ManagerError::Io(format!("创建临时认证文件失败: {error}")))?;
+        .map_err(|error| ManagerError::Io(format!("创建临时文件失败: {error}")))?;
     temporary
         .write_all(contents)
-        .map_err(|error| ManagerError::Io(format!("写入临时认证文件失败: {error}")))?;
+        .map_err(|error| ManagerError::Io(format!("写入临时文件失败: {error}")))?;
     temporary
         .as_file()
         .sync_all()
-        .map_err(|error| ManagerError::Io(format!("同步临时认证文件失败: {error}")))?;
+        .map_err(|error| ManagerError::Io(format!("同步临时文件失败: {error}")))?;
     // tempfile 在 Windows 使用 MoveFileExW(REPLACE_EXISTING)，不会先移走目标文件。
     temporary.persist(path).map_err(|error| {
         ManagerError::Io(format!("原子替换 {} 失败: {}", path.display(), error.error))
@@ -2336,7 +2335,7 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerEr
     #[cfg(unix)]
     fs::File::open(parent)
         .and_then(|directory| directory.sync_all())
-        .map_err(|error| ManagerError::Io(format!("同步认证目录失败: {error}")))?;
+        .map_err(|error| ManagerError::Io(format!("同步目录失败: {error}")))?;
     Ok(())
 }
 

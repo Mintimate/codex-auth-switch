@@ -209,11 +209,13 @@ export function SettingsPanel({
   const [diagnostics, setDiagnostics] = useState<LocalDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
-  const [networkProxy, setNetworkProxyState] =
-    useState<NetworkProxySettings>(defaultNetworkProxySettings);
+  const [networkProxy, setNetworkProxyState] = useState<NetworkProxySettings>(
+    defaultNetworkProxySettings,
+  );
   const [proxyError, setProxyError] = useState<string | null>(null);
   const proxyLoadedRef = useRef(false);
   const proxySaveTimerRef = useRef<number | null>(null);
+  const proxyPendingRef = useRef<NetworkProxySettings | null>(null);
   const updateTotalRef = useRef<number | null>(null);
   const tabOptions: Option<AppTab>[] = [
     { label: t("accountsTab"), value: "accounts" },
@@ -251,7 +253,10 @@ export function SettingsPanel({
     if (proxySaveTimerRef.current !== null) {
       window.clearTimeout(proxySaveTimerRef.current);
     }
+    proxyPendingRef.current = networkProxy;
     proxySaveTimerRef.current = window.setTimeout(() => {
+      proxySaveTimerRef.current = null;
+      proxyPendingRef.current = null;
       setProxyError(null);
       setNetworkProxy(networkProxy).catch(() =>
         setProxyError(t("proxySaveFailed")),
@@ -260,9 +265,21 @@ export function SettingsPanel({
     return () => {
       if (proxySaveTimerRef.current !== null) {
         window.clearTimeout(proxySaveTimerRef.current);
+        proxySaveTimerRef.current = null;
       }
     };
   }, [networkProxy, t]);
+  // 设置面板会随标签切换被卸载：卸载时立即写入仍待保存的值，避免防抖丢失最后一次修改。
+  useEffect(
+    () => () => {
+      const pending = proxyPendingRef.current;
+      if (pending !== null) {
+        proxyPendingRef.current = null;
+        void setNetworkProxy(pending).catch(() => undefined);
+      }
+    },
+    [],
+  );
   const runUpdateCheck = useCallback(async () => {
     setCheckingUpdate(true);
     setUpdateError(null);
@@ -491,9 +508,7 @@ export function SettingsPanel({
               ariaLabel={t("proxyMode")}
               options={proxyModeOptions}
               value={networkProxy.mode}
-              onChange={(mode) =>
-                updateNetworkProxy({ ...networkProxy, mode })
-              }
+              onChange={(mode) => updateNetworkProxy({ ...networkProxy, mode })}
             />
           </div>
 
@@ -511,6 +526,7 @@ export function SettingsPanel({
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
+                  aria-label={t("proxyUrl")}
                   value={networkProxy.proxyUrl}
                   placeholder={t("proxyUrlPlaceholder")}
                   onChange={(event) =>
@@ -532,6 +548,7 @@ export function SettingsPanel({
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
+                  aria-label={t("proxyNoProxy")}
                   value={networkProxy.noProxy}
                   onChange={(event) =>
                     updateNetworkProxy({

@@ -85,9 +85,7 @@ fn get_network_proxy() -> Result<proxy::ProxySettings, String> {
 }
 
 #[tauri::command]
-fn set_network_proxy(
-    settings: proxy::ProxySettings,
-) -> Result<proxy::ProxySettings, String> {
+fn set_network_proxy(settings: proxy::ProxySettings) -> Result<proxy::ProxySettings, String> {
     proxy::set(settings)
 }
 

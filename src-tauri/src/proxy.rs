@@ -6,7 +6,7 @@
 // 进程环境（尤其 codex 子进程）一致的网络行为。
 //
 // 模式是用户主动选择项，这里只持久化地址等配置，不做任何上报或日志输出。
-use reqwest::{Client, ClientBuilder, Proxy};
+use reqwest::{Client, ClientBuilder, NoProxy, Proxy};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -105,15 +105,12 @@ pub fn set(next: ProxySettings) -> Result<ProxySettings, String> {
     let path = FILE_PATH
         .get()
         .ok_or_else(|| "代理设置尚未初始化".to_string())?;
-    let bytes = serde_json::to_vec_pretty(&next)
-        .map_err(|error| format!("序列化代理设置失败: {error}"))?;
-    let parent = path
-        .parent()
-        .ok_or_else(|| "代理设置路径无效".to_string())?;
-    fs::create_dir_all(parent).map_err(|error| format!("创建数据目录失败: {error}"))?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, &bytes).map_err(|error| format!("写入代理设置失败: {error}"))?;
-    fs::rename(&tmp, path).map_err(|error| format!("保存代理设置失败: {error}"))?;
+    let mut bytes =
+        serde_json::to_vec_pretty(&next).map_err(|error| format!("序列化代理设置失败: {error}"))?;
+    bytes.push(b'\n');
+    // 复用 manager::atomic_write：tempfile::persist 在 Windows 上也能替换已存在目标，
+    // 避免 std::fs::rename 在 Windows 首次保存后稳定失败的问题。
+    crate::manager::atomic_write(path, &bytes).map_err(|error| error.to_string())?;
     {
         let mut guard = settings_runtime()
             .write()
@@ -123,38 +120,41 @@ pub fn set(next: ProxySettings) -> Result<ProxySettings, String> {
     Ok(next)
 }
 
-/// 应用到由调用方配置了超时/user_agent 的 reqwest builder 上。
-pub fn apply_to_builder(builder: ClientBuilder) -> Result<ClientBuilder, String> {
-    let settings = get();
+/// 把一份设置快照应用到由调用方配置了超时/user_agent 的 reqwest builder 上。
+/// 始终使用调用方传入的快照，避免构建期间全局设置变化导致行为不一致。
+fn apply_to_builder(
+    builder: ClientBuilder,
+    settings: &ProxySettings,
+) -> Result<ClientBuilder, String> {
     match settings.mode {
         ProxyMode::Off => Ok(builder.no_proxy()),
-        ProxyMode::System => match Proxy::system() {
-            Ok(proxy) => Ok(builder.proxy(proxy)),
-            Err(_) => Ok(builder.no_proxy()),
-        },
+        // reqwest 开启 system-proxy 特性后，默认 builder 会自动附加系统代理
+        // （含 HTTP(S)_PROXY 环境变量与系统代理设置），保持默认行为即可。
+        ProxyMode::System => Ok(builder),
         ProxyMode::Manual => {
             let url = settings.proxy_url.trim();
             if url.is_empty() {
                 return Ok(builder.no_proxy());
             }
-            match Proxy::all(url) {
-                Ok(proxy) => Ok(builder.proxy(proxy)),
-                Err(error) => Err(format!("代理地址无效: {error}")),
-            }
+            let proxy = Proxy::all(url).map_err(|error| format!("代理地址无效: {error}"))?;
+            // 空列表会被解析为“无绕过主机”，因此这里可以无条件绑定。
+            let proxy = proxy.no_proxy(NoProxy::from_string(settings.no_proxy.trim()));
+            Ok(builder.proxy(proxy))
         }
     }
 }
 
-/// 构建一个携带当前代理设置的 reqwest 客户端。
-pub fn build_client(
+/// 按给定设置快照构建 reqwest 客户端。
+fn build_client(
+    settings: &ProxySettings,
     user_agent: &str,
     timeout: Duration,
     build_error: impl FnOnce() -> String,
 ) -> Result<Client, String> {
-    let builder = Client::builder()
-        .user_agent(user_agent)
-        .timeout(timeout);
-    apply_to_builder(builder)?.build().map_err(|_| build_error())
+    let builder = Client::builder().user_agent(user_agent).timeout(timeout);
+    apply_to_builder(builder, settings)?
+        .build()
+        .map_err(|_| build_error())
 }
 
 /// 返回当前模式对 codex 子进程应注入/移除的环境变量动作。
@@ -164,7 +164,10 @@ pub enum ChildProxyEnv {
     /// 显式移除代理变量（无代理）。
     Remove,
     /// 注入手动代理与 no_proxy。
-    Inject { http_proxy: String, no_proxy: String },
+    Inject {
+        http_proxy: String,
+        no_proxy: String,
+    },
 }
 
 pub fn child_proxy_env() -> ChildProxyEnv {
@@ -206,9 +209,37 @@ pub fn cached_client(
             return Ok(client.clone());
         }
     }
-    let client = build_client(user_agent, timeout, build_error)?;
+    let client = build_client(&settings, user_agent, timeout, build_error)?;
     if let Ok(mut guard) = cache.write() {
         guard.entry(key).or_insert_with(|| client.clone());
     }
     Ok(client)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn saving_twice_replaces_existing_file() {
+        let dir = TempDir::new().unwrap();
+        init(dir.path().to_path_buf());
+        let first = ProxySettings {
+            mode: ProxyMode::Manual,
+            proxy_url: "http://127.0.0.1:7890".to_string(),
+            no_proxy: String::new(),
+        };
+        set(first).unwrap();
+        let second = ProxySettings {
+            mode: ProxyMode::Manual,
+            proxy_url: "http://127.0.0.1:1080".to_string(),
+            no_proxy: "localhost".to_string(),
+        };
+        set(second.clone()).unwrap();
+        assert_eq!(get(), second);
+        let bytes = fs::read(dir.path().join(PROXY_FILE_NAME)).unwrap();
+        let restored: ProxySettings = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(restored, second);
+    }
 }
