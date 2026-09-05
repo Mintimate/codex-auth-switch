@@ -1,3 +1,4 @@
+use crate::proxy;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -343,6 +344,7 @@ fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
+        apply_proxy_env(&mut command);
         match command.spawn() {
             Ok(child) => return Ok(child),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -350,6 +352,32 @@ fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
         }
     }
     Err(AppServerError::Unavailable)
+}
+
+// codex app-server 通过网络访问官方接口，代理模式需同步到其环境。
+// 跟随系统模式保留父进程原有代理变量；无代理与手动模式分别显式移除/注入。
+fn apply_proxy_env(command: &mut Command) {
+    use proxy::{ChildProxyEnv, PROXY_VARS_FOR_REMOVE};
+    match proxy::child_proxy_env() {
+        ChildProxyEnv::Inherit => {}
+        ChildProxyEnv::Remove => {
+            for name in PROXY_VARS_FOR_REMOVE {
+                command.env_remove(name);
+            }
+        }
+        ChildProxyEnv::Inject { http_proxy, no_proxy } => {
+            command
+                .env("HTTP_PROXY", &http_proxy)
+                .env("http_proxy", &http_proxy)
+                .env("HTTPS_PROXY", &http_proxy)
+                .env("https_proxy", &http_proxy)
+                .env("ALL_PROXY", &http_proxy)
+                .env("all_proxy", &http_proxy);
+            if !no_proxy.is_empty() {
+                command.env("NO_PROXY", &no_proxy).env("no_proxy", &no_proxy);
+            }
+        }
+    }
 }
 
 fn codex_executables() -> Vec<PathBuf> {

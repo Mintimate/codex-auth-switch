@@ -4,6 +4,7 @@ mod codex_app_server;
 mod device_login;
 mod diagnostics;
 mod manager;
+mod proxy;
 mod query_gate;
 mod usage;
 
@@ -76,6 +77,18 @@ fn get_local_diagnostics(app: AppHandle) -> Result<LocalDiagnostics, String> {
         manager.codex_home_path(),
         manager.vault_path(),
     ))
+}
+
+#[tauri::command]
+fn get_network_proxy() -> Result<proxy::ProxySettings, String> {
+    Ok(proxy::get())
+}
+
+#[tauri::command]
+fn set_network_proxy(
+    settings: proxy::ProxySettings,
+) -> Result<proxy::ProxySettings, String> {
+    proxy::set(settings)
 }
 
 #[tauri::command]
@@ -389,6 +402,9 @@ pub fn run() {
         })
         .manage(app_update::AppUpdateState::default())
         .setup(|app| {
+            if let Ok(app_data_dir) = app.path().app_data_dir() {
+                proxy::init(app_data_dir);
+            }
             if let Ok(manager) = account_manager(app.handle()) {
                 let path = manager.usage_cache_path();
                 tauri::async_runtime::spawn_blocking(move || {
@@ -403,6 +419,8 @@ pub fn run() {
             app_update::install_app_update,
             get_status,
             get_local_diagnostics,
+            get_network_proxy,
+            set_network_proxy,
             get_codex_managed_config,
             set_codex_context_mode,
             set_codex_config_choice,

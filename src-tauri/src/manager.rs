@@ -1,6 +1,7 @@
 use crate::{
     auth_share::{self, ImportedAuth},
     codex_app_server,
+    proxy,
     query_gate::{QueryGate, QueryPermit},
     usage::{
         provider_label, scan_local_usage_cached, AccountLabel, ActivationRecord, LocalUsageStats,
@@ -17,7 +18,6 @@ use std::{
     env, fmt, fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::OnceLock,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{sync::Mutex, time::sleep};
@@ -51,11 +51,9 @@ const REASONING_SUMMARY_VALUES: &[&str] = &["auto", "concise", "detailed", "none
 const MODEL_VERBOSITY_VALUES: &[&str] = &["low", "medium", "high"];
 const WEB_SEARCH_VALUES: &[&str] = &["disabled", "cached", "indexed", "live"];
 
-// reqwest 的 Client 内部持有连接池，每次请求重建意味着重新 DNS + TCP + TLS 握手。
-// 设备登录轮询每 5-8 秒一次，复用客户端才能保住连接。
-// OAuth 与额度查询使用不同超时：令牌交换允许更长等待，但不能无限占用操作锁。
-static OAUTH_CLIENT: OnceLock<Client> = OnceLock::new();
-static QUOTA_CLIENT: OnceLock<Client> = OnceLock::new();
+// 登录服务与额度查询使用不同超时：令牌交换允许更长等待，但不能无限占用操作锁。
+// reqwest 客户端带连接池，复用才能保住连接；代理设置可能变化，因此由 proxy 模块
+// 按 (设置, 超时) 缓存，设备登录轮询（每 5-8 秒）会复用同一客户端。
 
 #[derive(Debug)]
 pub enum ManagerError {
@@ -1747,9 +1745,9 @@ async fn query_account_quota_compatibility(auth: &Value, account_id: &str) -> Qu
         .ok_or_else(|| QuotaQueryError::Message("账号缺少可用的访问凭据".to_string()))?;
     let client = quota_client()?;
     let (primary, secondary, available_count) =
-        query_usage_windows(client, access_token, account_id).await?;
+        query_usage_windows(&client, access_token, account_id).await?;
     // 重置次数是附加信息，顺序查询可避免每个账号同时冲击两个兼容端点。
-    let reset_credits = match query_reset_credits(client, access_token, account_id).await {
+    let reset_credits = match query_reset_credits(&client, access_token, account_id).await {
         Ok(response) => Some(to_usage_reset_credits(response, available_count)),
         Err(_) => available_count.map(|available_count| UsageResetCredits {
             available_count,
@@ -2036,28 +2034,22 @@ async fn exchange_refresh_token(
     Ok(refreshed)
 }
 
-fn oauth_client() -> Result<&'static Client, ManagerError> {
-    if let Some(client) = OAUTH_CLIENT.get() {
-        return Ok(client);
-    }
-    let client = Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(OAUTH_QUERY_TIMEOUT_SECS))
-        .build()
-        .map_err(|_| ManagerError::Network("无法初始化登录服务客户端".to_string()))?;
-    Ok(OAUTH_CLIENT.get_or_init(|| client))
+fn oauth_client() -> Result<Client, ManagerError> {
+    proxy::cached_client(
+        USER_AGENT,
+        Duration::from_secs(OAUTH_QUERY_TIMEOUT_SECS),
+        || "无法初始化登录服务客户端".to_string(),
+    )
+    .map_err(|message| ManagerError::Network(message))
 }
 
-fn quota_client() -> Result<&'static Client, QuotaQueryError> {
-    if let Some(client) = QUOTA_CLIENT.get() {
-        return Ok(client);
-    }
-    let client = Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(USAGE_QUERY_TIMEOUT_SECS))
-        .build()
-        .map_err(|_| QuotaQueryError::Message("无法初始化额度查询".to_string()))?;
-    Ok(QUOTA_CLIENT.get_or_init(|| client))
+fn quota_client() -> Result<Client, QuotaQueryError> {
+    proxy::cached_client(
+        USER_AGENT,
+        Duration::from_secs(USAGE_QUERY_TIMEOUT_SECS),
+        || "无法初始化额度查询".to_string(),
+    )
+    .map_err(|message| QuotaQueryError::Message(message))
 }
 
 fn network_error(action: &str, error: reqwest::Error) -> ManagerError {
