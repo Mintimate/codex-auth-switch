@@ -120,6 +120,10 @@ Selecting **Default** removes the corresponding fields so Codex can use its defa
 
 When available, the quota page shows the plan, multiple quota windows, full-reset credits and expiry dates, account usage, and an activity heatmap. Not every account or data source returns all of these fields. Network errors can be retried manually; wait before retrying a rate-limited request.
 
+Refresh all accounts or refresh one account from its card. Different accounts share two concurrent query slots; queries for the same account are serialized. Batch results appear as each account finishes. Failed refreshes retain the last successful result and show the error alongside the original query time.
+
+Local usage works with `file`, `auto`, and `keyring` credential modes without migrating credentials. A rebuildable `usage-cache.v2.json.gz` in the app data directory reuses unchanged files, parses only new complete lines in appended files, and rescans truncated or replaced files. It stores file validation metadata, provider identifiers, event timestamps, and Token counts, without session bodies or authentication data. Account attribution still depends on locally recorded switching history. The compressed cache is capped at 8 MiB and retains 35 days of statistics. Older file entries are evicted when needed without changing the current complete totals. Startup and cache access remove caches not updated for 7 days, along with the legacy cache. View the size or clear it under **Settings → Usage and quotas**. Clearing preserves accounts, credentials, and Codex session files; the next refresh rebuilds the cache as needed.
+
 ## Security Boundaries
 
 ```text
@@ -142,7 +146,7 @@ accounts.v1.json
 
 ## Current Limitations
 
-- Only `cli_auth_credentials_store = "file"` is supported
+- Saving and switching accounts and querying subscription quotas require `cli_auth_credentials_store = "file"`; local Token usage does not
 - Device Code login is still beta and may need to be enabled by the user or workspace administrator
 - The official App Server does not provide subscription expiry, and local Token totals are not the official subscription quota
 - Historical sessions lack reliable account IDs, so attribution begins after the app starts recording the switch timeline
