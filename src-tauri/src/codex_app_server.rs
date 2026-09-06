@@ -1,3 +1,4 @@
+use crate::proxy;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -334,6 +335,7 @@ fn parse_result<T: for<'de> Deserialize<'de>>(value: Option<Value>) -> Result<T,
 }
 
 fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
+    let proxy_settings = proxy::get().map_err(|_| AppServerError::QueryFailed)?;
     for executable in codex_executables() {
         let mut command = Command::new(executable);
         command
@@ -343,6 +345,7 @@ fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
+        apply_proxy_env(&mut command, &proxy_settings);
         match command.spawn() {
             Ok(child) => return Ok(child),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -350,6 +353,48 @@ fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
         }
     }
     Err(AppServerError::Unavailable)
+}
+
+// codex app-server 通过网络访问官方接口，代理模式需同步到其环境。
+// 使用配置覆盖兼容旧版 Codex：未知 feature 键会被忽略，--enable 则可能报错。
+fn apply_proxy_env(command: &mut Command, settings: &proxy::ProxySettings) {
+    use proxy::{ChildProxyEnv, PROXY_VARS_FOR_REMOVE};
+    command.args([
+        "-c",
+        if settings.mode == proxy::ProxyMode::System {
+            "features.respect_system_proxy=true"
+        } else {
+            "features.respect_system_proxy=false"
+        },
+    ]);
+    match proxy::child_proxy_env(settings) {
+        ChildProxyEnv::Inherit => {}
+        ChildProxyEnv::Remove => {
+            for name in PROXY_VARS_FOR_REMOVE {
+                command.env_remove(name);
+            }
+        }
+        ChildProxyEnv::Inject {
+            http_proxy,
+            no_proxy,
+        } => {
+            command
+                .env("HTTP_PROXY", &http_proxy)
+                .env("http_proxy", &http_proxy)
+                .env("HTTPS_PROXY", &http_proxy)
+                .env("https_proxy", &http_proxy)
+                .env("ALL_PROXY", &http_proxy)
+                .env("all_proxy", &http_proxy);
+            // 留空时也要移除父进程继承的 NO_PROXY，避免旧的绕过规则继续生效。
+            if no_proxy.is_empty() {
+                command.env_remove("NO_PROXY").env_remove("no_proxy");
+            } else {
+                command
+                    .env("NO_PROXY", &no_proxy)
+                    .env("no_proxy", &no_proxy);
+            }
+        }
+    }
 }
 
 fn codex_executables() -> Vec<PathBuf> {
@@ -393,6 +438,78 @@ fn read_refreshed_auth(codex_home: &Path, original: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn child_proxy_modes_override_parameters_and_inherited_environment() {
+        use proxy::{ProxyMode, ProxySettings, PROXY_VARS_FOR_REMOVE};
+        for (mode, no_proxy) in [
+            (ProxyMode::Off, ""),
+            (ProxyMode::System, ""),
+            (ProxyMode::Manual, ""),
+            (ProxyMode::Manual, " localhost,127.0.0.1 "),
+        ] {
+            let settings = ProxySettings {
+                mode,
+                proxy_url: " http://127.0.0.1:7890 ".into(),
+                no_proxy: no_proxy.into(),
+            };
+            let mut command = Command::new("codex");
+            for name in PROXY_VARS_FOR_REMOVE {
+                command.env(name, "http://old.invalid:9");
+            }
+            command
+                .env("NO_PROXY", "old.invalid")
+                .env("no_proxy", "old.invalid");
+            apply_proxy_env(&mut command, &settings);
+            let command = command.as_std();
+            let args = command.get_args().collect::<Vec<_>>();
+            assert_eq!(
+                args,
+                [
+                    "-c",
+                    if mode == ProxyMode::System {
+                        "features.respect_system_proxy=true"
+                    } else {
+                        "features.respect_system_proxy=false"
+                    }
+                ]
+            );
+            let envs = command.get_envs().collect::<Vec<_>>();
+            let value = |name: &str| {
+                envs.iter()
+                    .find(|(key, _)| {
+                        key.to_str().is_some_and(|key| {
+                            if cfg!(windows) {
+                                key.eq_ignore_ascii_case(name)
+                            } else {
+                                key == name
+                            }
+                        })
+                    })
+                    .map(|(_, value)| value.and_then(|value| value.to_str()))
+            };
+            for name in PROXY_VARS_FOR_REMOVE {
+                assert_eq!(
+                    value(name),
+                    Some(match mode {
+                        ProxyMode::Off => None,
+                        ProxyMode::System => Some("http://old.invalid:9"),
+                        ProxyMode::Manual => Some("http://127.0.0.1:7890"),
+                    })
+                );
+            }
+            for name in ["NO_PROXY", "no_proxy"] {
+                let expected = if mode != ProxyMode::Manual {
+                    Some("old.invalid")
+                } else if no_proxy.is_empty() {
+                    None
+                } else {
+                    Some("localhost,127.0.0.1")
+                };
+                assert_eq!(value(name), Some(expected));
+            }
+        }
+    }
 
     #[test]
     fn preserves_rotated_credentials_when_rpc_fails_or_times_out() {

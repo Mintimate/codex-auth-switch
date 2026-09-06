@@ -10,10 +10,15 @@ import {
   LocalDiagnosticCheck,
   LocalDiagnosticId,
   LocalDiagnostics,
+  NetworkProxySettings,
+  ProxyMode,
   checkAppUpdate,
+  defaultNetworkProxySettings,
   getAppVersion,
   getLocalDiagnostics,
+  getNetworkProxy,
   installAppUpdate,
+  setNetworkProxy,
 } from "./api";
 import type { AppTab } from "./appTypes";
 import { Locale, localizeBackendError, MessageKey, Translate } from "./i18n";
@@ -204,6 +209,16 @@ export function SettingsPanel({
   const [diagnostics, setDiagnostics] = useState<LocalDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [networkProxy, setNetworkProxyState] = useState<NetworkProxySettings>(
+    defaultNetworkProxySettings,
+  );
+  const [proxyError, setProxyError] = useState<MessageKey | null>(null);
+  const [proxyLoaded, setProxyLoaded] = useState(false);
+  const proxyPersistedRef = useRef<NetworkProxySettings | null>(null);
+  const proxyDraftRef = useRef(networkProxy);
+  const proxySavesInFlightRef = useRef(0);
+  const proxySaveTimerRef = useRef<number | null>(null);
+  const proxyPendingRef = useRef<NetworkProxySettings | null>(null);
   const updateTotalRef = useRef<number | null>(null);
   const tabOptions: Option<AppTab>[] = [
     { label: t("accountsTab"), value: "accounts" },
@@ -212,6 +227,90 @@ export function SettingsPanel({
     { label: t("quotaTab"), value: "quota" },
     { label: t("settingsTab"), value: "settings" },
   ];
+  const proxyModeOptions: Option<ProxyMode>[] = [
+    { label: t("proxyModeOff"), value: "off" },
+    { label: t("proxyModeSystem"), value: "system" },
+    { label: t("proxyModeManual"), value: "manual" },
+  ];
+  const updateNetworkProxy = useCallback((next: NetworkProxySettings) => {
+    proxyDraftRef.current = next;
+    proxyPendingRef.current = next;
+    setProxyError(null);
+    setNetworkProxyState(next);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    getNetworkProxy()
+      .then((settings) => {
+        if (!cancelled) {
+          proxyPersistedRef.current = settings;
+          proxyDraftRef.current = settings;
+          setNetworkProxyState(settings);
+          setProxyLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProxyError("proxyLoadFailed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // 本地状态变化后防抖写入后端；等加载完成后再保存，避免用默认值覆盖已有配置。
+  useEffect(() => {
+    const persisted = proxyPersistedRef.current;
+    if (
+      !proxyLoaded ||
+      (proxySavesInFlightRef.current === 0 &&
+        persisted?.mode === networkProxy.mode &&
+        persisted.proxyUrl === networkProxy.proxyUrl &&
+        persisted.noProxy === networkProxy.noProxy)
+    ) {
+      proxyPendingRef.current = null;
+      return;
+    }
+    if (proxySaveTimerRef.current !== null) {
+      window.clearTimeout(proxySaveTimerRef.current);
+    }
+    proxyPendingRef.current = networkProxy;
+    proxySaveTimerRef.current = window.setTimeout(() => {
+      proxySaveTimerRef.current = null;
+      proxyPendingRef.current = null;
+      setProxyError(null);
+      proxySavesInFlightRef.current += 1;
+      setNetworkProxy(networkProxy)
+        .then((saved) => {
+          proxyPersistedRef.current = saved;
+        })
+        .catch(() => {
+          // 旧请求失败不能覆盖后续编辑；当前草稿保留，供重试或卸载时补保存。
+          if (proxyDraftRef.current === networkProxy) {
+            proxyPendingRef.current = networkProxy;
+            setProxyError("proxySaveFailed");
+          }
+        })
+        .finally(() => {
+          proxySavesInFlightRef.current -= 1;
+        });
+    }, 350);
+    return () => {
+      if (proxySaveTimerRef.current !== null) {
+        window.clearTimeout(proxySaveTimerRef.current);
+        proxySaveTimerRef.current = null;
+      }
+    };
+  }, [networkProxy, proxyLoaded]);
+  // 设置面板会随标签切换被卸载：卸载时立即写入仍待保存的值，避免防抖丢失最后一次修改。
+  useEffect(
+    () => () => {
+      const pending = proxyPendingRef.current;
+      if (pending !== null) {
+        proxyPendingRef.current = null;
+        void setNetworkProxy(pending).catch(() => undefined);
+      }
+    },
+    [],
+  );
   const runUpdateCheck = useCallback(async () => {
     setCheckingUpdate(true);
     setUpdateError(null);
@@ -417,6 +516,99 @@ export function SettingsPanel({
               onChange={onDefaultTabChange}
             />
           </div>
+        </section>
+
+        <section className="settings-group settings-network-group">
+          <div className="settings-group-heading">
+            <h3>{t("networkProxySettings")}</h3>
+            <p>{t("networkProxySettingsHint")}</p>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <strong>{t("proxyMode")}</strong>
+              <span>
+                {networkProxy.mode === "off"
+                  ? t("proxyModeOffHint")
+                  : networkProxy.mode === "manual"
+                    ? t("proxyModeManualHint")
+                    : t("proxyModeSystemHint")}
+              </span>
+            </div>
+            <SegmentedControl
+              ariaLabel={t("proxyMode")}
+              disabled={!proxyLoaded}
+              options={proxyModeOptions}
+              value={networkProxy.mode}
+              onChange={(mode) => updateNetworkProxy({ ...networkProxy, mode })}
+            />
+          </div>
+
+          {networkProxy.mode === "manual" && (
+            <>
+              <div className="settings-row">
+                <div>
+                  <strong>{t("proxyUrl")}</strong>
+                  <span>{t("proxyUrlPlaceholder")}</span>
+                </div>
+                <input
+                  className="settings-input"
+                  type="text"
+                  inputMode="url"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-label={t("proxyUrl")}
+                  disabled={!proxyLoaded}
+                  value={networkProxy.proxyUrl}
+                  placeholder={t("proxyUrlPlaceholder")}
+                  onChange={(event) =>
+                    updateNetworkProxy({
+                      ...networkProxy,
+                      proxyUrl: event.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="settings-row">
+                <div>
+                  <strong>{t("proxyNoProxy")}</strong>
+                  <span>{t("proxyNoProxyHint")}</span>
+                </div>
+                <input
+                  className="settings-input"
+                  type="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-label={t("proxyNoProxy")}
+                  disabled={!proxyLoaded}
+                  value={networkProxy.noProxy}
+                  onChange={(event) =>
+                    updateNetworkProxy({
+                      ...networkProxy,
+                      noProxy: event.target.value,
+                    })
+                  }
+                />
+              </div>
+            </>
+          )}
+
+          {proxyError && (
+            <p className="settings-error" role="alert">
+              {t(proxyError)}
+              {proxyError === "proxySaveFailed" && (
+                <button
+                  type="button"
+                  className="button secondary compact"
+                  onClick={() => updateNetworkProxy({ ...networkProxy })}
+                >
+                  {t("retry")}
+                </button>
+              )}
+            </p>
+          )}
         </section>
 
         <section className="settings-group">

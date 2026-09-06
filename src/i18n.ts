@@ -51,6 +51,14 @@ export const useI18n = () => {
 };
 
 const backendErrorTranslations: Record<string, string> = {
+  "代理配置文件格式错误，请检查 network-proxy.json":
+    "Invalid proxy configuration. Check network-proxy.json.",
+  "无法读取代理配置文件，请检查 network-proxy.json 的访问权限":
+    "Could not read proxy configuration. Check permissions for network-proxy.json.",
+  "请输入有效的 HTTP(S) 代理地址": "Enter a valid HTTP(S) proxy URL.",
+  无法读取代理设置: "Could not read proxy settings",
+  代理设置尚未初始化: "Proxy settings have not been initialized",
+  代理设置保存失败: "Could not save proxy settings",
   无法访问系统剪贴板: "Could not access the system clipboard",
   无法写入系统剪贴板: "Could not write to the system clipboard",
   无法读取系统剪贴板中的文本: "Could not read text from the system clipboard",
@@ -147,6 +155,10 @@ const backendErrorTranslations: Record<string, string> = {
 const backendErrorPatterns: Array<[RegExp, (...matches: string[]) => string]> =
   [
     [
+      /^序列化代理设置失败: (.+)$/,
+      (detail) => `Could not serialize proxy settings: ${detail}`,
+    ],
+    [
       /^当前 Codex 凭据存储模式为 (.+)；请先在 config\.toml 中设置 cli_auth_credentials_store = "file"$/,
       (mode) =>
         `The current Codex credential storage mode is ${mode}. Set cli_auth_credentials_store = "file" in config.toml first.`,
@@ -234,18 +246,20 @@ const backendErrorPatterns: Array<[RegExp, (...matches: string[]) => string]> =
       (path, detail) => `Could not create directory ${path}: ${detail}`,
     ],
     [
-      /^写入临时认证文件失败: (.+)$/,
-      (detail) =>
-        `Could not write the temporary authentication file: ${detail}`,
+      /^写入临时(?:认证)?文件失败: (.+)$/,
+      (detail) => `Could not write the temporary file: ${detail}`,
     ],
     [
-      /^同步临时认证文件失败: (.+)$/,
-      (detail) => `Could not sync the temporary authentication file: ${detail}`,
+      /^同步临时(?:认证)?文件失败: (.+)$/,
+      (detail) => `Could not sync the temporary file: ${detail}`,
     ],
     [
-      /^创建临时认证文件失败: (.+)$/,
-      (detail) =>
-        `Could not create the temporary authentication file: ${detail}`,
+      /^创建临时(?:认证)?文件失败: (.+)$/,
+      (detail) => `Could not create the temporary file: ${detail}`,
+    ],
+    [
+      /^同步(?:认证)?目录失败: (.+)$/,
+      (detail) => `Could not sync the directory: ${detail}`,
     ],
     [
       /^原子替换 (.+) 失败: (.+)$/,

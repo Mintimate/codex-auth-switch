@@ -3017,6 +3017,38 @@ button:disabled {
   outline-offset: 2px;
 }
 
+.settings-input {
+  flex: 0 1 340px;
+  min-width: 0;
+  outline: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--input);
+  padding: 9px 11px;
+  color: var(--foreground);
+  font-size: 11px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.settings-input::placeholder {
+  color: var(--muted);
+}
+
+.settings-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.settings-error {
+  margin: 0;
+  padding: 12px 24px 16px;
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .toggle {
   position: relative;
   width: 42px;
@@ -5060,6 +5092,12 @@ button:disabled {
 
   .settings-row .toggle {
     align-self: flex-start;
+  }
+
+  .settings-input {
+    align-self: stretch;
+    flex-basis: auto;
+    width: 100%;
   }
 }
 

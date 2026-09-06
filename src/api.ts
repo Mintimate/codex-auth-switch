@@ -196,6 +196,20 @@ export type AppUpdateStatus =
 
 export type AppUpdateSource = "github" | "cnb";
 
+export type ProxyMode = "off" | "system" | "manual";
+
+export type NetworkProxySettings = {
+  mode: ProxyMode;
+  proxyUrl: string;
+  noProxy: string;
+};
+
+export const defaultNetworkProxySettings = (): NetworkProxySettings => ({
+  mode: "system",
+  proxyUrl: "",
+  noProxy: "",
+});
+
 export type AppUpdateCheckResult = {
   status: AppUpdateStatus;
   currentVersion: string;
@@ -427,6 +441,8 @@ const previewDiagnostics: LocalDiagnostics = {
   ],
 };
 
+let previewNetworkProxy = defaultNetworkProxySettings();
+
 const previewCodexContextConfig: CodexContextConfig = {
   mode: "default",
   contextWindow: null,
@@ -493,6 +509,15 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     }
     if (command === "get_local_diagnostics") {
       return Promise.resolve(structuredClone(previewDiagnostics) as T);
+    }
+    if (command === "get_network_proxy") {
+      return Promise.resolve(structuredClone(previewNetworkProxy) as T);
+    }
+    if (command === "set_network_proxy") {
+      const settings = (args?.settings ??
+        defaultNetworkProxySettings()) as NetworkProxySettings;
+      previewNetworkProxy = structuredClone(settings);
+      return Promise.resolve(structuredClone(previewNetworkProxy) as T);
     }
     if (command === "get_codex_managed_config") {
       return Promise.resolve(structuredClone(previewCodexManagedConfig) as T);
@@ -670,6 +695,25 @@ export const removeAccount = (profileId: string) =>
 
 export const copyAuthTransfer = (profileId: string) =>
   call<void>("copy_auth_transfer", { profileId });
+
+// 读写共享队列，跨面板卸载也保持顺序；重新打开设置页会等待此前保存完成。
+let networkProxyQueue: Promise<void> = Promise.resolve();
+const queueNetworkProxy = <T>(operation: () => Promise<T>): Promise<T> => {
+  const result = networkProxyQueue.then(operation);
+  networkProxyQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+};
+
+export const getNetworkProxy = () =>
+  queueNetworkProxy(() => call<NetworkProxySettings>("get_network_proxy"));
+
+export const setNetworkProxy = (settings: NetworkProxySettings) =>
+  queueNetworkProxy(() =>
+    call<NetworkProxySettings>("set_network_proxy", { settings }),
+  );
 
 export const prepareAuthTransfer = (profileId: string) =>
   call<AuthTransferPreparation>("prepare_auth_transfer", { profileId });
