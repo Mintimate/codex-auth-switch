@@ -453,6 +453,10 @@ button:disabled {
   gap: 18px;
 }
 
+.content-grid.is-busy .account-switch-stage * {
+  animation-play-state: paused;
+}
+
 .accounts-page,
 .tab-panel {
   display: grid;

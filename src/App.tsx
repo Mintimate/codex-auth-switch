@@ -591,7 +591,9 @@ function App() {
         {loading && !status ? (
           <section className="loading-card">{t("loadingStatus")}</section>
         ) : (
-          <div className="content-grid">
+          <div
+            className={`content-grid${busy || restartRequired ? " is-busy" : ""}`}
+          >
             {error && (
               <section className="alert error">
                 <strong>{t("operationFailed")}</strong>
