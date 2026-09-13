@@ -1,0 +1,44 @@
+.switch-account-button {
+  position: relative;
+}
+
+.switch-account-button[aria-busy="true"] .switch-account-label {
+  visibility: hidden;
+}
+
+.switch-account-arrows {
+  position: absolute;
+  inset: 0;
+  width: 24px;
+  height: 24px;
+  margin: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.switch-account-arrows path {
+  animation: account-exchange 420ms ease-in-out infinite;
+}
+
+.switch-account-arrows path + path {
+  animation-delay: -210ms;
+}
+
+@keyframes account-exchange {
+  0%,
+  100% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-account-arrows path {
+    animation: none;
+  }
+}

@@ -453,8 +453,9 @@ button:disabled {
   gap: 18px;
 }
 
-.content-grid.is-busy .account-switch-stage * {
-  animation-play-state: paused;
+.accounts-page[aria-busy="true"] button:disabled,
+.app-tabs[aria-busy="true"] button:disabled {
+  opacity: 1;
 }
 
 .accounts-page,

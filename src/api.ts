@@ -471,6 +471,17 @@ const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (import.meta.env.DEV && !isTauri()) {
+    if (command === "switch_account") {
+      const target = previewStatus.accounts.find(
+        (account) => account.id === args?.profileId,
+      );
+      if (!target) return Promise.reject(new Error("找不到指定账号"));
+      previewStatus.activeAccountId = target.accountId;
+      for (const account of previewStatus.accounts) {
+        account.active = account.id === target.id;
+      }
+      return Promise.resolve(structuredClone(previewStatus) as T);
+    }
     if (command === "start_device_login") {
       return Promise.resolve({
         deviceCode: "preview-device-code",

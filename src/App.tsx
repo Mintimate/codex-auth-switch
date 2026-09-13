@@ -51,6 +51,7 @@ const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
 const PRIVATE_MODE_STORAGE_KEY = "codex-auth-switch-private-mode";
 const OAUTH_LAUNCH_ANIMATION_MS = 560;
+const ACCOUNT_SWITCH_FEEDBACK_MS = 420;
 
 const storedDefaultTab = (): AppTab => {
   const value = window.localStorage.getItem(DEFAULT_TAB_STORAGE_KEY);
@@ -93,6 +94,8 @@ function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const switchingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [restartRequired, setRestartRequired] = useState(false);
@@ -390,6 +393,34 @@ function App() {
     }
   };
 
+  const handleSwitchAccount = async (profileId: string) => {
+    if (busy || loading || switchingRef.current) return;
+    switchingRef.current = true;
+    setSwitchingId(profileId);
+    setError(null);
+    setNotice(null);
+    try {
+      // 请求立即发出；快速成功时只让局部反馈完成一个周期，不挂载全屏遮罩。
+      const feedbackMs = window.matchMedia("(prefers-reduced-motion: reduce)")
+        .matches
+        ? 0
+        : ACCOUNT_SWITCH_FEEDBACK_MS;
+      const [nextStatus] = await Promise.all([
+        switchAccount(profileId),
+        new Promise<void>((resolve) => window.setTimeout(resolve, feedbackMs)),
+      ]);
+      statusRef.current = nextStatus;
+      setStatus(nextStatus);
+      setRestartRequired(true);
+      refreshActiveData();
+    } catch (reason) {
+      setError(localizeBackendError(messageOf(reason), locale));
+    } finally {
+      setSwitchingId(null);
+      switchingRef.current = false;
+    }
+  };
+
   const beginDeviceLogin = async (nextLabel: string) => {
     setBusy(t("requestLoginCode"));
     setError(null);
@@ -578,7 +609,12 @@ function App() {
 
   return (
     <main className="app-shell" data-tauri-drag-region>
-      <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} t={t} />
+      <AppSidebar
+        activeTab={activeTab}
+        disabled={switchingId !== null}
+        onTabChange={setActiveTab}
+        t={t}
+      />
 
       <section ref={workspaceRef} className="app-workspace">
         <WorkspaceToolbar
@@ -591,9 +627,7 @@ function App() {
         {loading && !status ? (
           <section className="loading-card">{t("loadingStatus")}</section>
         ) : (
-          <div
-            className={`content-grid${busy || restartRequired ? " is-busy" : ""}`}
-          >
+          <div className="content-grid">
             {error && (
               <section className="alert error">
                 <strong>{t("operationFailed")}</strong>
@@ -629,8 +663,9 @@ function App() {
 
             {activeTab === "accounts" && (
               <AccountsPage
-                busy={Boolean(busy) || loading}
+                busy={Boolean(busy) || loading || switchingId !== null}
                 loading={loading}
+                switchingId={switchingId}
                 onImport={() => {
                   setError(null);
                   setNotice(null);
@@ -650,16 +685,7 @@ function App() {
                 }
                 onSave={(accountLabel) => openDialog("save", accountLabel)}
                 onShare={openShareDialog}
-                onSwitch={(profileId) => {
-                  void run(
-                    t("switchAccount"),
-                    () => switchAccount(profileId),
-                    () => {
-                      setNotice(null);
-                      setRestartRequired(true);
-                    },
-                  );
-                }}
+                onSwitch={(profileId) => void handleSwitchAccount(profileId)}
                 privateMode={privateMode}
                 status={status}
                 t={t}

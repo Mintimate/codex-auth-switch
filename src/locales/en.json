@@ -159,6 +159,7 @@
   "current": "Current",
   "emailUnavailable": "Email unavailable",
   "switchAccount": "Switch account",
+  "switchingAccount": "Exchanging accounts…",
   "switchToAccount": "Switch to this account",
   "switchRestartNotice": "Account switched. Fully quit and restart Codex for the new login to take effect.",
   "switchRestartTitle": "Codex restart required",

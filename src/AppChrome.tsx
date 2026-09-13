@@ -104,10 +104,12 @@ const tabLabel = (tab: AppTab, t: Translate) => {
 
 export function AppSidebar({
   activeTab,
+  disabled = false,
   onTabChange,
   t,
 }: {
   activeTab: AppTab;
+  disabled?: boolean;
   onTabChange: (tab: AppTab) => void;
   t: Translate;
 }) {
@@ -123,12 +125,18 @@ export function AppSidebar({
         </div>
       </div>
 
-      <nav className="app-tabs" role="tablist" aria-label={t("mainNavigation")}>
+      <nav
+        className="app-tabs"
+        role="tablist"
+        aria-label={t("mainNavigation")}
+        aria-busy={disabled}
+      >
         {APP_TABS.map((tab) => (
           <button
             key={tab}
             type="button"
             role="tab"
+            disabled={disabled}
             className={`${activeTab === tab ? "active" : ""}${tab === "settings" ? " settings-tab" : ""}`}
             aria-selected={activeTab === tab}
             aria-controls={`${tab}-panel`}

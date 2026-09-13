@@ -159,6 +159,7 @@
   "current": "当前",
   "emailUnavailable": "未提供邮箱",
   "switchAccount": "切换账号",
+  "switchingAccount": "正在交换账号…",
   "switchToAccount": "切换到此账号",
   "switchRestartNotice": "账号已切换。请完全退出并重新启动 Codex，使新账号登录态生效。",
   "switchRestartTitle": "需要重启 Codex",

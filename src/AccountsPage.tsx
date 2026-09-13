@@ -1,4 +1,5 @@
 import { AccountFlow } from "./AccountFlow";
+import { SwitchAccountButton } from "./SwitchAccountButton";
 import type { AccountSummary, AppStatus } from "./api";
 import type { Translate } from "./i18n";
 import { redactEmails } from "./privacy";
@@ -9,6 +10,7 @@ const shortId = (value: string) =>
 type AccountsPageProps = {
   busy: boolean;
   loading: boolean;
+  switchingId: string | null;
   onImport: () => void;
   onLogin: (label: string) => void;
   onRefresh: () => void;
@@ -52,6 +54,7 @@ function AccountsListSkeleton({ label }: { label: string }) {
 export function AccountsPage({
   busy,
   loading,
+  switchingId,
   onImport,
   onLogin,
   onRefresh,
@@ -74,6 +77,7 @@ export function AccountsPage({
       className="accounts-page"
       role="tabpanel"
       aria-label={t("accountsTab")}
+      aria-busy={switchingId !== null}
     >
       <section className="hero-card">
         <div className="hero-copy">
@@ -191,13 +195,12 @@ export function AccountsPage({
                   </div>
                   <div className="account-actions">
                     {!account.active && (
-                      <button
-                        className="account-action primary-action"
+                      <SwitchAccountButton
                         disabled={busy || !status.supported}
+                        switching={switchingId === account.id}
                         onClick={() => onSwitch(account.id)}
-                      >
-                        {t("switchToAccount")}
-                      </button>
+                        t={t}
+                      />
                     )}
                     <button
                       className="account-action"
