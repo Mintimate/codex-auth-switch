@@ -42,6 +42,7 @@ import { CodexConfigPanel } from "./CodexConfigPanel";
 import { ThemeMode, useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
 import { UsagePanel } from "./UsagePanel";
+import { RestartRequiredAlert } from "./RestartRequiredAlert";
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -94,6 +95,7 @@ function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [restartRequired, setRestartRequired] = useState(false);
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [oauthTransitioning, setOauthTransitioning] = useState(false);
   const oauthTransitioningRef = useRef(false);
@@ -370,7 +372,7 @@ function App() {
     description: string,
     action: () => Promise<AppStatus>,
     onSuccess?: () => void,
-  ) => {
+  ): Promise<void> => {
     setBusy(description);
     setError(null);
     setNotice(null);
@@ -378,8 +380,8 @@ function App() {
       const nextStatus = await action();
       statusRef.current = nextStatus;
       setStatus(nextStatus);
-      onSuccess?.();
       setNotice(t("operationComplete", { action: description }));
+      onSuccess?.();
       refreshActiveData();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
@@ -597,7 +599,7 @@ function App() {
               </section>
             )}
 
-            {notice && !error && (
+            {notice && !error && !restartRequired && (
               <section
                 className="alert success"
                 role="status"
@@ -614,6 +616,13 @@ function App() {
                   <span aria-hidden="true">×</span>
                 </button>
               </section>
+            )}
+
+            {restartRequired && !error && (
+              <RestartRequiredAlert
+                onDismiss={() => setRestartRequired(false)}
+                t={t}
+              />
             )}
 
             {activeTab === "accounts" && (
@@ -639,9 +648,16 @@ function App() {
                 }
                 onSave={(accountLabel) => openDialog("save", accountLabel)}
                 onShare={openShareDialog}
-                onSwitch={(profileId) =>
-                  void run(t("switchAccount"), () => switchAccount(profileId))
-                }
+                onSwitch={(profileId) => {
+                  void run(
+                    t("switchAccount"),
+                    () => switchAccount(profileId),
+                    () => {
+                      setNotice(null);
+                      setRestartRequired(true);
+                    },
+                  );
+                }}
                 privateMode={privateMode}
                 status={status}
                 t={t}
