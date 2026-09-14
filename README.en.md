@@ -23,10 +23,10 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
-  <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch 1.1.1: current login, switching flow, and local account vault">
+  <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch: current login, switching flow, and local account vault">
 </picture>
 
-> Screenshots show the Chinese interface with built-in preview data from 1.1.1. They contain no real accounts, tokens, or authentication data.
+> Screenshots show the Chinese interface with built-in preview data. They contain no real accounts, tokens, or authentication data.
 
 Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides Codex configuration editing, local Token usage, subscription quotas, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
 
@@ -39,7 +39,8 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 - Add an account through browser-based Device Code authorization without entering a password in the app
 - Configure credential storage, the 1M context preset, reasoning effort and summaries, response verbosity, and web search
 - Summarize local session Tokens for today, 7 days, and 30 days, split by account and model provider
-- Show quota windows, recovery timelines, 7-day Tokens, and a one-year activity heatmap
+- Show subscription quotas in a compact account list with search, status filters, and sorting by quota, recovery time, usage, or reset credits
+- Show quota windows, recovery timelines, 7-day and 30-day Tokens, and daily activity heatmaps
 - Refresh usage and quotas independently when opening their pages, with an option to load data manually
 - Transfer Auth once through a QR code or clipboard, with legacy CAS2 import compatibility
 - Run read-only diagnostics, hide emails with privacy mode, and use light/dark themes, Chinese/English UI, and signed updates from GitHub or CNB
@@ -50,16 +51,16 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | ![Codex configuration: credential storage, 1M context, model output, and web search](docs/images/config-light.jpg) | ![Token usage: local totals, daily trends, and attribution by account and provider](docs/images/usage-light.jpg) |
 
-| Subscription quotas                                                                                          | App settings                                                                                     |
+| Subscription quota overview                                                                                  | App settings                                                                                     |
 | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| ![Subscription quotas: multiple windows, recovery timelines, and account usage](docs/images/quota-light.jpg) | ![App settings: language, privacy, theme, and automatic refresh](docs/images/settings-light.jpg) |
+| ![Subscription quota overview: account list, search filters, Token totals, and daily activity](docs/images/quota-light.jpg) | ![App settings: language, privacy, theme, and automatic refresh](docs/images/settings-light.jpg) |
 
 <details>
 <summary>Diagnostics and one-time Auth transfer</summary>
 
 | Diagnostics                                                                 | One-time Auth transfer                                                                                                  |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| ![Read-only diagnostics and app updates](docs/images/diagnostics-light.jpg) | ![One-time Auth transfer dialog with a preview QR pattern containing no credentials](docs/images/auth-share-dialog.jpg) |
+| ![Read-only diagnostics and app updates](docs/images/diagnostics-light.jpg) | ![One-time Auth transfer dialog showing the preparation and generated-QR states](docs/images/auth-share-dialog.gif) |
 
 </details>
 

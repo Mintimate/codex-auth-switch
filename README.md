@@ -23,10 +23,10 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
-  <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch 1.1.1：当前登录、切换流程与本机账号库">
+  <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch：当前登录、切换流程与本机账号库">
 </picture>
 
-> 截图基于 1.1.1 的内置预览数据，不包含真实账号、令牌或认证信息。
+> 截图基于内置预览数据，不包含真实账号、令牌或认证信息。
 
 Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT 登录，同时提供 Codex 配置编辑、本机 Token 用量、订阅额度和环境体检。它不代理 Codex 请求，不收集遥测，也不管理 API Key、订阅账单或工作区席位。
 
@@ -39,7 +39,8 @@ Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT �
 - 通过浏览器 Device Code 授权添加账号，无需在应用中输入密码
 - 在配置中心调整凭据存储、1M 上下文预设、推理强度、推理摘要、回答详细度和联网搜索
 - 汇总今天、近 7 天和近 30 天的本机会话 Token，并按账号与模型提供方拆分
-- 展示订阅额度窗口、恢复时间轴、近 7 天 Token 和一年活跃热力图
+- 以紧凑账号列表展示订阅额度，支持搜索、状态筛选和按额度、恢复时间、用量、重置次数排序
+- 展示额度窗口、恢复时间轴、近 7 天和近 30 天 Token，以及每日活跃热力图
 - 进入用量或额度页时按需刷新对应数据；可关闭自动刷新，改为手动读取
 - 通过二维码或剪贴板完成一次性 Auth 迁移，并继续兼容旧版 CAS2 导入
 - 提供只读环境体检、隐藏邮箱的私密模式、亮色/暗色主题、中英文界面和 GitHub/CNB 签名更新
@@ -50,16 +51,16 @@ Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT �
 | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | ![Codex 配置中心：凭据存储、1M 上下文、模型输出与联网搜索](docs/images/config-light.jpg) | ![Token 用量：本机汇总、每日趋势与账号及提供方归属](docs/images/usage-light.jpg) |
 
-| 订阅额度                                                                   | 应用设置                                                                    |
+| 订阅额度总览                                                               | 应用设置                                                                    |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| ![订阅额度：多额度窗口、恢复时间轴与账号用量](docs/images/quota-light.jpg) | ![应用设置：语言、私密模式、主题与自动刷新](docs/images/settings-light.jpg) |
+| ![订阅额度总览：账号列表、搜索筛选、Token 汇总与每日活跃度](docs/images/quota-light.jpg) | ![应用设置：语言、私密模式、主题与自动刷新](docs/images/settings-light.jpg) |
 
 <details>
 <summary>环境体检与一次性 Auth 迁移</summary>
 
 | 环境体检                                                     | 一次性 Auth 迁移                                                                           |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| ![只读环境体检与应用更新](docs/images/diagnostics-light.jpg) | ![一次性 Auth 迁移对话框，二维码为无认证信息的预览图案](docs/images/auth-share-dialog.jpg) |
+| ![只读环境体检与应用更新](docs/images/diagnostics-light.jpg) | ![一次性 Auth 迁移对话框：从准备迁移到生成二维码的状态演示](docs/images/auth-share-dialog.gif) |
 
 </details>
 
