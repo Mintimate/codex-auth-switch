@@ -10,6 +10,7 @@
     "build": "tauri build",
     "build:web": "vite build",
     "typecheck": "tsc --noEmit",
+    "test:quota": "node --experimental-strip-types --test scripts/quota-view.test.mjs",
     "bump": "node scripts/bump-version.mjs",
     "release": "node scripts/bump-version.mjs --release",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
@@ -18,6 +19,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "lucide-react": "^1.45.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -1,6 +1,9 @@
-import { AccountQuota, AccountSummary, UsageWindow } from "./api";
+import type { AccountQuota, AccountSummary, UsageWindow } from "./api";
+import { RefreshCw } from "lucide-react";
 import { DailyUsageHeatmap } from "./DailyUsageHeatmap";
-import { Locale, localizeBackendError, Translate } from "./i18n";
+import { localizeBackendError } from "./i18n";
+import type { Locale, Translate } from "./i18n";
+import type { QuotaDetailView } from "./quotaView";
 import {
   formatCalendarDay,
   formatCount,
@@ -25,6 +28,7 @@ type QuotaCardProps = {
   refreshing: boolean;
   refreshError: string | null;
   onRefresh: () => void;
+  view: QuotaDetailView;
   t: Translate;
 };
 
@@ -76,6 +80,7 @@ export function QuotaCard({
   onRefresh,
   locale,
   quota,
+  view,
   t,
 }: QuotaCardProps) {
   const level = quota ? quotaLevel(quota) : "unknown";
@@ -104,14 +109,19 @@ export function QuotaCard({
             {levelLabel(level, t)}
           </b>
           <button
-            className="text-button"
+            className="quota-icon-button"
             disabled={refreshing}
             onClick={onRefresh}
+            title={t("refreshAccountQuota")}
             aria-label={t("refreshAccountQuotaLabel", {
               account: accountLabel,
             })}
           >
-            {refreshing ? t("queryingQuota") : t("refreshAccountQuota")}
+            <RefreshCw
+              size={16}
+              className={refreshing ? "quota-icon-spinning" : ""}
+              aria-hidden="true"
+            />
           </button>
         </div>
       </div>
@@ -124,51 +134,49 @@ export function QuotaCard({
       )}
       {quota?.success ? (
         <>
-          <div className="quota-account-facts">
-            <div>
-              <span>{t("subscriptionPlan")}</span>
-              <strong>{plan ?? t("unknown")}</strong>
-            </div>
-            <div>
-              <span>{t("subscriptionExpiry")}</span>
-              <strong>{t("officialNotProvided")}</strong>
-            </div>
-            <div>
-              <span>{t("quotaDataSource")}</span>
-              <strong>
-                {quota.source === "appServer"
-                  ? t("officialAppServer")
-                  : t("compatibilityFallback")}
-              </strong>
-            </div>
-            {quota.resetCredits && (
-              <div className="reset-credits">
-                <span>{t("availableResetCredits")}</span>
-                <strong>
-                  {t("resetCreditCount", {
-                    count: quota.resetCredits.availableCount,
-                  })}
-                </strong>
-                {quota.resetCredits.expiresAt[0] && (
-                  <small>
-                    {t("resetCreditExpiresAt", {
-                      date: formatDate(
-                        quota.resetCredits.expiresAt[0],
-                        locale,
-                        true,
-                      ),
-                    })}
-                  </small>
-                )}
+          {view === "quota" && (
+            <div className="quota-account-facts">
+              <div>
+                <span>{t("subscriptionPlan")}</span>
+                <strong>{plan ?? t("unknown")}</strong>
               </div>
-            )}
-          </div>
-          <div
-            className={`quota-account-details${
-              quota.officialUsage ? "" : " quota-only"
-            }`}
-          >
-            {quota.officialUsage && (
+              <div>
+                <span>{t("subscriptionExpiry")}</span>
+                <strong>{t("officialNotProvided")}</strong>
+              </div>
+              <div>
+                <span>{t("quotaDataSource")}</span>
+                <strong>
+                  {quota.source === "appServer"
+                    ? t("officialAppServer")
+                    : t("compatibilityFallback")}
+                </strong>
+              </div>
+              {quota.resetCredits && (
+                <div className="reset-credits">
+                  <span>{t("availableResetCredits")}</span>
+                  <strong>
+                    {t("resetCreditCount", {
+                      count: quota.resetCredits.availableCount,
+                    })}
+                  </strong>
+                  {quota.resetCredits.expiresAt[0] && (
+                    <small>
+                      {t("resetCreditExpiresAt", {
+                        date: formatDate(
+                          quota.resetCredits.expiresAt[0],
+                          locale,
+                          true,
+                        ),
+                      })}
+                    </small>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="quota-account-details">
+            {view === "usage" && quota.officialUsage && (
               <div className="quota-official-usage">
                 <div className="quota-subsection-heading">
                   <strong>{t("officialAccountUsage")}</strong>
@@ -254,33 +262,38 @@ export function QuotaCard({
                 )}
               </div>
             )}
-            <div className="quota-windows">
-              {buckets.map((bucket) => (
-                <div className="quota-bucket" key={bucket.id}>
-                  <div className="quota-bucket-heading">
-                    <strong>{bucket.name ?? t("defaultCodexQuota")}</strong>
-                    {bucket.name && <span>{t("modelSpecificQuota")}</span>}
+            {view === "usage" && !quota.officialUsage && (
+              <p className="quota-empty">{t("noDailyTokenUsage")}</p>
+            )}
+            {view === "quota" && (
+              <div className="quota-windows">
+                {buckets.map((bucket) => (
+                  <div className="quota-bucket" key={bucket.id}>
+                    <div className="quota-bucket-heading">
+                      <strong>{bucket.name ?? t("defaultCodexQuota")}</strong>
+                      {bucket.name && <span>{t("modelSpecificQuota")}</span>}
+                    </div>
+                    {bucket.primary && (
+                      <QuotaWindowRow
+                        window={bucket.primary}
+                        locale={locale}
+                        t={t}
+                      />
+                    )}
+                    {bucket.secondary && (
+                      <QuotaWindowRow
+                        window={bucket.secondary}
+                        locale={locale}
+                        t={t}
+                      />
+                    )}
                   </div>
-                  {bucket.primary && (
-                    <QuotaWindowRow
-                      window={bucket.primary}
-                      locale={locale}
-                      t={t}
-                    />
-                  )}
-                  {bucket.secondary && (
-                    <QuotaWindowRow
-                      window={bucket.secondary}
-                      locale={locale}
-                      t={t}
-                    />
-                  )}
-                </div>
-              ))}
-              {!quotaWindows(quota).length && (
-                <p className="quota-empty">{t("noQuotaWindows")}</p>
-              )}
-            </div>
+                ))}
+                {!quotaWindows(quota).length && (
+                  <p className="quota-empty">{t("noQuotaWindows")}</p>
+                )}
+              </div>
+            )}
           </div>
         </>
       ) : refreshError || quota?.error ? (

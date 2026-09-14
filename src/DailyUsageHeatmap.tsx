@@ -1,25 +1,27 @@
-import { AccountUsageDailyBucket } from "./api";
-import { Locale, Translate } from "./i18n";
-import { formatCalendarDay, formatTokenUnit, parseIsoDay } from "./quotaView";
+import type { CSSProperties, ReactNode } from "react";
+import type { AccountUsageDailyBucket } from "./api";
+import type { Locale, Translate } from "./i18n";
+import {
+  formatCalendarDay,
+  formatTokenUnit,
+  normalizeDailyUsage,
+  parseIsoDay,
+} from "./quotaView";
 
 type DailyUsageHeatmapProps = {
   buckets: AccountUsageDailyBucket[];
   locale: Locale;
   t: Translate;
+  controls?: ReactNode;
 };
 
 export function DailyUsageHeatmap({
   buckets,
   locale,
   t,
+  controls,
 }: DailyUsageHeatmapProps) {
-  const usageByDate = new Map<string, number>();
-  for (const bucket of buckets) {
-    if (!parseIsoDay(bucket.startDate) || !Number.isFinite(bucket.tokens)) {
-      continue;
-    }
-    usageByDate.set(bucket.startDate, Math.max(0, bucket.tokens));
-  }
+  const usageByDate = normalizeDailyUsage(buckets);
 
   const dates = [...usageByDate.keys()].sort();
   const lastUsageDate = dates.at(-1) ? parseIsoDay(dates.at(-1)!) : null;
@@ -91,15 +93,21 @@ export function DailyUsageHeatmap({
       : Math.max(1, Math.min(4, Math.ceil((tokens / maxTokens) * 4)));
 
   return (
-    <div className="quota-daily-usage">
+    <div
+      className="quota-daily-usage"
+      style={{ "--heatmap-week-count": weekCount } as CSSProperties}
+    >
       <div className="quota-daily-usage-heading">
         <strong>{t("dailyTokenActivity")}</strong>
-        <span>
-          {t("dailyUsageRange", {
-            start: formatCalendarDay(rangeStart, locale),
-            end: formatCalendarDay(rangeEnd, locale),
-          })}
-        </span>
+        <div className="quota-daily-usage-tools">
+          <span>
+            {t("dailyUsageRange", {
+              start: formatCalendarDay(rangeStart, locale),
+              end: formatCalendarDay(rangeEnd, locale),
+            })}
+          </span>
+          {controls}
+        </div>
       </div>
       <div className="quota-heatmap-scroll">
         <div className="quota-heatmap-layout">
@@ -137,6 +145,7 @@ export function DailyUsageHeatmap({
             }}
           >
             {calendarDays.map((date, index) => {
+              const column = Math.floor(index / 7);
               const dateKey = date.toISOString().slice(0, 10);
               const tokens = usageByDate.get(dateKey);
               const tooltip =
@@ -162,8 +171,15 @@ export function DailyUsageHeatmap({
                   }`}
                   key={dateKey}
                   data-tooltip={tooltip}
+                  data-tooltip-align={
+                    column < weekCount / 4
+                      ? "start"
+                      : column >= (weekCount * 3) / 4
+                        ? "end"
+                        : undefined
+                  }
                   style={{
-                    gridColumn: Math.floor(index / 7) + 1,
+                    gridColumn: column + 1,
                     gridRow: (index % 7) + 1,
                   }}
                   aria-label={ariaLabel}

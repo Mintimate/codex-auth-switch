@@ -1,8 +1,10 @@
-import { AccountQuota, AccountUsageDailyBucket, UsageWindow } from "./api";
-import { Locale, Translate } from "./i18n";
+import type { AccountQuota, AccountUsageDailyBucket, UsageWindow } from "./api";
+import type { Locale, Translate } from "./i18n";
 
 export type QuotaLevel =
   "healthy" | "attention" | "tight" | "unknown" | "error";
+
+export type QuotaDetailView = "quota" | "usage";
 
 export type QuotaEvent = {
   accountId: string;
@@ -140,10 +142,22 @@ export const formatPlan = (planType: string | null) => {
     .join(" ");
 };
 
-export const formatCount = (value: number | null, locale: Locale) =>
-  value === null
-    ? "—"
-    : new Intl.NumberFormat(locale, { notation: "compact" }).format(value);
+export const formatCount = (value: number | null, locale: Locale) => {
+  if (value === null) return "—";
+  if (locale === "zh-CN") {
+    const magnitude = Math.abs(value);
+    const numberFormatter = new Intl.NumberFormat(locale, {
+      maximumFractionDigits: magnitude >= 100_000_000 ? 1 : 2,
+    });
+    if (magnitude >= 10_000_000) {
+      return `${numberFormatter.format(value / 100_000_000)}亿`;
+    }
+    if (magnitude >= 10_000) {
+      return `${numberFormatter.format(value / 10_000)}万`;
+    }
+  }
+  return new Intl.NumberFormat(locale, { notation: "compact" }).format(value);
+};
 
 export const formatTokenUnit = (value: number, locale: Locale) => {
   const magnitude = Math.abs(value);
@@ -185,6 +199,17 @@ export const formatCalendarDay = (date: Date, locale: Locale) =>
     timeZone: "UTC",
   }).format(date);
 
+export const normalizeDailyUsage = (buckets: AccountUsageDailyBucket[]) => {
+  const days = new Map<string, number>();
+  for (const bucket of buckets) {
+    if (!parseIsoDay(bucket.startDate) || !Number.isFinite(bucket.tokens))
+      continue;
+    // 同一天只保留最后一个有效记录，与日历和跨账号汇总保持一致。
+    days.set(bucket.startDate, Math.max(0, bucket.tokens));
+  }
+  return days;
+};
+
 export const recentTokenUsage = (
   buckets: AccountUsageDailyBucket[],
   dayCount: number,
@@ -194,16 +219,95 @@ export const recentTokenUsage = (
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (dayCount - 1));
 
-  let hasValidBucket = false;
+  const days = normalizeDailyUsage(buckets);
   let tokens = 0;
-  for (const bucket of buckets) {
-    const date = parseIsoDay(bucket.startDate);
-    if (!date || !Number.isFinite(bucket.tokens)) continue;
-    hasValidBucket = true;
+  for (const [day, count] of days) {
+    const date = parseIsoDay(day)!;
     if (date >= start && date <= end) {
-      tokens += Math.max(0, bucket.tokens);
+      tokens += count;
     }
   }
 
-  return hasValidBucket ? { end, start, tokens } : null;
+  return days.size ? { end, start, tokens } : null;
+};
+
+export const nextQuotaReset = (quota: AccountQuota | null) => {
+  if (!quota?.success) return null;
+  const futureResets = quotaWindows(quota)
+    .map((window) => window.resetsAt)
+    .filter((at): at is number => at !== null && at > Date.now() / 1000);
+  return futureResets.length ? Math.min(...futureResets) : null;
+};
+
+export const compareQuotaNumbers = (
+  left: number | null,
+  right: number | null,
+  descending = false,
+) => {
+  if (left === null) return right === null ? 0 : 1;
+  if (right === null) return -1;
+  return descending ? right - left : left - right;
+};
+
+const latestSuccessfulQuotas = (quotas: AccountQuota[]) => {
+  // 同一订阅的多个本地档案只统计一次，优先使用最近的成功结果。
+  const byAccount = new Map<string, AccountQuota>();
+  for (const quota of quotas) {
+    if (!quota.success) continue;
+    const previous = byAccount.get(quota.accountId);
+    if (!previous || quota.queriedAt > previous.queriedAt) {
+      byAccount.set(quota.accountId, quota);
+    }
+  }
+  return [...byAccount.values()];
+};
+
+export const aggregateDailyUsage = (quotas: AccountQuota[]) => {
+  const totals = new Map<string, number>();
+  let accountCount = 0;
+  for (const quota of latestSuccessfulQuotas(quotas)) {
+    const days = normalizeDailyUsage(
+      quota.officialUsage?.dailyUsageBuckets ?? [],
+    );
+    if (days.size) accountCount += 1;
+    for (const [date, tokens] of days) {
+      totals.set(date, (totals.get(date) ?? 0) + tokens);
+    }
+  }
+  return {
+    accountCount,
+    buckets: [...totals]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([startDate, tokens]) => ({ startDate, tokens })),
+  };
+};
+
+export const summarizeQuotas = (quotas: AccountQuota[]) => {
+  const successful = latestSuccessfulQuotas(quotas);
+  const sumRecent = (days: number) => {
+    const values = successful.flatMap((quota) => {
+      const usage = quota.officialUsage
+        ? recentTokenUsage(quota.officialUsage.dailyUsageBuckets, days)
+        : null;
+      return usage ? [usage.tokens] : [];
+    });
+    return {
+      tokens: values.length
+        ? values.reduce((sum, value) => sum + value, 0)
+        : null,
+      count: values.length,
+    };
+  };
+  const credits = successful.flatMap((quota) =>
+    quota.resetCredits ? [quota.resetCredits.availableCount] : [],
+  );
+  return {
+    successful: successful.length,
+    sevenDays: sumRecent(7),
+    thirtyDays: sumRecent(30),
+    credits: credits.length
+      ? credits.reduce((sum, count) => sum + count, 0)
+      : null,
+    creditAccounts: credits.length,
+  };
 };

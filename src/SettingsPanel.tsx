@@ -21,7 +21,7 @@ import {
   setNetworkProxy,
 } from "./api";
 import type { AppTab } from "./appTypes";
-import { Locale, localizeBackendError, MessageKey, Translate } from "./i18n";
+import type { Locale, MessageKey, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
