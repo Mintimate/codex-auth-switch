@@ -89,15 +89,15 @@ The app does not change an existing storage mode automatically. Account manageme
 
 ### 2. Save or add an account
 
-Open the app to save the current Codex ChatGPT login, or select **Add account**, choose a local name, and complete Device Code authorization in a browser. Successful authorization automatically saves and switches to the new account.
+Open the app to save the current Codex ChatGPT login, or select **Add account**, choose a local name, and complete Device Code authorization in a browser. Successful authorization automatically saves and switches to the new account; restart Codex for the new account to take effect.
 
 ### 3. Switch accounts
 
-Select **Switch to this account** in the local vault. The app validates the target and atomically replaces the `auth.json` used by Codex.
+Select **Switch to this account** in the local vault. The app validates the target and atomically replaces the `auth.json` used by Codex; restart Codex for the switch to take effect.
 
 ### 4. Transfer to another device (optional)
 
-One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions on the sending device first; the receiver immediately refreshes and validates the account during import. For ongoing access on both devices, start a new OAuth authorization on the receiving device instead.
+One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions on the sending device first; the receiver immediately refreshes and validates the account during import, then restart Codex after the credentials are written for the switch to take effect. For ongoing access on both devices, start a new OAuth authorization on the receiving device instead.
 
 ## Codex Configuration
 

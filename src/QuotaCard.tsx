@@ -84,6 +84,9 @@ export function QuotaCard({
   const sevenDayUsage = quota?.officialUsage
     ? recentTokenUsage(quota.officialUsage.dailyUsageBuckets, 7)
     : null;
+  const thirtyDayUsage = quota?.officialUsage
+    ? recentTokenUsage(quota.officialUsage.dailyUsageBuckets, 30)
+    : null;
 
   return (
     <article className={`quota-card level-${level}`} aria-busy={refreshing}>
@@ -172,22 +175,28 @@ export function QuotaCard({
                   <span>{t("officialAccountUsageHint")}</span>
                 </div>
                 <div className="quota-official-metrics">
-                  <div className="quota-recent-usage">
-                    <span>{t("last7DaysTokens")}</span>
-                    <strong>
-                      {formatCount(sevenDayUsage?.tokens ?? null, locale)}
-                    </strong>
-                    <small>
-                      {sevenDayUsage
-                        ? t("dailyUsageRange", {
-                            start: formatCalendarDay(
-                              sevenDayUsage.start,
-                              locale,
-                            ),
-                            end: formatCalendarDay(sevenDayUsage.end, locale),
-                          })
-                        : t("noDailyTokenUsage")}
-                    </small>
+                  <div className="quota-recent-usage-group">
+                    {(
+                      [
+                        { label: "last7DaysTokens", usage: sevenDayUsage },
+                        { label: "last30DaysTokens", usage: thirtyDayUsage },
+                      ] as const
+                    ).map(({ label, usage }) => (
+                      <div className="quota-recent-usage" key={label}>
+                        <span>{t(label)}</span>
+                        <strong>
+                          {formatCount(usage?.tokens ?? null, locale)}
+                        </strong>
+                        <small>
+                          {usage
+                            ? t("dailyUsageRange", {
+                                start: formatCalendarDay(usage.start, locale),
+                                end: formatCalendarDay(usage.end, locale),
+                              })
+                            : t("noDailyTokenUsage")}
+                        </small>
+                      </div>
+                    ))}
                   </div>
                   <dl>
                     <div>

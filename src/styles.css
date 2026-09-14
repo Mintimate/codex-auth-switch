@@ -2263,6 +2263,13 @@ button:disabled {
   margin-top: 11px;
 }
 
+.quota-recent-usage-group {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .quota-recent-usage {
   display: grid;
   min-width: 0;
@@ -2271,6 +2278,12 @@ button:disabled {
   border-radius: 12px;
   background: var(--surface-active);
   padding: 12px 13px;
+}
+
+@media (max-width: 560px) {
+  .quota-official-metrics {
+    grid-template-columns: 1fr;
+  }
 }
 
 .quota-recent-usage span,
