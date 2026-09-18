@@ -11,6 +11,7 @@
     "build:web": "vite build",
     "typecheck": "tsc --noEmit",
     "test:quota": "node --experimental-strip-types --test scripts/quota-view.test.mjs",
+    "test:cost": "node --experimental-strip-types --test scripts/quota-cost.test.mjs",
     "bump": "node scripts/bump-version.mjs",
     "release": "node scripts/bump-version.mjs --release",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",

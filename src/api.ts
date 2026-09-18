@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import packageMetadata from "../package.json";
+import pricingSnapshot from "./pricing-snapshot.json";
 
 export type AccountSummary = {
   id: string;
@@ -171,6 +172,22 @@ export type LocalUsageStats = {
   filesScanned: number;
   eventsCount: number;
   generatedAt: number;
+};
+
+export type ModelPrice = {
+  model: string;
+  input: number;
+  cachedInput: number | null;
+  cacheWrite: number | null;
+  output: number;
+};
+
+export type ModelPrices = {
+  prices: ModelPrice[];
+  updatedAt: number;
+  sourceUrl: string;
+  source: "bundled" | "cache" | "live";
+  warning: "fetchFailed" | "cacheWriteFailed" | null;
 };
 
 export type ModelProviderKind = "openai" | "thirdParty" | "unattributed";
@@ -504,6 +521,16 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "get_local_usage") {
       return Promise.resolve(structuredClone(previewLocalUsage) as T);
     }
+    if (command === "get_model_prices") {
+      return Promise.resolve(
+        structuredClone({
+          ...pricingSnapshot,
+          sourceUrl: "https://developers.openai.com/api/docs/pricing",
+          source: "bundled",
+          warning: null,
+        }) as T,
+      );
+    }
     if (command === "get_model_provider_state") {
       return Promise.resolve(structuredClone(previewModelProviderState) as T);
     }
@@ -629,6 +656,9 @@ export const getLocalUsage = async () => {
     return (await getLegacyUsageOverview()).local;
   }
 };
+
+export const getModelPrices = (refresh = false) =>
+  call<ModelPrices>("get_model_prices", { refresh });
 
 export const getModelProviderState = async () => {
   try {

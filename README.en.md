@@ -40,6 +40,7 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 - Configure credential storage, the 1M context preset, reasoning effort and summaries, response verbosity, and web search
 - Summarize local session Tokens for today, 7 days, and 30 days, split by account and model provider
 - Show subscription quotas in a compact account list with search, status filters, and sorting by quota, recovery time, usage, or reset credits
+- Simulate the USD value of 7 / 30 days of subscription usage with a reference model and assumed input share, comparing no cache and 90% cached input
 - Show quota windows, recovery timelines, 7-day and 30-day Tokens, and daily activity heatmaps
 - Refresh usage and quotas independently when opening their pages, with an option to load data manually
 - Transfer Auth once through a QR code or clipboard, with legacy CAS2 import compatibility
@@ -116,6 +117,12 @@ The configuration page edits the local `config.toml`. Each selection updates onl
 Selecting **Default** removes the corresponding fields so Codex can use its defaults. Existing values outside the presets appear as **Custom** and remain unchanged until you select a preset. Settings such as 1M are local configuration presets; support depends on the Codex version, model, and service in use.
 
 ## Usage and Quotas
+
+The subscription usage value simulator uses account daily token totals for 7 / 30 UTC calendar days including today. Select all accounts or one account; duplicate local profiles of the same subscription are counted once. Missing usage stays unknown, and failed refreshes retain clearly labeled prior data. This feature does not read or classify local sessions.
+
+Account daily totals do not include model, input/output, or cache breakdowns. Choose a reference model and an assumed input share (initially 80%). No cache prices all assumed input at the regular rate; 90% cached input prices 90% of it at the cached rate and 10% at the regular rate, keeping output unchanged. The cached scenario is unavailable without a published cached rate. Per-thread breakdowns in the current protocol cannot replace account-wide 7 / 30 day breakdowns.
+
+Prices come from [OpenAI public pricing](https://developers.openai.com/api/docs/pricing). Bundled or cached prices load locally; **Fetch latest prices** downloads the public document without credentials or usage. Failures retain previous prices and their date. Simulations use current Standard short-context text rates, not subscription bills, and exclude long-context premiums, Fast, cache writes, tools, taxes and discounts. Pricing parsing is isolated from authentication and quota compatibility layers.
 
 **Token usage** aggregates local session metadata; **Subscription quotas** queries online account limits. The pages load independently, and opening the account page does not query subscription quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually with each page's button.
 

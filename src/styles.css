@@ -1603,6 +1603,195 @@ button:disabled {
   margin-top: 10px;
 }
 
+.quota-cost-panel {
+  min-width: 0;
+  margin-top: 10px;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface);
+}
+
+.cost-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.cost-summary::-webkit-details-marker {
+  display: none;
+}
+.cost-summary > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  transform: rotate(-90deg);
+}
+.quota-cost-panel[open] > .cost-summary > svg {
+  transform: rotate(0deg);
+}
+.cost-summary strong {
+  display: block;
+  font-size: 12px;
+}
+.cost-summary span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.cost-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+  border-radius: 4px;
+}
+.cost-body {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cost-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.cost-periods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.cost-period {
+  min-width: 0;
+  padding: 15px;
+  border-radius: 12px;
+  background: var(--surface-active);
+}
+.cost-period h3 {
+  margin: 0 0 14px;
+  font-size: 12px;
+}
+.cost-period dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.cost-period dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.cost-period dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.cost-period dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.cost-cache-scenario dd {
+  color: var(--accent);
+}
+.cost-note,
+.cost-coverage,
+.cost-source,
+.cost-warning {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.cost-note {
+  margin: 12px 0 0;
+}
+.cost-coverage {
+  margin: 14px 0 0;
+}
+.cost-warning {
+  margin: 8px 0 0;
+  color: var(--accent-deep);
+}
+.cost-source {
+  display: flex;
+  gap: 6px 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.cost-source .text-button {
+  font-size: 10px;
+}
+.cost-details {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.cost-details summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+/* 与订阅汇总保持一致，模型和比例是明确可调的模拟假设。 */
+.cost-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+.cost-controls label {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cost-controls select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--input);
+  color: var(--foreground);
+  padding: 9px 10px;
+  font: inherit;
+}
+.cost-controls .cost-ratio-control {
+  grid-column: 1 / -1;
+}
+.cost-ratio-control input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.cost-controls select:focus-visible,
+.cost-ratio-control input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.cost-period h3 {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+}
+.cost-period h3 small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+@media (max-width: 900px) {
+  .cost-periods,
+  .cost-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 .trend-card,
 .breakdown-card {
   min-width: 0;

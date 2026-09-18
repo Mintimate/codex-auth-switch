@@ -4,6 +4,7 @@ mod codex_app_server;
 mod device_login;
 mod diagnostics;
 mod manager;
+mod pricing;
 mod proxy;
 mod query_gate;
 mod usage;
@@ -145,6 +146,15 @@ async fn get_local_usage(
         .local_usage(&state.operation_gate)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_model_prices(app: AppHandle, refresh: bool) -> Result<pricing::ModelPrices, String> {
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "无法定位应用数据目录".to_string())?;
+    pricing::get_prices(&directory, refresh).await
 }
 
 async fn cache_info(app: &AppHandle, clear: bool) -> Result<usage::UsageCacheInfo, String> {
@@ -428,6 +438,7 @@ pub fn run() {
             set_codex_config_choice,
             enable_file_credential_storage,
             get_local_usage,
+            get_model_prices,
             get_usage_cache_info,
             clear_usage_cache,
             get_account_quotas,
