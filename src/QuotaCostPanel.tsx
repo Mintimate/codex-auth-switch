@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import type { MouseEvent } from "react";
 import { ChevronDown } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getModelPrices } from "./api";
@@ -12,6 +13,83 @@ const periodKeys = {
   sevenDays: "last7Days",
   thirtyDays: "last30Days",
 } as const;
+
+// 便于比较费用的假设起点，不是任务类型的实测平均值。
+const taskPresets = [
+  {
+    label: "costPresetCoding",
+    hint: "costPresetCodingHint",
+    input: 99,
+    cache: 90,
+  },
+  {
+    label: "costPresetGeneral",
+    hint: "costPresetGeneralHint",
+    input: 90,
+    cache: 50,
+  },
+  {
+    label: "costPresetFresh",
+    hint: "costPresetFreshHint",
+    input: 80,
+    cache: 0,
+  },
+] as const;
+
+function RatioControl({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <div className="cost-ratio-control">
+      <label htmlFor={id}>{label}</label>
+      <div className="cost-ratio-inputs">
+        <input
+          id={id}
+          type="range"
+          min="0"
+          max="100"
+          step="0.1"
+          value={value}
+          onChange={(event) => {
+            setDraft(null);
+            onChange(Number(event.target.value));
+          }}
+          aria-valuetext={label}
+        />
+        <span className="cost-percent-input">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={draft ?? value}
+            aria-label={label}
+            onBlur={() => setDraft(null)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              const next = event.target.valueAsNumber;
+              if (Number.isFinite(next) && next >= 0 && next <= 100)
+                onChange(Math.round(next * 10) / 10);
+            }}
+          />
+          <span aria-hidden="true">%</span>
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function QuotaCostPanel({
   accounts,
@@ -35,7 +113,15 @@ export function QuotaCostPanel({
   const [linkFailed, setLinkFailed] = useState(false);
   const [profileId, setProfileId] = useState("");
   const [model, setModel] = useState("");
-  const [inputPercent, setInputPercent] = useState(80);
+  const [inputPercent, setInputPercent] = useState<number>(
+    taskPresets[0].input,
+  );
+  const [cachePercent, setCachePercent] = useState<number>(
+    taskPresets[0].cache,
+  );
+  const selectedPreset = taskPresets.find(
+    (preset) => preset.input === inputPercent && preset.cache === cachePercent,
+  );
   const selectedId = accounts.some((account) => account.id === profileId)
     ? profileId
     : "";
@@ -90,12 +176,20 @@ export function QuotaCostPanel({
     maximumFractionDigits: 2,
   });
   const rate = new Intl.NumberFormat(locale, { maximumFractionDigits: 4 });
+  const percent = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   const formatMoney = (value: number | null | undefined) =>
     value == null
       ? "—"
       : value > 0 && value < 0.01
         ? `< ${money.format(0.01)}`
         : money.format(value);
+
+  function openDocumentation(event: MouseEvent<HTMLAnchorElement>) {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    event.preventDefault();
+    setLinkFailed(false);
+    void openUrl(event.currentTarget.href).catch(() => setLinkFailed(true));
+  }
 
   return (
     <details className="quota-cost-panel" aria-labelledby={`${id}-title`}>
@@ -150,27 +244,52 @@ export function QuotaCostPanel({
                 ))}
             </select>
           </label>
-          <label className="cost-ratio-control">
-            <span>
-              {t("costInputRatio", {
-                input: inputPercent,
-                output: 100 - inputPercent,
-              })}
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={inputPercent}
-              onChange={(event) => setInputPercent(Number(event.target.value))}
-              aria-valuetext={t("costInputRatio", {
-                input: inputPercent,
-                output: 100 - inputPercent,
-              })}
-            />
-          </label>
+          <fieldset className="cost-presets">
+            <legend>{t("costTaskPresets")}</legend>
+            <div className="cost-preset-options">
+              {taskPresets.map((preset) => (
+                <button
+                  type="button"
+                  className="cost-preset"
+                  key={preset.label}
+                  aria-pressed={selectedPreset === preset}
+                  onClick={() => {
+                    setInputPercent(preset.input);
+                    setCachePercent(preset.cache);
+                  }}
+                >
+                  <strong>{t(preset.label)}</strong>
+                  <span>
+                    {t("costPresetRatios", {
+                      input: preset.input,
+                      cache: preset.cache,
+                    })}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="cost-note">{t("costPresetDisclaimer")}</p>
+            <p className="cost-preset-hint" aria-live="polite">
+              {t(selectedPreset?.hint ?? "costPresetCustomHint")}
+            </p>
+          </fieldset>
+          <RatioControl
+            id={`${id}-input`}
+            label={t("costInputRatio", {
+              input: percent.format(inputPercent),
+              output: percent.format(100 - inputPercent),
+            })}
+            value={inputPercent}
+            onChange={setInputPercent}
+          />
+          <RatioControl
+            id={`${id}-cache`}
+            label={t("costCacheRatio", { cache: percent.format(cachePercent) })}
+            value={cachePercent}
+            onChange={setCachePercent}
+          />
         </div>
+        <p className="cost-note">{t("costCacheRatioHint")}</p>
 
         {(failed || pricing?.warning) && (
           <p className="cost-warning" role="status">
@@ -193,9 +312,12 @@ export function QuotaCostPanel({
             {t("costChooseModelHint")}
           </p>
         )}
-        {selectedPrice?.cachedInput === null && (
-          <p className="cost-warning">{t("costNoCacheRate")}</p>
-        )}
+        {selectedPrice?.cachedInput === null &&
+          cachePercent > 0 &&
+          inputPercent > 0 &&
+          periods.some((period) => (summary[period].tokens ?? 0) > 0) && (
+            <p className="cost-warning">{t("costNoCacheRate")}</p>
+          )}
 
         <div className="cost-periods" aria-live="polite">
           {periods.map((period) => {
@@ -204,6 +326,7 @@ export function QuotaCostPanel({
               usage.tokens,
               inputPercent,
               selectedPrice,
+              cachePercent,
             );
             return (
               <article className="cost-period" key={period}>
@@ -217,10 +340,59 @@ export function QuotaCostPanel({
                     <dd>{formatMoney(estimate?.noCache)}</dd>
                   </div>
                   <div className="cost-cache-scenario">
-                    <dt>{t("costCache90")}</dt>
-                    <dd>{formatMoney(estimate?.cache90)}</dd>
+                    <dt>
+                      {t("costWithCache", {
+                        cache: percent.format(cachePercent),
+                      })}
+                    </dt>
+                    <dd>{formatMoney(estimate?.withCache)}</dd>
                   </div>
                 </dl>
+                {estimate && (
+                  <div className="cost-breakdown">
+                    <p>{t("costBreakdownTitle")}</p>
+                    <dl>
+                      <div>
+                        <dt>
+                          {t("costUncachedInput")}
+                          <small>
+                            {formatCount(estimate.uncachedInputTokens, locale)}{" "}
+                            tokens
+                          </small>
+                        </dt>
+                        <dd>{formatMoney(estimate.uncachedInputCost)}</dd>
+                      </div>
+                      <div>
+                        <dt>
+                          {t("costCachedInput")}
+                          <small>
+                            {formatCount(estimate.cachedInputTokens, locale)}{" "}
+                            tokens
+                          </small>
+                        </dt>
+                        <dd>{formatMoney(estimate.cachedInputCost)}</dd>
+                      </div>
+                      <div>
+                        <dt>
+                          {t("costOutput")}
+                          <small>
+                            {formatCount(estimate.outputTokens, locale)} tokens
+                          </small>
+                        </dt>
+                        <dd>{formatMoney(estimate.outputCost)}</dd>
+                      </div>
+                    </dl>
+                    {estimate.withCache !== null && estimate.withCache > 0 && (
+                      <p className="cost-output-share">
+                        {t("costOutputShare", {
+                          share: percent.format(
+                            (100 * estimate.outputCost) / estimate.withCache,
+                          ),
+                        })}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <p className="cost-coverage">
                   {t("quotaUsageCoverage", {
                     count: usage.count,
@@ -244,16 +416,18 @@ export function QuotaCostPanel({
               href="https://developers.openai.com/api/docs/pricing"
               target="_blank"
               rel="noreferrer"
-              onClick={(event) => {
-                if (!("__TAURI_INTERNALS__" in window)) return;
-                event.preventDefault();
-                setLinkFailed(false);
-                void openUrl(
-                  "https://developers.openai.com/api/docs/pricing",
-                ).catch(() => setLinkFailed(true));
-              }}
+              onClick={openDocumentation}
             >
               {t("costSource")}
+            </a>
+            <a
+              className="text-button"
+              href="https://developers.openai.com/api/docs/guides/prompt-caching#multi-turn-agent"
+              target="_blank"
+              rel="noreferrer"
+              onClick={openDocumentation}
+            >
+              {t("costCacheSource")}
             </a>
             <span>
               {t(

@@ -1750,7 +1750,8 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
 }
-.cost-controls select {
+.cost-controls select,
+.cost-percent-input input {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--border);
@@ -1760,16 +1761,89 @@ button:disabled {
   padding: 9px 10px;
   font: inherit;
 }
-.cost-controls .cost-ratio-control {
+.cost-presets {
   grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-.cost-ratio-control input {
+.cost-presets legend {
+  margin-bottom: 9px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cost-preset-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.cost-preset {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--input);
+  color: var(--foreground);
+  text-align: start;
+  cursor: pointer;
+}
+.cost-preset:hover {
+  background: var(--surface-hover);
+}
+.cost-preset[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.cost-preset strong {
+  font-size: 11px;
+}
+.cost-preset span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.cost-preset-hint {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.65;
+}
+.cost-ratio-control {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 8px;
+}
+.cost-ratio-inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cost-ratio-inputs input[type="range"] {
   width: 100%;
+  min-width: 0;
   margin: 0;
   accent-color: var(--accent);
 }
+.cost-percent-input {
+  display: flex;
+  align-items: center;
+  flex: 0 0 92px;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cost-percent-input input {
+  padding: 7px 5px;
+  font-variant-numeric: tabular-nums;
+}
 .cost-controls select:focus-visible,
-.cost-ratio-control input:focus-visible {
+.cost-ratio-control input:focus-visible,
+.cost-preset:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -1784,10 +1858,39 @@ button:disabled {
   font-size: 10px;
   font-weight: 400;
 }
+.cost-breakdown {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cost-breakdown > p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.65;
+}
+.cost-breakdown dl {
+  gap: 8px;
+}
+.cost-breakdown dd {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.cost-breakdown dt small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.cost-breakdown > .cost-output-share {
+  margin: 10px 0 0;
+}
 
 @media (max-width: 900px) {
   .cost-periods,
-  .cost-controls {
+  .cost-controls,
+  .cost-preset-options {
     grid-template-columns: 1fr;
   }
 }

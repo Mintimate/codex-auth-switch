@@ -31,9 +31,71 @@ test("account total is split only by the explicit assumed input ratio", () => {
   assert.deepEqual(estimateQuotaCost(1_000_000, 80, price), {
     inputTokens: 800_000,
     outputTokens: 200_000,
+    cachedInputTokens: 720_000,
+    uncachedInputTokens: 80_000,
     noCache: 18,
-    cache90: 11.52,
+    withCache: 11.52,
+    uncachedInputCost: 0.8,
+    cachedInputCost: 0.72,
+    outputCost: 10,
   });
+});
+
+test("cache ratios of 0, 50, 90 and 100 percent split only the input tokens", () => {
+  for (const [cachePercent, cachedTokens, uncachedTokens, cost] of [
+    [0, 0, 800_000, 18],
+    [50, 400_000, 400_000, 14.4],
+    [90, 720_000, 80_000, 11.52],
+    [100, 800_000, 0, 10.8],
+  ]) {
+    const estimate = estimateQuotaCost(1_000_000, 80, price, cachePercent);
+    assert.equal(estimate.cachedInputTokens, cachedTokens);
+    assert.equal(estimate.uncachedInputTokens, uncachedTokens);
+    assert.equal(
+      estimate.cachedInputTokens +
+        estimate.uncachedInputTokens +
+        estimate.outputTokens,
+      1_000_000,
+    );
+    assert.equal(estimate.withCache, cost);
+    assert.equal(estimate.noCache, 18);
+    assert.equal(estimate.outputTokens, 200_000);
+    assert.equal(estimate.outputCost, 10);
+  }
+});
+
+test("fractional input shares preserve small output costs", () => {
+  const estimate = estimateQuotaCost(1_000_000, 99.7, price, 90);
+  assert.equal(estimate.inputTokens, 997_000);
+  assert.equal(estimate.outputTokens, 3_000);
+  assert.equal(estimate.cachedInputTokens, 897_300);
+  assert.equal(estimate.uncachedInputTokens, 99_700);
+  assert.equal(estimate.uncachedInputCost, 0.997);
+  assert.equal(estimate.cachedInputCost, 0.8973);
+  assert.equal(estimate.outputCost, 0.15);
+  assert.equal(estimate.withCache, 2.0443);
+});
+
+test("cost components add up at small and large token totals", () => {
+  for (const total of [0, 1, 12_345, 1_000_000, 4_280_000_000]) {
+    for (const inputPercent of [0, 75, 99.7, 100]) {
+      for (const cachePercent of [0, 50, 90, 100]) {
+        const estimate = estimateQuotaCost(
+          total,
+          inputPercent,
+          price,
+          cachePercent,
+        );
+        assert.equal(
+          estimate.withCache,
+          estimate.uncachedInputCost +
+            estimate.cachedInputCost +
+            estimate.outputCost,
+        );
+        assert.ok(estimate.withCache <= estimate.noCache + 1e-10);
+      }
+    }
+  }
 });
 
 test("changing model or input share changes both scenarios without adding tokens", () => {
@@ -47,38 +109,77 @@ test("changing model or input share changes both scenarios without adding tokens
     }).noCache,
     3.6,
   );
-  assert.equal(estimateQuotaCost(1_000_000, 100, price).cache90, 1.9);
+  assert.equal(estimateQuotaCost(1_000_000, 100, price).withCache, 1.9);
   assert.deepEqual(estimateQuotaCost(1_000_000, 0, price), {
     inputTokens: 0,
     outputTokens: 1_000_000,
+    cachedInputTokens: 0,
+    uncachedInputTokens: 0,
     noCache: 50,
-    cache90: 50,
+    withCache: 50,
+    uncachedInputCost: 0,
+    cachedInputCost: 0,
+    outputCost: 50,
   });
 });
 
 test("unknown totals, models and invalid inputs never display as free usage", () => {
   for (const total of [null, NaN, Infinity, -1])
     assert.equal(estimateQuotaCost(total, 80, price), null);
-  for (const ratio of [-1, 101, NaN])
+  for (const ratio of [-1, 101, NaN, Infinity, -Infinity]) {
     assert.equal(estimateQuotaCost(1, ratio, price), null);
+    assert.equal(estimateQuotaCost(1, 80, price, ratio), null);
+  }
   assert.equal(estimateQuotaCost(1, 80, undefined), null);
   assert.equal(estimateQuotaCost(1, 80, { ...price, cachedInput: NaN }), null);
   assert.equal(estimateQuotaCost(1, 80, { ...price, input: Infinity }), null);
+  assert.equal(estimateQuotaCost(1, 80, { ...price, output: -1 }), null);
   assert.deepEqual(estimateQuotaCost(0, 80, price), {
     inputTokens: 0,
     outputTokens: 0,
+    cachedInputTokens: 0,
+    uncachedInputTokens: 0,
     noCache: 0,
-    cache90: 0,
+    withCache: 0,
+    uncachedInputCost: 0,
+    cachedInputCost: 0,
+    outputCost: 0,
   });
 });
 
-test("no published cache price leaves that scenario unavailable", () => {
-  const estimate = estimateQuotaCost(1_000_000, 80, {
+test("no published cache price leaves scenarios with cached input unavailable", () => {
+  const unknownCachePrice = {
     ...price,
     cachedInput: null,
-  });
-  assert.equal(estimate.noCache, 18);
-  assert.equal(estimate.cache90, null);
+  };
+  for (const cachePercent of [50, 90, 100]) {
+    const estimate = estimateQuotaCost(
+      1_000_000,
+      80,
+      unknownCachePrice,
+      cachePercent,
+    );
+    assert.equal(estimate.noCache, 18);
+    assert.equal(estimate.withCache, null);
+    assert.equal(estimate.cachedInputCost, null);
+    assert.equal(estimate.outputCost, 10);
+  }
+});
+
+test("zero cached input and zero usage do not require a published cache price", () => {
+  const unknownCachePrice = { ...price, cachedInput: null };
+  const noCache = estimateQuotaCost(1_000_000, 80, unknownCachePrice, 0);
+  assert.equal(noCache.withCache, 18);
+  assert.equal(noCache.cachedInputCost, 0);
+  const outputOnly = estimateQuotaCost(1_000_000, 0, unknownCachePrice, 100);
+  assert.equal(outputOnly.withCache, 50);
+  assert.equal(outputOnly.cachedInputCost, 0);
+  for (const cachePercent of [0, 50, 90, 100]) {
+    const zeroUsage = estimateQuotaCost(0, 80, unknownCachePrice, cachePercent);
+    assert.equal(zeroUsage.noCache, 0);
+    assert.equal(zeroUsage.withCache, 0);
+    assert.equal(zeroUsage.cachedInputCost, 0);
+  }
 });
 
 test("subscription summaries exclude missing and failed data and deduplicate accounts", () => {

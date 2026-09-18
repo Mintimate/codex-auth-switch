@@ -1,10 +1,11 @@
 import type { ModelPrice } from "./api";
 
-// 账号每日用量只有总数。模型和输入占比均由用户指定，不能伪称实际用量拆分。
+// 账号每日用量只有总数。模型、输入和缓存占比均为假设，不能伪称实际用量拆分。
 export function estimateQuotaCost(
   totalTokens: number | null,
   inputPercent: number,
   price: ModelPrice | undefined,
+  cachePercent = 90,
 ) {
   if (
     totalTokens === null ||
@@ -13,6 +14,9 @@ export function estimateQuotaCost(
     !Number.isFinite(inputPercent) ||
     inputPercent < 0 ||
     inputPercent > 100 ||
+    !Number.isFinite(cachePercent) ||
+    cachePercent < 0 ||
+    cachePercent > 100 ||
     !price ||
     !Number.isFinite(price.input) ||
     price.input < 0 ||
@@ -24,17 +28,29 @@ export function estimateQuotaCost(
     return null;
   const inputTokens = (totalTokens * inputPercent) / 100;
   const outputTokens = totalTokens - inputTokens;
-  const outputCost = outputTokens * price.output;
+  const cachedInputTokens = (inputTokens * cachePercent) / 100;
+  const uncachedInputTokens = inputTokens - cachedInputTokens;
+  const uncachedInputCost = (uncachedInputTokens * price.input) / 1_000_000;
+  const outputCost = (outputTokens * price.output) / 1_000_000;
+  // 只有实际假定了缓存输入时，才需要已公布的缓存单价。
+  const cachedInputCost =
+    cachePercent === 0 || inputTokens === 0
+      ? 0
+      : price.cachedInput === null
+        ? null
+        : (cachedInputTokens * price.cachedInput) / 1_000_000;
   return {
     inputTokens,
     outputTokens,
-    noCache: (inputTokens * price.input + outputCost) / 1_000_000,
-    // 未公布缓存价格时不虚构缓存折扣。
-    cache90:
-      price.cachedInput === null
+    cachedInputTokens,
+    uncachedInputTokens,
+    noCache: (inputTokens * price.input) / 1_000_000 + outputCost,
+    withCache:
+      cachedInputCost === null
         ? null
-        : (inputTokens * (0.1 * price.input + 0.9 * price.cachedInput) +
-            outputCost) /
-          1_000_000,
+        : uncachedInputCost + cachedInputCost + outputCost,
+    uncachedInputCost,
+    cachedInputCost,
+    outputCost,
   };
 }
