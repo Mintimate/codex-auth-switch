@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import type { MouseEvent } from "react";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown, RefreshCw } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
@@ -192,58 +192,62 @@ export function QuotaCostPanel({
   }
 
   return (
-    <details className="quota-cost-panel" aria-labelledby={`${id}-title`}>
-      <summary className="cost-summary">
-        <ChevronDown size={16} aria-hidden="true" />
-        <div>
-          <strong id={`${id}-title`}>{t("costTitle")}</strong>
-          <span>{t("costSubtitle")}</span>
-        </div>
-      </summary>
+    <section className="quota-cost-panel" aria-label={t("costTitle")}>
       <div className="cost-body" aria-busy={loading}>
-        <div className="cost-actions">
+        <div className="cost-toolbar">
+          <p className="cost-note">{t("costAssumptionsHint")}</p>
           <button
             type="button"
-            className="text-button"
+            className="text-button cost-refresh"
             disabled={loading}
             onClick={() => void refresh()}
           >
+            <RefreshCw size={14} aria-hidden="true" />
             {loading ? t("costLoading") : t("costRefresh")}
           </button>
         </div>
-        <p className="cost-note">{t("costAssumptionsHint")}</p>
         <div className="cost-controls">
-          <label>
-            <span>{t("costAccountScope")}</span>
-            <select
-              value={selectedId}
-              onChange={(event) => setProfileId(event.target.value)}
-            >
-              <option value="">{t("quotaActivityAllAccounts")}</option>
-              {accounts.map((account) => (
-                <option value={account.id} key={account.id}>
-                  {displayLabel(account.label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{t("costReferenceModel")}</span>
-            <select
-              value={selectedPrice ? model : ""}
-              disabled={!prices.length}
-              onChange={(event) => setModel(event.target.value)}
-            >
-              <option value="">{t("costChooseModel")}</option>
-              {[...prices]
-                .sort((a, b) => a.model.localeCompare(b.model))
-                .map((price) => (
-                  <option value={price.model} key={price.model}>
-                    {price.model}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <div className="cost-selectors">
+            <div className="cost-field">
+              <label htmlFor={`${id}-account`}>{t("costAccountScope")}</label>
+              <div className="cost-select">
+                <select
+                  id={`${id}-account`}
+                  value={selectedId}
+                  onChange={(event) => setProfileId(event.target.value)}
+                >
+                  <option value="">{t("quotaActivityAllAccounts")}</option>
+                  {accounts.map((account) => (
+                    <option value={account.id} key={account.id}>
+                      {displayLabel(account.label)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} aria-hidden="true" />
+              </div>
+            </div>
+            <div className="cost-field">
+              <label htmlFor={`${id}-model`}>{t("costReferenceModel")}</label>
+              <div className="cost-select">
+                <select
+                  id={`${id}-model`}
+                  value={selectedPrice ? model : ""}
+                  disabled={!prices.length}
+                  onChange={(event) => setModel(event.target.value)}
+                >
+                  <option value="">{t("costChooseModel")}</option>
+                  {[...prices]
+                    .sort((a, b) => a.model.localeCompare(b.model))
+                    .map((price) => (
+                      <option value={price.model} key={price.model}>
+                        {price.model}
+                      </option>
+                    ))}
+                </select>
+                <ChevronDown size={16} aria-hidden="true" />
+              </div>
+            </div>
+          </div>
           <fieldset className="cost-presets">
             <legend>{t("costTaskPresets")}</legend>
             <div className="cost-preset-options">
@@ -258,7 +262,10 @@ export function QuotaCostPanel({
                     setCachePercent(preset.cache);
                   }}
                 >
-                  <strong>{t(preset.label)}</strong>
+                  <span className="cost-preset-title">
+                    <strong>{t(preset.label)}</strong>
+                    <Check size={16} aria-hidden="true" />
+                  </span>
                   <span>
                     {t("costPresetRatios", {
                       input: preset.input,
@@ -467,6 +474,6 @@ export function QuotaCostPanel({
           <p className="cost-note">{t("costRatesHint")}</p>
         </details>
       </div>
-    </details>
+    </section>
   );
 }

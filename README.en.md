@@ -28,7 +28,7 @@
 
 > Screenshots show the Chinese interface with built-in preview data. They contain no real accounts, tokens, or authentication data.
 
-Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides Codex configuration editing, local Token usage, subscription quotas, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
+Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides Codex configuration editing, local Token usage, subscription quotas, subscription value simulation, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
 
 > [!IMPORTANT]
 > This project is not affiliated with, sponsored by, or endorsed by OpenAI. Codex, ChatGPT, and OpenAI are trademarks of their respective owners.
@@ -40,9 +40,9 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 - Configure credential storage, the 1M context preset, reasoning effort and summaries, response verbosity, and web search
 - Summarize local session Tokens for today, 7 days, and 30 days, split by account and model provider
 - Show subscription quotas in a compact account list with search, status filters, and sorting by quota, recovery time, usage, or reset credits
-- Simulate the USD value of 7 / 30 days of subscription usage with task presets, a reference model, adjustable input and cached-input shares, and a cost breakdown
+- Use a dedicated subscription value simulator to estimate the USD value of 7 / 30 days of usage with task presets, a reference model, adjustable shares, and a cost breakdown; optionally make it the default startup page
 - Show quota windows, recovery timelines, 7-day and 30-day Tokens, and daily activity heatmaps
-- Refresh usage and quotas independently when opening their pages, with an option to load data manually
+- Refresh usage, quotas, or account usage for the value simulator when opening each page, with an option to load data manually
 - Transfer Auth once through a QR code or clipboard, with legacy CAS2 import compatibility
 - Run read-only diagnostics, hide emails with privacy mode, and use light/dark themes, Chinese/English UI, and signed updates from GitHub or CNB
 
@@ -118,7 +118,7 @@ Selecting **Default** removes the corresponding fields so Codex can use its defa
 
 ## Usage and Quotas
 
-The subscription usage value simulator uses account daily token totals for 7 / 30 UTC calendar days including today. Select all accounts or one account; duplicate local profiles of the same subscription are counted once. Missing usage stays unknown, and failed refreshes retain clearly labeled prior data. This feature does not read or classify local sessions.
+The subscription value simulator has its own sidebar page, with estimation controls visible when opened. You can also make it the default startup page in Settings. It uses the same account usage data source as subscription quotas and can refresh that data directly, without first opening the quota page. Simulations use account daily token totals for 7 / 30 UTC calendar days including today. Select all accounts or one account; duplicate local profiles of the same subscription are counted once. Missing usage stays unknown, and failed refreshes retain clearly labeled prior data. This feature does not read or classify local sessions.
 
 Account daily totals do not include model, input/output, or cache breakdowns. Choose a reference model and assumed shares. The default multi-turn coding preset uses 99% input and 90% cached input; general multi-turn tasks use 90% input and 50% cached input; new tasks with little reuse use 80% input and 0% cached input. These presets are starting points for simulations, not task averages or measured account usage. Both shares can be adjusted with sliders and numeric inputs in 0.1% increments. Per-thread breakdowns in the current protocol cannot replace account-wide 7 / 30 day breakdowns.
 
@@ -128,7 +128,7 @@ Reusing a long, unchanged conversation prefix can improve cache hits; new tasks,
 
 Prices come from [OpenAI public pricing](https://developers.openai.com/api/docs/pricing). Bundled or cached prices load locally; **Fetch latest prices** downloads the public document without credentials or usage. Failures retain previous prices and their date. Simulations use current Standard short-context text rates, not subscription bills, and exclude long-context premiums, Fast, cache writes, tools, taxes and discounts. Pricing parsing is isolated from authentication and quota compatibility layers.
 
-**Token usage** aggregates local session metadata; **Subscription quotas** queries online account limits. The pages load independently, and opening the account page does not query subscription quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually with each page's button.
+**Token usage** aggregates local session metadata; **Subscription quotas** queries online account limits; the subscription value simulator uses account usage from that same online data source. All three pages can load and refresh data on demand, and opening the account page does not query subscription quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually with each page's button.
 
 When available, the quota page shows the plan, multiple quota windows, full-reset credits and expiry dates, account usage, and an activity heatmap. Not every account or data source returns all of these fields. Network errors can be retried manually; wait before retrying a rate-limited request.
 

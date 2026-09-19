@@ -41,6 +41,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { CodexConfigPanel } from "./CodexConfigPanel";
 import { ThemeMode, useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
+import { SubscriptionValuePage } from "./SubscriptionValuePage";
 import { UsagePanel } from "./UsagePanel";
 import { RestartRequiredAlert } from "./RestartRequiredAlert";
 
@@ -59,6 +60,7 @@ const storedDefaultTab = (): AppTab => {
     value === "config" ||
     value === "usage" ||
     value === "quota" ||
+    value === "value" ||
     value === "settings"
     ? value
     : "accounts";
@@ -241,7 +243,7 @@ function App() {
 
   const refreshActiveData = useCallback(() => {
     if (activeTab === "usage") void refreshUsage();
-    if (activeTab === "quota") void refreshQuotas();
+    if (activeTab === "quota" || activeTab === "value") void refreshQuotas();
   }, [activeTab, refreshQuotas, refreshUsage]);
 
   const refresh = useCallback(async () => {
@@ -761,6 +763,31 @@ function App() {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === "value" && (
+              <div
+                id="value-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("costTitle")}
+              >
+                <SubscriptionValuePage
+                  accounts={status?.accounts ?? []}
+                  supported={status?.supported ?? false}
+                  quotas={quotas}
+                  refreshingIds={quotaRefreshingIds}
+                  refreshErrors={quotaRefreshErrors}
+                  loading={quotaLoading}
+                  error={quotaError}
+                  onRefresh={() => void refreshQuotas()}
+                  onOpenAccounts={() => setActiveTab("accounts")}
+                  onOpenConfig={() => setActiveTab("config")}
+                  privateMode={privateMode}
+                  locale={locale}
+                  t={t}
+                />
               </div>
             )}
 

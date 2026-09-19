@@ -6,7 +6,6 @@ import { redactEmails } from "./privacy";
 import { QuotaAccountTable } from "./QuotaAccountTable";
 import { QuotaActivityOverview } from "./QuotaActivityOverview";
 import { QuotaDetailDialog } from "./QuotaDetailDialog";
-import { QuotaCostPanel } from "./QuotaCostPanel";
 import {
   formatCount,
   formatDate,
@@ -161,14 +160,6 @@ export function QuotaPanel({
               })}
             />
           </div>
-          <QuotaCostPanel
-            accounts={accounts}
-            quotas={visibleQuotas}
-            refreshErrors={refreshErrors}
-            displayLabel={displayLabel}
-            locale={locale}
-            t={t}
-          />
           <QuotaActivityOverview
             accounts={accounts}
             quotas={visibleQuotas}

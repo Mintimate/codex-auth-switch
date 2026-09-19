@@ -225,6 +225,7 @@ export function SettingsPanel({
     { label: t("configTab"), value: "config" },
     { label: t("usageTab"), value: "usage" },
     { label: t("quotaTab"), value: "quota" },
+    { label: t("costTitle"), value: "value" },
     { label: t("settingsTab"), value: "settings" },
   ];
   const proxyModeOptions: Option<ProxyMode>[] = [
