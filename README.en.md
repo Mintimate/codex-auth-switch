@@ -16,17 +16,21 @@
   <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#codex-configuration">Codex configuration</a> ·
+  <a href="#subscription-value-simulator">Value simulator</a> ·
   <a href="#security-boundaries">Security</a> ·
   <a href="#development">Development</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
-  <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch: current login, switching flow, and local account vault">
-</picture>
+<a href="./docs/images/dashboard-light.jpg">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
+    <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch: current account, sign-in actions, and switching flow">
+  </picture>
+</a>
 
-> Screenshots show the Chinese interface with built-in preview data. They contain no real accounts, tokens, or authentication data.
+> Both READMEs use Chinese UI screenshots from the app's built-in demo data. They contain no real accounts, tokens, or authentication data.
+> Static screenshots are rendered at 2× resolution, with originals 2880 pixels wide; the GIF retains its original dimensions. Click an image to view the original.
 
 Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides Codex configuration editing, local Token usage, subscription quotas, subscription value simulation, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
 
@@ -35,35 +39,45 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 
 ## Highlights
 
-- Save, rename, and switch local accounts while preserving rotated tokens before each switch
-- Add an account through browser-based Device Code authorization without entering a password in the app
-- Configure credential storage, the 1M context preset, reasoning effort and summaries, response verbosity, and web search
-- Summarize local session Tokens for today, 7 days, and 30 days, split by account and model provider
-- Show subscription quotas in a compact account list with search, status filters, and sorting by quota, recovery time, usage, or reset credits
-- Use a dedicated subscription value simulator to estimate the USD value of 7 / 30 days of usage with task presets, a reference model, adjustable shares, and a cost breakdown; optionally make it the default startup page
-- Show quota windows, recovery timelines, 7-day and 30-day Tokens, and daily activity heatmaps
-- Refresh usage, quotas, or account usage for the value simulator when opening each page, with an option to load data manually
-- Transfer Auth once through a QR code or clipboard, with legacy CAS2 import compatibility
-- Run read-only diagnostics, hide emails with privacy mode, and use light/dark themes, Chinese/English UI, and signed updates from GitHub or CNB
+The sidebar organizes actions and data into six pages:
+
+| Page                         | Purpose                                                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Accounts                     | Save, rename, and switch local accounts; sign in through Device Code; transfer Auth once with a QR code or clipboard     |
+| Codex config                 | Edit credential storage, context window, reasoning, response verbosity, and web search settings                          |
+| Token usage                  | View local session totals, daily trends, and attribution by account and model provider                                   |
+| Subscription quotas          | Search, filter, and compare account quotas, recovery times, reset credits, and daily activity                            |
+| Subscription value simulator | Independently estimate the API value of 7 / 30 days of account usage with adjustable models, shares, and cost breakdowns |
+| Settings                     | Choose language, theme, privacy, and startup page; manage automatic refresh, diagnostics, and signed updates             |
+
+Consistent text sizes and responsive layouts keep controls, cards, and scrollable tables readable in narrower windows. The value simulator opens with its controls visible, can be the default startup page, and provides separate account-usage and price refresh actions.
 
 ## Interface Preview
 
-| Codex configuration                                                                                                | Token usage                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| ![Codex configuration: credential storage, 1M context, model output, and web search](docs/images/config-light.jpg) | ![Token usage: local totals, daily trends, and attribution by account and provider](docs/images/usage-light.jpg) |
+**Subscription value simulator: task presets, input and cache shares, and cost breakdown**
 
-| Subscription quota overview                                                                                  | App settings                                                                                     |
-| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| ![Subscription quota overview: account list, search filters, Token totals, and daily activity](docs/images/quota-light.jpg) | ![App settings: language, privacy, theme, and automatic refresh](docs/images/settings-light.jpg) |
+[![Dedicated value simulator: task presets, input and cache shares, and cost breakdown](docs/images/value-light.jpg)](docs/images/value-light.jpg)
 
 <details>
-<summary>Diagnostics and one-time Auth transfer</summary>
+<summary>View the value simulator in dark mode</summary>
 
-| Diagnostics                                                                 | One-time Auth transfer                                                                                                  |
-| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| ![Read-only diagnostics and app updates](docs/images/diagnostics-light.jpg) | ![One-time Auth transfer dialog showing the preparation and generated-QR states](docs/images/auth-share-dialog.gif) |
+[![Subscription value simulator in dark mode](docs/images/value-dark.jpg)](docs/images/value-dark.jpg)
 
 </details>
+
+| Codex configuration                                                                                                         | Token usage                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [![Codex configuration: credential storage and context window](docs/images/config-light.jpg)](docs/images/config-light.jpg) | [![Token usage: local session totals, trends, and attribution](docs/images/usage-light.jpg)](docs/images/usage-light.jpg) |
+
+| Subscription quotas                                                                                                                    | Settings                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| [![Subscription quotas: account comparisons, filters, and activity heatmap](docs/images/quota-light.jpg)](docs/images/quota-light.jpg) | [![Settings: language, privacy, appearance, default page, and proxy](docs/images/settings-light.jpg)](docs/images/settings-light.jpg) |
+
+| Diagnostics                                                                                                                    | One-time Auth transfer                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [![Read-only environment diagnostics and check results](docs/images/diagnostics-light.jpg)](docs/images/diagnostics-light.jpg) | [![Auth transfer animation: preparation and demo QR-code states](docs/images/auth-share-dialog.gif)](docs/images/auth-share-dialog.gif) |
+
+The Auth transfer animation uses a built-in demo pattern with no usable credentials.
 
 ## Download and Install
 
@@ -118,23 +132,40 @@ Selecting **Default** removes the corresponding fields so Codex can use its defa
 
 ## Usage and Quotas
 
-The subscription value simulator has its own sidebar page, with estimation controls visible when opened. You can also make it the default startup page in Settings. It uses the same account usage data source as subscription quotas and can refresh that data directly, without first opening the quota page. Simulations use account daily token totals for 7 / 30 UTC calendar days including today. Select all accounts or one account; duplicate local profiles of the same subscription are counted once. Missing usage stays unknown, and failed refreshes retain clearly labeled prior data. This feature does not read or classify local sessions.
+| Page                         | Data source                                                | Meaning                                                                            |
+| ---------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Token usage                  | Local Codex session metadata                               | This device's usage for today, 7 days, and 30 days; not account-wide totals        |
+| Subscription quotas          | Online account limits and daily Token totals               | Available quota, recovery times, and account usage; some fields may be unavailable |
+| Subscription value simulator | The same account daily totals, plus reference model prices | An API cost simulation based on assumptions, not a subscription or API bill        |
 
-Account daily totals do not include model, input/output, or cache breakdowns. Choose a reference model and assumed shares. The default multi-turn coding preset uses 99% input and 90% cached input; general multi-turn tasks use 90% input and 50% cached input; new tasks with little reuse use 80% input and 0% cached input. These presets are starting points for simulations, not task averages or measured account usage. Both shares can be adjusted with sliders and numeric inputs in 0.1% increments. Per-thread breakdowns in the current protocol cannot replace account-wide 7 / 30 day breakdowns.
+All three pages can refresh on demand; opening Accounts does not query quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually. The value simulator can refresh account usage directly, without opening the quota page first.
 
-The cached-input share is the proportion of assumed input tokens billed at the cached rate; it does not discount output. The page compares no cache with the selected cache assumption and breaks down tokens and costs for regular input, cached input, and output. A missing cached rate prevents calculation of the selected cache scenario only when the assumed cached-input count is greater than zero. Regular input and output-only usage can still be simulated at their respective rates.
+Refresh all accounts or one account at a time. Different accounts share two concurrent query slots; requests for the same account are serialized. Failures retain previous results and their timestamps; an initial failure offers a retry, and missing data stays unknown. Not every account returns every quota field. Wait before retrying a rate-limited request.
 
-Reusing a long, unchanged conversation prefix can improve cache hits; new tasks, compaction, model changes, or longer gaps can reduce reuse. The [multi-turn agent example in OpenAI's caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching#multi-turn-agent) reports a cache-hit rate above 90%, but this is one deployment example, not an average for coding or general tasks. Adjust the assumptions to match how you work.
+<details>
+<summary>Local usage cache and cleanup</summary>
 
-Prices come from [OpenAI public pricing](https://developers.openai.com/api/docs/pricing). Bundled or cached prices load locally; **Fetch latest prices** downloads the public document without credentials or usage. Failures retain previous prices and their date. Simulations use current Standard short-context text rates, not subscription bills, and exclude long-context premiums, Fast, cache writes, tools, taxes and discounts. Pricing parsing is isolated from authentication and quota compatibility layers.
+Local usage supports `file`, `auto`, and `keyring` credential modes. The rebuildable `usage-cache.v2.json.gz` reuses unchanged file statistics, reads new complete lines incrementally, and rescans truncated or replaced files. It stores file validation metadata, provider identifiers, timestamps, and Token counts, without session bodies or authentication data. Account attribution depends on locally recorded switching history.
 
-**Token usage** aggregates local session metadata; **Subscription quotas** queries online account limits; the subscription value simulator uses account usage from that same online data source. All three pages can load and refresh data on demand, and opening the account page does not query subscription quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually with each page's button.
+The compressed cache is capped at 8 MiB and retains 35 days of statistics. Older entries can be evicted without affecting current complete totals. Startup and cache access remove caches not updated for 7 days, along with the legacy cache. View or clear it under **Settings → Usage and quotas**. Clearing preserves accounts, credentials, and session files; the next refresh rebuilds it as needed.
 
-When available, the quota page shows the plan, multiple quota windows, full-reset credits and expiry dates, account usage, and an activity heatmap. Not every account or data source returns all of these fields. Network errors can be retried manually; wait before retrying a rate-limited request.
+</details>
 
-Refresh all accounts or refresh one account from its card. Different accounts share two concurrent query slots; queries for the same account are serialized. Batch results appear as each account finishes. Failed refreshes retain the last successful result and show the error alongside the original query time.
+## Subscription Value Simulator
 
-Local usage works with `file`, `auto`, and `keyring` credential modes without migrating credentials. A rebuildable `usage-cache.v2.json.gz` in the app data directory reuses unchanged files, parses only new complete lines in appended files, and rescans truncated or replaced files. It stores file validation metadata, provider identifiers, event timestamps, and Token counts, without session bodies or authentication data. Account attribution still depends on locally recorded switching history. The compressed cache is capped at 8 MiB and retains 35 days of statistics. Older file entries are evicted when needed without changing the current complete totals. Startup and cache access remove caches not updated for 7 days, along with the legacy cache. View the size or clear it under **Settings → Usage and quotas**. Clearing preserves accounts, credentials, and Codex session files; the next refresh rebuilds the cache as needed.
+Select all accounts or one account to aggregate daily Token totals for 7 / 30 UTC calendar days including today. Duplicate local profiles of the same subscription are counted once. This feature does not read local sessions, and account totals do not reveal the actual model, input/output, or cache breakdown.
+
+| Simulation preset           | Input share | Cached-input share |
+| --------------------------- | ----------- | ------------------ |
+| Multi-turn coding (default) | 99%         | 90%                |
+| General multi-turn tasks    | 90%         | 50%                |
+| New tasks / little reuse    | 80%         | 0%                 |
+
+Presets are starting assumptions, **not averages, measured account usage, or actual bills**. Adjust both shares with sliders or numeric inputs in 0.1% increments. The cache share applies to input tokens; output receives no cache discount. The page compares against no cache and separates regular-input, cached-input, and output costs. A missing cached rate affects a scenario only when its assumed cached-input count is greater than zero.
+
+Reusing context can improve cache hits, while compaction, model changes, or longer gaps can reduce reuse. The [official multi-turn agent caching example](https://developers.openai.com/api/docs/guides/prompt-caching#multi-turn-agent) reports above 90% for a particular deployment, not an average across tasks.
+
+Prices come from [OpenAI public pricing](https://developers.openai.com/api/docs/pricing). Bundled or locally cached prices load by default; **Fetch latest prices** downloads only the public document, without credentials or usage. Failures retain previous prices and their date. Simulations use Standard short-context text rates and exclude long-context premiums, Fast, cache writes, tools, taxes, and discounts. Pricing parsing is isolated from authentication and quota compatibility layers and does not guess prices when the document changes.
 
 ## Security Boundaries
 
@@ -158,7 +189,7 @@ accounts.v1.json
 
 ## Current Limitations
 
-- Saving and switching accounts and querying subscription quotas require `cli_auth_credentials_store = "file"`; local Token usage does not
+- Saving and switching accounts, querying subscription quotas, and loading account usage for the value simulator require `cli_auth_credentials_store = "file"`; local Token usage does not
 - Device Code login is still beta and may need to be enabled by the user or workspace administrator
 - The official App Server does not provide subscription expiry, and local Token totals are not the official subscription quota
 - Historical sessions lack reliable account IDs, so attribution begins after the app starts recording the switch timeline
@@ -171,6 +202,8 @@ Requires Node.js 20+, Rust stable, npm, and the platform dependencies for Tauri 
 npm install
 npm run dev
 ```
+
+For a browser UI preview, run `npm run dev:web` and open the address printed in the terminal. Browser development mode uses built-in demo data for pages and themes; validate real account operations in the Tauri app. Follow the [typography guide](docs/typography.md) when changing the UI, and check both languages, themes, and narrow-window layouts.
 
 Checks before committing:
 
