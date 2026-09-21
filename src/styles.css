@@ -145,6 +145,8 @@ body::-webkit-scrollbar {
 
 body {
   margin: 0;
+  -webkit-user-select: none;
+  user-select: none;
   font-size: var(--text-body);
   font-weight: var(--weight-regular);
   line-height: var(--leading-normal);
@@ -155,6 +157,15 @@ body {
     radial-gradient(circle at 94% 10%, var(--glow-end), transparent 28%),
     var(--background);
   transition: background 180ms ease;
+}
+
+input,
+textarea,
+[contenteditable=""],
+[contenteditable="true"],
+[contenteditable="plaintext-only"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 button,

@@ -49,6 +49,7 @@ import { UsagePanel } from "./UsagePanel";
 import { RestartRequiredAlert } from "./RestartRequiredAlert";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
 import { redactEmails } from "./privacy";
+import { useDesktopInteractions } from "./useDesktopInteractions";
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -89,6 +90,7 @@ const storedPrivateMode = () =>
   window.localStorage.getItem(PRIVATE_MODE_STORAGE_KEY) === "true";
 
 function App() {
+  useDesktopInteractions();
   const { setTheme, theme } = useAppearance();
   const { locale, setLocale, t } = useI18n();
   const themeOptions: { label: string; value: ThemeMode }[] = [
