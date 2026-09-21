@@ -19,7 +19,10 @@ import {
   renameAccount,
   saveCurrent,
   startDeviceLogin,
-  switchAccount,
+  desktopRestartSupported,
+  switchAccountWithOptions,
+  SwitchPreference,
+  SwitchStage,
   LocalUsageStats,
 } from "./api";
 import { AccountsPage } from "./AccountsPage";
@@ -36,7 +39,7 @@ import {
   ShareAuthDialog,
   ShareDialogState,
 } from "./AppDialogs";
-import { localizeBackendError, Locale, useI18n } from "./i18n";
+import { localizeBackendError, Locale, MessageKey, useI18n } from "./i18n";
 import { SettingsPanel } from "./SettingsPanel";
 import { CodexConfigPanel } from "./CodexConfigPanel";
 import { ThemeMode, useAppearance } from "./theme";
@@ -44,6 +47,8 @@ import { QuotaPanel } from "./QuotaPanel";
 import { SubscriptionValuePage } from "./SubscriptionValuePage";
 import { UsagePanel } from "./UsagePanel";
 import { RestartRequiredAlert } from "./RestartRequiredAlert";
+import { SwitchAccountDialog } from "./SwitchAccountDialog";
+import { redactEmails } from "./privacy";
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -51,6 +56,17 @@ const messageOf = (error: unknown) =>
 const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
 const PRIVATE_MODE_STORAGE_KEY = "codex-auth-switch-private-mode";
+const SWITCH_PREFERENCE_STORAGE_KEY = "codex-auth-switch-switch-preference";
+const switchStageKeys: Record<SwitchStage, MessageKey> = {
+  checking: "switchProgressChecking",
+  closing: "switchProgressClosing",
+  switching: "switchProgressWriting",
+  launching: "switchProgressLaunching",
+};
+const storedSwitchPreference = (): SwitchPreference => {
+  const value = window.localStorage.getItem(SWITCH_PREFERENCE_STORAGE_KEY);
+  return value === "switchOnly" || value === "restart" ? value : "ask";
+};
 const OAUTH_LAUNCH_ANIMATION_MS = 560;
 const ACCOUNT_SWITCH_FEEDBACK_MS = 420;
 
@@ -93,6 +109,13 @@ function App() {
     storedAutoRefreshUsage,
   );
   const [privateMode, setPrivateMode] = useState(storedPrivateMode);
+  const [switchPreference, setSwitchPreference] = useState(
+    storedSwitchPreference,
+  );
+  const [restartSupported, setRestartSupported] = useState(false);
+  const [switchDialogId, setSwitchDialogId] = useState<string | null>(null);
+  const [switchStage, setSwitchStage] = useState<SwitchStage | null>(null);
+  const [switchWarning, setSwitchWarning] = useState<MessageKey | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -263,6 +286,19 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
+    void desktopRestartSupported()
+      .then(setRestartSupported)
+      .catch(() => setRestartSupported(false));
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SWITCH_PREFERENCE_STORAGE_KEY,
+      switchPreference,
+    );
+  }, [switchPreference]);
+
+  useEffect(() => {
     if (autoRefreshUsage && (activeTab === "usage" || status?.supported))
       refreshActiveData();
   }, [autoRefreshUsage, activeTab, refreshActiveData, status?.supported]);
@@ -395,33 +431,71 @@ function App() {
     }
   };
 
-  const handleSwitchAccount = async (profileId: string) => {
+  const handleSwitchAccount = async (profileId: string, restart: boolean) => {
     if (busy || loading || switchingRef.current) return;
     switchingRef.current = true;
     setSwitchingId(profileId);
     setError(null);
     setNotice(null);
+    setSwitchWarning(null);
+    setRestartRequired(false);
+    setSwitchStage("checking");
+    let acceptProgress = true;
     try {
       // 请求立即发出；快速成功时只让局部反馈完成一个周期，不挂载全屏遮罩。
       const feedbackMs = window.matchMedia("(prefers-reduced-motion: reduce)")
         .matches
         ? 0
         : ACCOUNT_SWITCH_FEEDBACK_MS;
-      const [nextStatus] = await Promise.all([
-        switchAccount(profileId),
+      const [result] = await Promise.all([
+        switchAccountWithOptions(profileId, restart, (stage) => {
+          if (acceptProgress) setSwitchStage(stage);
+        }),
         new Promise<void>((resolve) => window.setTimeout(resolve, feedbackMs)),
       ]);
+      const nextStatus = result.status;
       statusRef.current = nextStatus;
       setStatus(nextStatus);
-      setRestartRequired(true);
+      setRestartRequired(result.restart === "notRequested");
+      if (result.restart === "restarted") setNotice(t("switchRestarted"));
+      if (result.restart === "launchFailed")
+        setSwitchWarning("switchLaunchFailed");
+      if (result.restart === "notRunning")
+        setSwitchWarning("switchClientNotRunning");
       refreshActiveData();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
+      // 原子写入后若持久化或 IPC 中断，重新读取真实状态，避免继续显示旧账号。
+      try {
+        const latest = await getStatus();
+        statusRef.current = latest;
+        setStatus(latest);
+      } catch {
+        /* 保留原始错误，用户可手动刷新。 */
+      }
     } finally {
+      acceptProgress = false;
       setSwitchingId(null);
+      setSwitchStage(null);
       switchingRef.current = false;
     }
   };
+
+  const requestSwitch = (profileId: string) => {
+    if (busy || loading || switchingRef.current) return;
+    if (
+      switchPreference === "ask" ||
+      (switchPreference === "restart" && !restartSupported)
+    ) {
+      setSwitchDialogId(profileId);
+    } else {
+      void handleSwitchAccount(profileId, switchPreference === "restart");
+    }
+  };
+
+  const switchDialogAccount = status?.accounts.find(
+    (account) => account.id === switchDialogId,
+  );
 
   const beginDeviceLogin = async (nextLabel: string) => {
     setBusy(t("requestLoginCode"));
@@ -663,6 +737,33 @@ function App() {
               />
             )}
 
+            {switchStage && (
+              <section
+                className="alert switch-progress"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="spinner" aria-hidden="true" />
+                <span>{t(switchStageKeys[switchStage])}</span>
+              </section>
+            )}
+            {switchWarning && !error && (
+              <section
+                className="alert warning"
+                role="status"
+                aria-live="polite"
+              >
+                <span>{t(switchWarning)}</span>
+                <button
+                  type="button"
+                  className="alert-close"
+                  onClick={() => setSwitchWarning(null)}
+                >
+                  {t("acknowledge")}
+                </button>
+              </section>
+            )}
+
             {activeTab === "accounts" && (
               <AccountsPage
                 busy={Boolean(busy) || loading || switchingId !== null}
@@ -687,7 +788,8 @@ function App() {
                 }
                 onSave={(accountLabel) => openDialog("save", accountLabel)}
                 onShare={openShareDialog}
-                onSwitch={(profileId) => void handleSwitchAccount(profileId)}
+                onSwitch={requestSwitch}
+                autoRestart={switchPreference === "restart" && restartSupported}
                 privateMode={privateMode}
                 status={status}
                 t={t}
@@ -800,6 +902,9 @@ function App() {
               >
                 <SettingsPanel
                   autoRefreshUsage={autoRefreshUsage}
+                  switchPreference={switchPreference}
+                  onSwitchPreferenceChange={setSwitchPreference}
+                  restartSupported={restartSupported}
                   defaultTab={defaultTab}
                   languageOptions={languageOptions}
                   locale={locale}
@@ -828,6 +933,26 @@ function App() {
           <strong>{t("busy", { action: busy })}</strong>
           <p>{t("pleaseWait")}</p>
         </div>
+      )}
+
+      {switchDialogAccount && (
+        <SwitchAccountDialog
+          label={
+            privateMode
+              ? redactEmails(switchDialogAccount.label, t("emailHidden"))
+              : switchDialogAccount.label
+          }
+          restartSupported={restartSupported}
+          onClose={() => setSwitchDialogId(null)}
+          onConfirm={(restart, remember) => {
+            const id = switchDialogAccount.id;
+            if (remember)
+              setSwitchPreference(restart ? "restart" : "switchOnly");
+            setSwitchDialogId(null);
+            void handleSwitchAccount(id, restart);
+          }}
+          t={t}
+        />
       )}
 
       <RemoveAccountDialog

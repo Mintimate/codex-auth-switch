@@ -21,6 +21,13 @@ export type AppStatus = {
   accounts: AccountSummary[];
 };
 
+export type SwitchPreference = "ask" | "switchOnly" | "restart";
+export type SwitchStage = "checking" | "closing" | "switching" | "launching";
+export type SwitchResult = {
+  status: AppStatus;
+  restart: "notRequested" | "notRunning" | "restarted" | "launchFailed";
+};
+
 export type LocalDiagnosticId =
   | "codexHome"
   | "config"
@@ -488,7 +495,12 @@ const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (import.meta.env.DEV && !isTauri()) {
-    if (command === "switch_account") {
+    if (command === "desktop_restart_supported")
+      return Promise.resolve(true as T);
+    if (
+      command === "switch_account" ||
+      command === "switch_account_with_options"
+    ) {
       const target = previewStatus.accounts.find(
         (account) => account.id === args?.profileId,
       );
@@ -497,7 +509,16 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
       for (const account of previewStatus.accounts) {
         account.active = account.id === target.id;
       }
-      return Promise.resolve(structuredClone(previewStatus) as T);
+      return Promise.resolve(
+        structuredClone(
+          command === "switch_account"
+            ? previewStatus
+            : {
+                status: previewStatus,
+                restart: args?.restart ? "restarted" : "notRequested",
+              },
+        ) as T,
+      );
     }
     if (command === "start_device_login") {
       return Promise.resolve({
@@ -727,6 +748,30 @@ export const cancelDeviceLogin = (deviceCode: string) =>
 
 export const switchAccount = (profileId: string) =>
   call<AppStatus>("switch_account", { profileId });
+
+export const desktopRestartSupported = () =>
+  call<boolean>("desktop_restart_supported");
+
+export const switchAccountWithOptions = (
+  profileId: string,
+  restart: boolean,
+  onProgress: (stage: SwitchStage) => void,
+) => {
+  if (import.meta.env.DEV && !isTauri()) {
+    onProgress("switching");
+    return call<SwitchResult>("switch_account_with_options", {
+      profileId,
+      restart,
+    });
+  }
+  const channel = new Channel<SwitchStage>();
+  channel.onmessage = onProgress;
+  return call<SwitchResult>("switch_account_with_options", {
+    profileId,
+    restart,
+    onProgress: channel,
+  });
+};
 
 export const renameAccount = (profileId: string, label: string) =>
   call<AppStatus>("rename_account", { profileId, label });

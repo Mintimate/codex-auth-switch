@@ -503,6 +503,19 @@ impl AccountManager {
         self.status()
     }
 
+    // 在退出桌面客户端之前校验；真正切换时仍重新读取账号库，保留退出期间的凭据刷新。
+    pub(crate) fn validate_switch_target(&self, profile_id: &str) -> Result<(), ManagerError> {
+        self.ensure_file_storage()?;
+        let vault = self.load_vault()?;
+        let target = vault
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .ok_or(ManagerError::ProfileNotFound)?;
+        validate_chatgpt_auth(&target.auth)?;
+        Ok(())
+    }
+
     pub fn switch_account(&self, profile_id: &str) -> Result<AppStatus, ManagerError> {
         self.ensure_file_storage()?;
         let mut vault = self.load_vault()?;

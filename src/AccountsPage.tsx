@@ -1,4 +1,5 @@
 import { AccountFlow } from "./AccountFlow";
+import { Pencil, QrCode, Trash2 } from "lucide-react";
 import { SwitchAccountButton } from "./SwitchAccountButton";
 import type { AccountSummary, AppStatus } from "./api";
 import type { Translate } from "./i18n";
@@ -19,6 +20,7 @@ type AccountsPageProps = {
   onSave: (label: string) => void;
   onShare: (profileId: string, displayLabel: string) => void;
   onSwitch: (profileId: string) => void;
+  autoRestart: boolean;
   privateMode: boolean;
   status: AppStatus | null;
   t: Translate;
@@ -63,6 +65,7 @@ export function AccountsPage({
   onSave,
   onShare,
   onSwitch,
+  autoRestart,
   privateMode,
   status,
   t,
@@ -199,32 +202,36 @@ export function AccountsPage({
                         disabled={busy || !status.supported}
                         switching={switchingId === account.id}
                         onClick={() => onSwitch(account.id)}
+                        restart={autoRestart}
                         t={t}
                       />
                     )}
                     <button
-                      className="account-action"
+                      className="account-action account-icon-action"
                       title={t("shareAuth")}
+                      aria-label={t("shareAuth")}
                       disabled={busy || !status.supported}
                       onClick={() => onShare(account.id, accountLabel)}
                     >
-                      {t("share")}
+                      <QrCode size={17} aria-hidden="true" />
                     </button>
                     <button
-                      className="account-action"
+                      className="account-action account-icon-action"
                       title={t("rename")}
+                      aria-label={t("rename")}
                       disabled={busy}
                       onClick={() => onRename(account)}
                     >
-                      {t("rename")}
+                      <Pencil size={17} aria-hidden="true" />
                     </button>
                     <button
-                      className="account-action danger"
+                      className="account-action account-icon-action danger"
                       title={t("removeFromVault")}
+                      aria-label={t("removeFromVault")}
                       disabled={busy}
                       onClick={() => onRemove(account, accountLabel)}
                     >
-                      {t("remove")}
+                      <Trash2 size={17} aria-hidden="true" />
                     </button>
                   </div>
                 </article>

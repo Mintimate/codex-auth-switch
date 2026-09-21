@@ -109,7 +109,11 @@ Open the app to save the current Codex ChatGPT login, or select **Add account**,
 
 ### 3. Switch accounts
 
-Select **Switch to this account** in the local vault. The app validates the target and atomically replaces the `auth.json` used by Codex; restart Codex for the switch to take effect.
+Select **Switch** beside the two-arrow icon, then choose **Switch only** or **Switch and restart**. You can remember the choice and change it under **Settings → Saved account switching**. The default is to ask every time, with automatic restart off.
+
+Restarting validates the target and desktop app, requests a normal quit, waits for the app to exit, saves the previous account's latest credentials, atomically replaces `auth.json`, and reopens the same app. Finish running tasks first. A quit timeout leaves authentication unchanged and never force-kills processes. A launch failure is reported separately after a successful account switch. An app that is already closed is not launched.
+
+The local restart compatibility layer supports macOS (`com.openai.codex`) and identifiable OpenAI Codex desktop executables on Windows. It does not terminate standalone CLI or IDE sessions. Use **Switch only** and restart manually on Linux, with a custom `CODEX_HOME`, multiple desktop instances, or an unidentified client. This preference does not affect new account sign-in or Auth imports. This is a local compatibility implementation, not an officially guaranteed account-switching API.
 
 ### 4. Transfer to another device (optional)
 

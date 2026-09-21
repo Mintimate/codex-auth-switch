@@ -1,6 +1,7 @@
 mod app_update;
 mod auth_share;
 mod codex_app_server;
+mod desktop_client;
 mod device_login;
 mod diagnostics;
 mod manager;
@@ -294,6 +295,31 @@ async fn switch_account(
 }
 
 #[tauri::command]
+fn desktop_restart_supported() -> bool {
+    desktop_client::supported()
+}
+
+#[tauri::command]
+async fn switch_account_with_options(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    restart: bool,
+    on_progress: tauri::ipc::Channel<desktop_client::SwitchStage>,
+) -> Result<desktop_client::SwitchResult, String> {
+    let _guard = state.operation_gate.lock().await;
+    let manager = account_manager(&app)?;
+    // 进程检测与退出等待不能占用 WebView 主线程或异步运行时工作线程。
+    tauri::async_runtime::spawn_blocking(move || {
+        desktop_client::switch_account(&manager, &profile_id, restart, |stage| {
+            let _ = on_progress.send(stage);
+        })
+    })
+    .await
+    .map_err(|_| "账号切换操作中断，请刷新账号状态后重试".to_string())?
+}
+
+#[tauri::command]
 async fn rename_account(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -450,6 +476,8 @@ pub fn run() {
             poll_device_login,
             cancel_device_login,
             switch_account,
+            desktop_restart_supported,
+            switch_account_with_options,
             rename_account,
             remove_account,
             prepare_auth_transfer,

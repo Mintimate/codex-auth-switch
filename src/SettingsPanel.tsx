@@ -12,6 +12,7 @@ import {
   LocalDiagnostics,
   NetworkProxySettings,
   ProxyMode,
+  SwitchPreference,
   checkAppUpdate,
   defaultNetworkProxySettings,
   getAppVersion,
@@ -100,6 +101,9 @@ const diagnosticDetail = (check: LocalDiagnosticCheck, t: Translate) =>
   );
 
 type SettingsPanelProps = {
+  switchPreference: SwitchPreference;
+  onSwitchPreferenceChange: (value: SwitchPreference) => void;
+  restartSupported: boolean;
   autoRefreshUsage: boolean;
   defaultTab: AppTab;
   languageOptions: Option<Locale>[];
@@ -150,6 +154,9 @@ function SegmentedControl<T extends string>({
 }
 
 export function SettingsPanel({
+  switchPreference,
+  onSwitchPreferenceChange,
+  restartSupported,
   autoRefreshUsage,
   defaultTab,
   languageOptions,
@@ -516,6 +523,29 @@ export function SettingsPanel({
               value={defaultTab}
               onChange={onDefaultTabChange}
             />
+          </div>
+          <div className="settings-row">
+            <div>
+              <strong>{t("switchPreference")}</strong>
+              <span>{t("switchPreferenceHint")}</span>
+              {!restartSupported && (
+                <span>{t("desktopRestartUnavailable")}</span>
+              )}
+            </div>
+            <select
+              className="switch-preference-select"
+              aria-label={t("switchPreference")}
+              value={switchPreference}
+              onChange={(event) =>
+                onSwitchPreferenceChange(event.target.value as SwitchPreference)
+              }
+            >
+              <option value="ask">{t("switchAskEveryTime")}</option>
+              <option value="switchOnly">{t("switchOnly")}</option>
+              <option value="restart" disabled={!restartSupported}>
+                {t("switchAndRestart")}
+              </option>
+            </select>
           </div>
         </section>
 

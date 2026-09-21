@@ -3536,7 +3536,7 @@ button:disabled {
 
 .account-actions {
   display: flex;
-  grid-column: 2;
+  grid-column: 1 / -1;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -3567,6 +3567,16 @@ button:disabled {
   border-color: var(--border);
   background: var(--surface-hover);
   color: var(--foreground);
+}
+
+.account-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
 }
 
 .account-action.primary-action:hover:not(:disabled) {
@@ -4300,6 +4310,49 @@ button:disabled {
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
+.switch-account-dialog {
+  position: fixed;
+  margin: auto;
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  color: var(--foreground);
+  opacity: 1;
+  transform: none;
+}
+
+.switch-account-dialog::backdrop {
+  background: var(--overlay);
+}
+
+.switch-account-dialog .switch-remember-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-remember-choice input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.switch-preference-select {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--foreground);
+  background: var(--input);
+}
+
+.switch-progress .spinner {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
 .dialog p {
   margin-top: 11px;
   color: var(--muted);
@@ -5005,7 +5058,7 @@ button:disabled {
 
 @media (min-width: 1000px) {
   .account-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   }
 }
 

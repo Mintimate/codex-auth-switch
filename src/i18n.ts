@@ -51,6 +51,16 @@ export const useI18n = () => {
 };
 
 const backendErrorTranslations: Record<string, string> = {
+  "无法安全识别 Codex 桌面客户端，请手动退出后选择仅切换":
+    "Could not safely identify the Codex desktop app. Quit it manually, then choose Switch only.",
+  "Codex 未能正常退出，账号未切换；请结束任务并手动退出后重试":
+    "Codex did not quit normally. The account was not switched. Finish your tasks, quit manually, and try again.",
+  "当前系统暂不支持自动重启 Codex，请选择仅切换":
+    "Automatic Codex restart is not supported on this system. Choose Switch only.",
+  "自定义 CODEX_HOME 无法确认与桌面客户端一致，请选择仅切换":
+    "Cannot confirm that the desktop app uses this custom CODEX_HOME. Choose Switch only.",
+  "账号切换操作中断，请刷新账号状态后重试":
+    "Account switching was interrupted. Refresh the account status before retrying.",
   "代理配置文件格式错误，请检查 network-proxy.json":
     "Invalid proxy configuration. Check network-proxy.json.",
   "无法读取代理配置文件，请检查 network-proxy.json 的访问权限":

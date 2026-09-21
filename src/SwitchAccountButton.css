@@ -1,17 +1,15 @@
 .switch-account-button {
-  position: relative;
-}
-
-.switch-account-button[aria-busy="true"] .switch-account-label {
-  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-inline-end: auto;
 }
 
 .switch-account-arrows {
-  position: absolute;
-  inset: 0;
-  width: 24px;
-  height: 24px;
-  margin: auto;
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -19,11 +17,11 @@
   stroke-linejoin: round;
 }
 
-.switch-account-arrows path {
+.switch-account-button[aria-busy="true"] .switch-account-arrows path {
   animation: account-exchange 420ms ease-in-out infinite;
 }
 
-.switch-account-arrows path + path {
+.switch-account-button[aria-busy="true"] .switch-account-arrows path + path {
   animation-delay: -210ms;
 }
 
@@ -38,7 +36,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .switch-account-arrows path {
+  .switch-account-button[aria-busy="true"] .switch-account-arrows path {
     animation: none;
   }
 }
