@@ -1,8 +1,9 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type { AppTab } from "./appTypes";
+import { BrandIcon } from "./BrandIcon";
+import { ExternalLink } from "./ExternalLink";
 import type { Translate } from "./i18n";
+import { PROJECT_LINKS } from "./projectLinks";
 
-const GITHUB_REPOSITORY_URL = "https://github.com/Mintimate/codex-auth-switch";
 const APP_TABS: AppTab[] = [
   "accounts",
   "config",
@@ -38,14 +39,6 @@ function AppIcon() {
           d="M352.041 499.573c-.081-1.362-.721-12.203 2.829-16.813 1.814-2.355 6.189-7.88 14.682-8.763 2.244-.233 87.829-.078 93.966.04 8.716.167 21.347 8.447 18.306 25.524-1.929 10.833-12.674 15.472-15.327 15.925-7.491 1.28-7.53.336-94.994.317-8.966-.001-17.356-5.987-19.462-16.23Z"
         />
       </g>
-    </svg>
-  );
-}
-
-function GitHubIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.82c.85 0 1.71.11 2.51.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
     </svg>
   );
 }
@@ -203,24 +196,15 @@ export function WorkspaceToolbar({
           <PrivacyModeIcon enabled={privateMode} />
           <span>{t("privacyMode")}</span>
         </button>
-        <button
-          type="button"
+        <ExternalLink
+          href={PROJECT_LINKS.githubRepository}
           className="github-link"
           aria-label={t("github")}
-          title={GITHUB_REPOSITORY_URL}
-          onClick={() =>
-            void openUrl(GITHUB_REPOSITORY_URL).catch((reason) =>
-              onError(
-                t("githubOpenFailed", {
-                  message:
-                    reason instanceof Error ? reason.message : String(reason),
-                }),
-              ),
-            )
-          }
+          title={PROJECT_LINKS.githubRepository}
+          onOpenError={() => onError(t("githubOpenFailed"))}
         >
-          <GitHubIcon />
-        </button>
+          <BrandIcon brand="github" size={14} />
+        </ExternalLink>
         <span className="unofficial">{t("localOnly")}</span>
       </div>
     </header>

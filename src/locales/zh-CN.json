@@ -20,7 +20,7 @@
   "quotaTab": "订阅额度",
   "settingsTab": "设置",
   "github": "在 GitHub 查看项目仓库",
-  "githubOpenFailed": "无法打开 GitHub：{message}",
+  "githubOpenFailed": "无法打开 GitHub，请稍后重试。",
   "loadingStatus": "正在读取本机 Codex 登录状态…",
   "currentLogin": "当前登录",
   "currentAccountUnsaved": "尚未保存当前账号",

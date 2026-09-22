@@ -1,7 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import type { MouseEvent } from "react";
 import { Check, ChevronDown, RefreshCw } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { ExternalLink } from "./ExternalLink";
 import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
 import type { Locale, Translate } from "./i18n";
@@ -183,13 +182,6 @@ export function QuotaCostPanel({
       : value > 0 && value < 0.01
         ? `< ${money.format(0.01)}`
         : money.format(value);
-
-  function openDocumentation(event: MouseEvent<HTMLAnchorElement>) {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    event.preventDefault();
-    setLinkFailed(false);
-    void openUrl(event.currentTarget.href).catch(() => setLinkFailed(true));
-  }
 
   return (
     <section className="quota-cost-panel" aria-label={t("costTitle")}>
@@ -418,24 +410,22 @@ export function QuotaCostPanel({
         <p className="cost-note">{t("costDisclaimer")}</p>
         {pricing && (
           <div className="cost-source">
-            <a
+            <ExternalLink
               className="text-button"
               href="https://developers.openai.com/api/docs/pricing"
-              target="_blank"
-              rel="noreferrer"
-              onClick={openDocumentation}
+              onOpen={() => setLinkFailed(false)}
+              onOpenError={() => setLinkFailed(true)}
             >
               {t("costSource")}
-            </a>
-            <a
+            </ExternalLink>
+            <ExternalLink
               className="text-button"
               href="https://developers.openai.com/api/docs/guides/prompt-caching#multi-turn-agent"
-              target="_blank"
-              rel="noreferrer"
-              onClick={openDocumentation}
+              onOpen={() => setLinkFailed(false)}
+              onOpenError={() => setLinkFailed(true)}
             >
               {t("costCacheSource")}
-            </a>
+            </ExternalLink>
             <span>
               {t(
                 pricing.source === "bundled"

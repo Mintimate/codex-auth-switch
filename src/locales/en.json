@@ -20,7 +20,7 @@
   "quotaTab": "Subscription quotas",
   "settingsTab": "Settings",
   "github": "View the project on GitHub",
-  "githubOpenFailed": "Could not open GitHub: {message}",
+  "githubOpenFailed": "Could not open GitHub. Please try again.",
   "loadingStatus": "Reading the local Codex login status…",
   "currentLogin": "Current login",
   "currentAccountUnsaved": "Current account is not saved",
