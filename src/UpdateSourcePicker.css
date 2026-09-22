@@ -1,0 +1,174 @@
+.settings-update-sources {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.update-source-picker {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.update-source-picker legend {
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.update-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 10px;
+}
+
+.update-source-card {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.update-source-card::before {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: -1;
+  width: 128px;
+  height: 44px;
+  border-radius: 0 0 5px 0;
+  background: radial-gradient(circle, var(--muted) 0.7px, transparent 1px) 0 0 /
+    8px 8px;
+  mask-image: linear-gradient(135deg, transparent 10%, #000);
+  opacity: 0.18;
+  pointer-events: none;
+  content: "";
+}
+
+.update-source-card[data-source="cnb"]::before {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 7px,
+    var(--muted) 7px 8px
+  );
+  opacity: 0.12;
+}
+
+.update-source-card.is-selected {
+  border-color: var(--border-strong);
+}
+
+.update-source-card:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.update-source-option {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 9px 9px 0 0;
+  padding: 12px 14px 6px;
+  cursor: pointer;
+}
+
+.update-source-option:hover:not(.is-disabled) {
+  background: var(--glow-start);
+}
+
+.update-source-option.is-disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.update-source-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-source-icon {
+  color: var(--foreground);
+}
+
+.update-source-title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.update-source-title strong {
+  font-size: var(--text-body);
+}
+
+.update-source-title > span {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.update-source-option input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+
+.update-source-description {
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: var(--leading-relaxed);
+}
+
+.update-source-release-link {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  margin: 0 14px 8px;
+  border-radius: 5px;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  text-decoration: none;
+}
+
+.update-source-release-link:hover {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.update-source-release-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.update-source-notes {
+  margin-top: 10px;
+  color: var(--muted-soft);
+  font-size: var(--text-caption);
+  line-height: var(--leading-relaxed);
+}
+
+.update-source-notes p {
+  margin: 0;
+}
+
+.settings-update-sources .update-source-link-error {
+  margin: 6px 0 0;
+  color: var(--danger);
+  font-size: var(--text-caption);
+  line-height: var(--leading-relaxed);
+}

@@ -24,6 +24,7 @@ import {
 import type { AppTab } from "./appTypes";
 import type { Locale, MessageKey, Translate } from "./i18n";
 import { ThemeMode } from "./theme";
+import { UpdateSourcePicker } from "./UpdateSourcePicker";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
 
@@ -800,26 +801,16 @@ export function SettingsPanel({
             <p>{t("softwareUpdateHint")}</p>
           </div>
 
-          <div className="settings-row">
-            <div>
-              <strong>{t("updateSource")}</strong>
-              <span>{t("updateSourceHint")}</span>
-            </div>
-            <SegmentedControl
-              ariaLabel={t("updateSource")}
-              disabled={checkingUpdate || installingUpdate}
-              options={[
-                { label: "GitHub", value: "github" },
-                { label: "CNB", value: "cnb" },
-              ]}
-              value={updateSource}
-              onChange={(source) => {
-                setAppUpdate(null);
-                setUpdateError(null);
-                setUpdateSource(source);
-              }}
-            />
-          </div>
+          <UpdateSourcePicker
+            disabled={checkingUpdate || installingUpdate}
+            value={updateSource}
+            onChange={(source) => {
+              setAppUpdate(null);
+              setUpdateError(null);
+              setUpdateSource(source);
+            }}
+            t={t}
+          />
 
           <div className="settings-row">
             <div>
