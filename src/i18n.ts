@@ -51,6 +51,7 @@ export const useI18n = () => {
 };
 
 const backendErrorTranslations: Record<string, string> = {
+  请先完成或取消正在进行的登录: "Complete or cancel the current sign-in first.",
   "无法安全识别 Codex 桌面客户端，请手动退出后选择仅切换":
     "Could not safely identify the Codex desktop app. Quit it manually, then choose Switch only.",
   "Codex 未能正常退出，账号未切换；请结束任务并手动退出后重试":

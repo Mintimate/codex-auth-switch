@@ -43,7 +43,7 @@ The sidebar organizes actions and data into six pages:
 
 | Page                         | Purpose                                                                                                                  |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Accounts                     | Save, rename, and switch local accounts; sign in through Device Code; transfer Auth once with a QR code or clipboard     |
+| Accounts                     | Save, rename, and switch local accounts; sign in through local Codex or Device Code; transfer Auth once with a QR code or clipboard     |
 | Codex config                 | Edit credential storage, context window, reasoning, response verbosity, and web search settings                          |
 | Token usage                  | View local session totals, daily trends, and attribution by account and model provider                                   |
 | Subscription quotas          | Search, filter, and compare account quotas, recovery times, reset credits, and daily activity                            |
@@ -101,11 +101,16 @@ Open **Codex config** in the sidebar and select **File** under **Credential stor
 cli_auth_credentials_store = "file"
 ```
 
-The app does not change an existing storage mode automatically. Account management is unavailable when `auto` or `keyring` is selected, and API Key authentication is never saved as a subscription account.
+The app does not change an existing storage mode automatically. Saving the current account, switching, and quota queries require file storage. Local Codex sign-in can still save a new account under `auto` or `keyring`; file storage is enabled explicitly when switching, and API Key authentication is never saved as a subscription account.
 
 ### 2. Save or add an account
 
-Open the app to save the current Codex ChatGPT login, or select **Add account**, choose a local name, and complete Device Code authorization in a browser. Successful authorization automatically saves and switches to the new account; restart Codex for the new account to take effect.
+Save the current Codex ChatGPT login, or select **Add account**, choose a local name and a sign-in method:
+
+- **Local Codex sign-in (experimental)** is off by default. Enable it in **Labs**, then select it in **Add account**. It uses an installed Codex CLI or bundled desktop runtime for browser authorization. It saves the account to the local vault; switch afterward or from the account list. Signing in to an existing account updates its record and marks the new login as ready to switch.
+- **OAuth sign-in (device code)** retains the existing Device OAuth flow. Enter the pairing code and authorize to save and switch automatically, then restart Codex.
+
+Local Codex sign-in uses a separate temporary directory and preserves current authentication and storage settings. Open the authorization link on this computer so its local callback can complete. If the runtime is unavailable, unsupported, or the callback port is occupied, end the sign-in and use a device code. Cancellation, timeout, and normal app exit stop the sign-in process and remove its temporary directory; startup removes leftover session directories older than a day.
 
 ### 3. Switch accounts
 
@@ -113,11 +118,15 @@ Select **Switch** beside the two-arrow icon, then choose **Switch only** or **Sw
 
 Restarting validates the target and desktop app, requests a normal quit, waits for the app to exit, saves the previous account's latest credentials, atomically replaces `auth.json`, and reopens the same app. Finish running tasks first. A quit timeout leaves authentication unchanged and never force-kills processes. A launch failure is reported separately after a successful account switch. An app that is already closed is not launched.
 
-The local restart compatibility layer supports macOS (`com.openai.codex`) and identifiable OpenAI Codex desktop executables on Windows. It does not terminate standalone CLI or IDE sessions. Use **Switch only** and restart manually on Linux, with a custom `CODEX_HOME`, multiple desktop instances, or an unidentified client. This preference does not affect new account sign-in or Auth imports. This is a local compatibility implementation, not an officially guaranteed account-switching API.
+The local restart compatibility layer supports macOS (`com.openai.codex`) and identifiable OpenAI Codex desktop executables on Windows. It does not terminate standalone CLI or IDE sessions. Use **Switch only** and restart manually on Linux, with a custom `CODEX_HOME`, multiple desktop instances, or an unidentified client. This preference does not affect Device Code sign-in or Auth imports; switching after local Codex sign-in uses this preference. This is a local compatibility implementation, not an officially guaranteed account-switching API.
 
 ### 4. Transfer to another device (optional)
 
 One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions on the sending device first; the receiver immediately refreshes and validates the account during import, then restart Codex after the credentials are written for the switch to take effect. For ongoing access on both devices, start a new OAuth authorization on the receiving device instead.
+
+## Labs
+
+Labs groups experimental features in the sidebar. Local Codex sign-in is off by default, and its toggle is saved only on this device. Enable it to choose local Codex or OAuth in the sign-in dialog. Turning it off restores OAuth as the available method and keeps saved accounts.
 
 ## Codex Configuration
 
@@ -193,7 +202,8 @@ accounts.v1.json
 
 ## Current Limitations
 
-- Saving and switching accounts, querying subscription quotas, and loading account usage for the value simulator require `cli_auth_credentials_store = "file"`; local Token usage does not
+- Saving the current account, switching accounts, querying subscription quotas, and loading account usage for the value simulator require `cli_auth_credentials_store = "file"`; local Token usage does not
+- Local Codex sign-in requires App Server support for `account/login/start`; capabilities depend on the installed version. Initialization was checked on macOS; real authorization and Windows/Linux still need manual smoke testing.
 - Device Code login is still beta and may need to be enabled by the user or workspace administrator
 - The official App Server does not provide subscription expiry, and local Token totals are not the official subscription quota
 - Historical sessions lack reliable account IDs, so attribution begins after the app starts recording the switch timeline

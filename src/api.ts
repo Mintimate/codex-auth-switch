@@ -10,6 +10,32 @@ export type AccountSummary = {
   createdAt: number;
   updatedAt: number;
   active: boolean;
+  pendingLogin?: boolean;
+};
+
+export type LoginMethod = "device" | "hosted";
+export type HostedLoginError =
+  | "unavailable"
+  | "unsupported"
+  | "portInUse"
+  | "network"
+  | "rateLimited"
+  | "rejected"
+  | "invalidResponse"
+  | "storage"
+  | "expired"
+  | "cleanup"
+  | "cancelled"
+  | "busy"
+  | "browser"
+  | "clipboard";
+export type HostedLoginStatus = {
+  sessionId: string;
+  phase:
+    "preparing" | "waiting" | "saving" | "completed" | "failed" | "cancelled";
+  error: HostedLoginError | null;
+  profileId: string | null;
+  cleanupPending: boolean;
 };
 
 export type AppStatus = {
@@ -489,12 +515,37 @@ const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
   </svg>
 `)}`;
 
+let previewHostedLogin: HostedLoginStatus | null = null;
 let previewCacheBytes = 256 * 1024;
 
 const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (import.meta.env.DEV && !isTauri()) {
+    if (command === "start_hosted_login") {
+      previewHostedLogin = {
+        sessionId: "preview-hosted",
+        phase: "waiting",
+        error: null,
+        profileId: null,
+        cleanupPending: true,
+      };
+      return Promise.resolve(structuredClone(previewHostedLogin) as T);
+    }
+    if (command === "get_hosted_login")
+      return Promise.resolve(structuredClone(previewHostedLogin) as T);
+    if (command === "cancel_hosted_login") {
+      if (previewHostedLogin)
+        previewHostedLogin = {
+          ...previewHostedLogin,
+          phase: "cancelled",
+          cleanupPending: false,
+        };
+      return Promise.resolve(structuredClone(previewHostedLogin) as T);
+    }
+    // 网页预览不启动登录、不打开授权地址。
+    if (command === "open_hosted_login" || command === "copy_hosted_login")
+      return Promise.reject("unavailable");
     if (command === "desktop_restart_supported")
       return Promise.resolve(true as T);
     if (
@@ -736,6 +787,17 @@ export const installAppUpdate = () => call<boolean>("install_app_update");
 
 export const saveCurrent = (label: string) =>
   call<AppStatus>("save_current", { label });
+
+export const startHostedLogin = (label: string) =>
+  call<HostedLoginStatus>("start_hosted_login", { label });
+export const getHostedLogin = () =>
+  call<HostedLoginStatus | null>("get_hosted_login");
+export const cancelHostedLogin = (sessionId: string) =>
+  call<HostedLoginStatus>("cancel_hosted_login", { sessionId });
+export const openHostedLogin = (sessionId: string) =>
+  call<void>("open_hosted_login", { sessionId });
+export const copyHostedLogin = (sessionId: string) =>
+  call<void>("copy_hosted_login", { sessionId });
 
 export const startDeviceLogin = (label: string) =>
   call<DeviceLoginResponse>("start_device_login", { label });

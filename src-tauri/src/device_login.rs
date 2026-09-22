@@ -24,6 +24,14 @@ struct LoginSession {
 }
 
 impl DeviceLoginState {
+    pub async fn active(&self) -> bool {
+        self.session
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|s| Instant::now() < s.expires_at)
+    }
+
     pub async fn register(&self, response: &DeviceLoginResponse, label: String) {
         *self.session.lock().await = Some(Arc::new(LoginSession {
             device_code: response.device_code.clone(),

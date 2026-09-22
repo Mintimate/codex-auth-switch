@@ -19,12 +19,21 @@ import {
   renameAccount,
   saveCurrent,
   startDeviceLogin,
+  startHostedLogin,
+  getHostedLogin,
+  HostedLoginStatus,
+  LoginMethod,
   desktopRestartSupported,
   switchAccountWithOptions,
   SwitchPreference,
   SwitchStage,
   LocalUsageStats,
 } from "./api";
+import {
+  HostedLoginDialog,
+  hostedErrorKey,
+  hostedActive,
+} from "./HostedLoginDialog";
 import { AccountsPage } from "./AccountsPage";
 import { AppSidebar, WorkspaceToolbar } from "./AppChrome";
 import type { AppTab } from "./appTypes";
@@ -41,6 +50,7 @@ import {
 } from "./AppDialogs";
 import { localizeBackendError, Locale, MessageKey, useI18n } from "./i18n";
 import { SettingsPanel } from "./SettingsPanel";
+import { LabsPanel } from "./LabsPanel";
 import { CodexConfigPanel } from "./CodexConfigPanel";
 import { ThemeMode, useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
@@ -58,6 +68,7 @@ const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
 const PRIVATE_MODE_STORAGE_KEY = "codex-auth-switch-private-mode";
 const SWITCH_PREFERENCE_STORAGE_KEY = "codex-auth-switch-switch-preference";
+const LABS_HOSTED_LOGIN_STORAGE_KEY = "codex-auth-switch-labs-hosted-login";
 const switchStageKeys: Record<SwitchStage, MessageKey> = {
   checking: "switchProgressChecking",
   closing: "switchProgressClosing",
@@ -78,6 +89,7 @@ const storedDefaultTab = (): AppTab => {
     value === "usage" ||
     value === "quota" ||
     value === "value" ||
+    value === "labs" ||
     value === "settings"
     ? value
     : "accounts";
@@ -126,6 +138,33 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [restartRequired, setRestartRequired] = useState(false);
+  const [hostedStartError, setHostedStartError] = useState<MessageKey | null>(
+    null,
+  );
+  const [hostedLoginEnabled, setHostedLoginEnabled] = useState(
+    () => window.localStorage.getItem(LABS_HOSTED_LOGIN_STORAGE_KEY) === "true",
+  );
+  const [preferredLoginMethod, setLoginMethod] =
+    useState<LoginMethod>("device");
+  // 实验室关闭后，即使上次选择过本地登录，新登录也只走设备码。
+  const loginMethod: LoginMethod = hostedLoginEnabled
+    ? preferredLoginMethod
+    : "device";
+  const [hostedLogin, setHostedLogin] = useState<HostedLoginStatus | null>(
+    null,
+  );
+  useEffect(() => {
+    let disposed = false;
+    void getHostedLogin()
+      .then((session) => {
+        if (!disposed && session && hostedActive(session))
+          setHostedLogin((current) => current ?? session);
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, []);
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [oauthTransitioning, setOauthTransitioning] = useState(false);
   const oauthTransitioningRef = useRef(false);
@@ -315,6 +354,13 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(DEFAULT_TAB_STORAGE_KEY, defaultTab);
   }, [defaultTab]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      LABS_HOSTED_LOGIN_STORAGE_KEY,
+      String(hostedLoginEnabled),
+    );
+  }, [hostedLoginEnabled]);
 
   useEffect(() => {
     workspaceRef.current?.scrollTo({ top: 0 });
@@ -534,11 +580,29 @@ function App() {
     setDialog(mode);
     setLabel(initialLabel);
     setSelectedId(profileId);
+    setHostedStartError(null);
   };
 
   const submitDialog = async () => {
     const nextLabel = label.trim();
     if (!nextLabel || !dialog) return;
+    if (dialog === "login" && loginMethod === "hosted") {
+      if (oauthTransitioningRef.current) return;
+      oauthTransitioningRef.current = true;
+      setOauthTransitioning(true);
+      setError(null);
+      try {
+        setHostedStartError(null);
+        setHostedLogin(await startHostedLogin(nextLabel));
+        setDialog(null);
+      } catch (reason) {
+        setHostedStartError(hostedErrorKey(reason));
+      } finally {
+        oauthTransitioningRef.current = false;
+        setOauthTransitioning(false);
+      }
+      return;
+    }
 
     if (dialog === "login") {
       if (oauthTransitioningRef.current) return;
@@ -775,6 +839,7 @@ function App() {
 
             {activeTab === "accounts" && (
               <AccountsPage
+                hostedLoginEnabled={hostedLoginEnabled}
                 busy={Boolean(busy) || loading || switchingId !== null}
                 loading={loading}
                 locale={locale}
@@ -907,6 +972,36 @@ function App() {
               </div>
             )}
 
+            {activeTab === "labs" && (
+              <div
+                id="labs-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("labsTab")}
+              >
+                <LabsPanel
+                  hostedLoginEnabled={hostedLoginEnabled}
+                  onHostedLoginChange={(enabled) => {
+                    setHostedLoginEnabled(enabled);
+                    setHostedStartError(null);
+                    if (!enabled) setLoginMethod("device");
+                  }}
+                  onTryHostedLogin={() => {
+                    if (!hostedLoginEnabled) return;
+                    setLoginMethod("hosted");
+                    setActiveTab("accounts");
+                    openDialog(
+                      "login",
+                      t("numberedAccount", {
+                        number: (status?.accounts.length ?? 0) + 1,
+                      }),
+                    );
+                  }}
+                  t={t}
+                />
+              </div>
+            )}
+
             {activeTab === "settings" && (
               <div
                 id="settings-panel"
@@ -1006,7 +1101,45 @@ function App() {
         t={t}
       />
 
+      <HostedLoginDialog
+        login={hostedLogin}
+        onChange={setHostedLogin}
+        onSaved={async () => {
+          const latest = await getStatus();
+          statusRef.current = latest;
+          setStatus(latest);
+        }}
+        onSwitch={async (id) => {
+          if (!statusRef.current?.supported) {
+            const latest = await enableFileCredentialStorage().catch(() => {
+              throw "storage";
+            });
+            statusRef.current = latest;
+            setStatus(latest);
+          }
+          setHostedLogin(null);
+          requestSwitch(id);
+        }}
+        requiresFileStorage={!status?.supported}
+        onDevice={() => {
+          setHostedLogin(null);
+          setLoginMethod("device");
+          openDialog("login", label);
+        }}
+        t={t}
+      />
       <AccountNameDialog
+        hostedLoginEnabled={hostedLoginEnabled}
+        onOpenLabs={() => {
+          setDialog(null);
+          setActiveTab("labs");
+        }}
+        loginMethod={loginMethod}
+        onLoginMethodChange={(method) => {
+          setLoginMethod(method);
+          setHostedStartError(null);
+        }}
+        loginError={hostedStartError ? t(hostedStartError) : null}
         label={label}
         mode={dialog}
         oauthTransitioning={oauthTransitioning}
@@ -1014,7 +1147,9 @@ function App() {
         onLabelChange={setLabel}
         onSubmit={() => void submitDialog()}
         privateMode={privateMode}
-        requiresFileStorage={dialog === "login" && !status?.supported}
+        requiresFileStorage={
+          dialog === "login" && loginMethod === "device" && !status?.supported
+        }
         storageMode={status?.storageMode ?? "unsupported"}
         t={t}
       />

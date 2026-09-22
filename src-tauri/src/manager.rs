@@ -154,6 +154,7 @@ pub struct AccountSummary {
     pub created_at: u64,
     pub updated_at: u64,
     pub active: bool,
+    pub pending_login: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -342,6 +343,9 @@ struct ProfileRecord {
     auth: Value,
     created_at: u64,
     updated_at: u64,
+    // 独立登录尚未激活时，不允许运行中客户端的旧会话覆盖这份凭据。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pending_login: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -466,6 +470,7 @@ impl AccountManager {
             .into_iter()
             .map(|profile| AccountSummary {
                 active: active_account_id.as_deref() == Some(profile.account_id.as_str()),
+                pending_login: profile.pending_login,
                 id: profile.id,
                 label: profile.label,
                 account_id: profile.account_id,
@@ -498,6 +503,11 @@ impl AccountManager {
         let identity = validate_chatgpt_auth(&auth)?;
         let mut vault = self.load_vault()?;
         upsert_profile(&mut vault, auth, Some(label))?;
+        for profile in &mut vault.profiles {
+            if profile.account_id == identity.account_id {
+                profile.pending_login = false;
+            }
+        }
         record_activation(&mut vault, &identity.account_id, unix_timestamp());
         self.save_vault(&vault)?;
         self.status()
@@ -630,7 +640,7 @@ impl AccountManager {
             .ok()
             .and_then(|auth| validate_chatgpt_auth(&auth).ok())
             .is_some_and(|active| active.account_id == identity.account_id);
-        if selected_account_is_active {
+        if selected_account_is_active && !profile.pending_login {
             // refresh_token 已经轮换时，优先更新 Codex 正在读取的缓存，避免它继续使用旧值。
             self.write_live_auth(&refreshed_auth)?;
         }
@@ -776,6 +786,34 @@ impl AccountManager {
         Ok(Some(auth))
     }
 
+    pub(crate) fn validate_login_label(&self, label: &str) -> Result<(), ManagerError> {
+        validate_label(label)?;
+        self.load_vault()?;
+        Ok(())
+    }
+
+    // 官方托管登录仅保存账号，不修改当前 Home、配置或激活历史。
+    pub(crate) fn save_hosted_login(
+        &self,
+        auth: &Value,
+        label: &str,
+    ) -> Result<String, ManagerError> {
+        let label = validate_label(label)?;
+        let auth = canonical_chatgpt_auth(auth)?;
+        let identity = validate_chatgpt_auth(&auth)?;
+        let mut vault = self.load_vault()?;
+        upsert_profile(&mut vault, auth, Some(label))?;
+        let profile = vault
+            .profiles
+            .iter_mut()
+            .find(|p| p.account_id == identity.account_id)
+            .ok_or(ManagerError::ProfileNotFound)?;
+        profile.pending_login = true;
+        let id = profile.id.clone();
+        self.save_vault(&vault)?;
+        Ok(id)
+    }
+
     pub(crate) fn complete_device_login(
         &self,
         auth: Value,
@@ -804,6 +842,11 @@ impl AccountManager {
         });
         self.save_vault(vault)?;
         self.write_live_auth(auth)?;
+        for profile in &mut vault.profiles {
+            if profile.account_id == identity.account_id {
+                profile.pending_login = false;
+            }
+        }
         record_activation(vault, &identity.account_id, activated_at);
         vault.pending_activation = None;
         self.save_vault(vault)
@@ -1012,6 +1055,19 @@ impl AccountManager {
         live_auth: Option<&Value>,
         active_account_id: Option<&str>,
     ) -> Result<bool, ManagerError> {
+        if let Some(profile) = vault
+            .profiles
+            .iter_mut()
+            .find(|p| p.account_id == account_id && p.pending_login)
+        {
+            // 未激活的新登录只在账号库内轮换，不能借额度查询隐式切换真实 Home。
+            if profile.auth == *original_auth {
+                profile.auth = refreshed_auth.clone();
+                profile.updated_at = unix_timestamp();
+                return Ok(true);
+            }
+            return Ok(false);
+        }
         let active_is_target = active_account_id == Some(account_id);
         let active_auth_unchanged = !active_is_target || live_auth == Some(original_auth);
         if !active_auth_unchanged {
@@ -1266,6 +1322,13 @@ impl AccountManager {
                 .ok()
                 .and_then(|auth| validate_chatgpt_auth(&auth).ok());
             if active.is_some_and(|identity| identity.account_id == pending.account_id) {
+                if let Ok(live_auth) = self.read_live_auth() {
+                    for profile in &mut vault.profiles {
+                        if profile.account_id == pending.account_id && profile.auth == live_auth {
+                            profile.pending_login = false;
+                        }
+                    }
+                }
                 record_activation(vault, &pending.account_id, pending.activated_at);
             }
         }
@@ -1294,6 +1357,13 @@ fn refresh_saved_profile(vault: &mut Vault, auth: Value) -> Result<bool, Manager
     let Ok(identity) = validate_chatgpt_auth(&auth) else {
         return Ok(false);
     };
+    if vault
+        .profiles
+        .iter()
+        .any(|p| p.account_id == identity.account_id && p.pending_login)
+    {
+        return Ok(false);
+    }
     if !vault
         .profiles
         .iter()
@@ -1344,6 +1414,7 @@ fn upsert_profile(
         auth,
         created_at: now,
         updated_at: now,
+        pending_login: false,
     });
     Ok(true)
 }
@@ -2772,6 +2843,73 @@ mod tests {
                 "account_id": account_id,
             }
         })
+    }
+
+    #[test]
+    fn hosted_login_preserves_live_credentials_config_and_activation_history() {
+        let (_root, manager) = test_manager();
+        let old = auth("account-a", "a@example.com", "synthetic-old");
+        manager.write_live_auth(&old).unwrap();
+        manager.save_current("旧名称").unwrap();
+        let history = serde_json::to_value(manager.load_vault().unwrap().activations).unwrap();
+        fs::write(
+            manager.config_path(),
+            "cli_auth_credentials_store = \"keyring\"\n",
+        )
+        .unwrap();
+        let config = fs::read(manager.config_path()).unwrap();
+        let new = auth("account-a", "a@example.com", "synthetic-new");
+        let id = manager.save_hosted_login(&new, "新名称").unwrap();
+        assert!(manager.read_live_auth().unwrap() == old);
+        assert!(fs::read(manager.config_path()).unwrap() == config);
+        assert!(
+            serde_json::to_value(manager.load_vault().unwrap().activations).unwrap() == history
+        );
+        assert_eq!(manager.status().unwrap().accounts.len(), 1);
+        assert!(manager.status().unwrap().accounts[0].pending_login);
+        manager.enable_file_credential_storage().unwrap();
+        let (mut vault, _) = manager.load_usage_vault().unwrap();
+        assert!(vault.profiles[0].auth == canonical_chatgpt_auth(&new).unwrap());
+        let refreshed = auth("account-a", "a@example.com", "synthetic-rotated");
+        let original = vault.profiles[0].auth.clone();
+        assert!(manager
+            .persist_refreshed_quota_auth(
+                &mut vault,
+                "account-a",
+                &original,
+                &refreshed,
+                Some(&old),
+                Some("account-a")
+            )
+            .unwrap());
+        manager.save_vault(&vault).unwrap();
+        assert!(manager.read_live_auth().unwrap() == old);
+        manager
+            .persist_refreshed_transfer(&id, refreshed.clone())
+            .unwrap();
+        assert!(manager.read_live_auth().unwrap() == old);
+        manager.switch_account(&id).unwrap();
+        assert!(!manager.status().unwrap().accounts[0].pending_login);
+        assert!(manager.read_live_auth().unwrap() == canonical_chatgpt_auth(&refreshed).unwrap());
+    }
+
+    #[test]
+    fn invalid_hosted_auth_and_save_failure_do_not_change_live_home() {
+        let (root, manager) = test_manager();
+        let old = auth("account-a", "a@example.com", "synthetic-old");
+        manager.write_live_auth(&old).unwrap();
+        assert!(manager
+            .save_hosted_login(
+                &json!({"auth_mode":"apikey","OPENAI_API_KEY":"synthetic-key"}),
+                "测试"
+            )
+            .is_err());
+        fs::create_dir_all(manager.vault_path()).unwrap();
+        assert!(manager
+            .save_hosted_login(&auth("account-b", "b@example.com", "synthetic-new"), "测试")
+            .is_err());
+        assert!(manager.read_live_auth().unwrap() == old);
+        assert!(root.path().exists());
     }
 
     fn test_manager() -> (TempDir, AccountManager) {

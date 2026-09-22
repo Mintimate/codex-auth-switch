@@ -9,6 +9,7 @@ const APP_TABS: AppTab[] = [
   "usage",
   "quota",
   "value",
+  "labs",
   "settings",
 ];
 
@@ -60,6 +61,13 @@ function PrivacyModeIcon({ enabled }: { enabled: boolean }) {
 }
 
 function TabIcon({ tab }: { tab: AppTab }) {
+  if (tab === "labs") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M7 2.5h6M8 2.5v5.3l-4.4 7.4A1.5 1.5 0 0 0 4.9 17.5h10.2a1.5 1.5 0 0 0 1.3-2.3L12 7.8V2.5M6 12h8" />
+      </svg>
+    );
+  }
   if (tab === "accounts") {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -115,6 +123,7 @@ const tabLabel = (tab: AppTab, t: Translate) => {
   if (tab === "usage") return t("usageTab");
   if (tab === "quota") return t("quotaTab");
   if (tab === "value") return t("costTitle");
+  if (tab === "labs") return t("labsTab");
   return t("settingsTab");
 };
 
@@ -153,7 +162,7 @@ export function AppSidebar({
             type="button"
             role="tab"
             disabled={disabled}
-            className={`${activeTab === tab ? "active" : ""}${tab === "settings" ? " settings-tab" : ""}`}
+            className={`${activeTab === tab ? "active" : ""}${tab === "labs" ? " labs-tab" : ""}`}
             aria-selected={activeTab === tab}
             aria-controls={`${tab}-panel`}
             onClick={() => onTabChange(tab)}

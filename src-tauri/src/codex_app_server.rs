@@ -357,7 +357,7 @@ fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
 
 // codex app-server 通过网络访问官方接口，代理模式需同步到其环境。
 // 使用配置覆盖兼容旧版 Codex：未知 feature 键会被忽略，--enable 则可能报错。
-fn apply_proxy_env(command: &mut Command, settings: &proxy::ProxySettings) {
+pub(crate) fn apply_proxy_env(command: &mut Command, settings: &proxy::ProxySettings) {
     use proxy::{ChildProxyEnv, PROXY_VARS_FOR_REMOVE};
     command.args([
         "-c",
@@ -397,7 +397,7 @@ fn apply_proxy_env(command: &mut Command, settings: &proxy::ProxySettings) {
     }
 }
 
-fn codex_executables() -> Vec<PathBuf> {
+pub(crate) fn codex_executables() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(path) = env::var_os("CODEX_BINARY") {
         paths.push(PathBuf::from(path));

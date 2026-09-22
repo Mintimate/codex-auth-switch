@@ -26,6 +26,7 @@ const shortId = (value: string) =>
   value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
 
 type AccountsPageProps = {
+  hostedLoginEnabled: boolean;
   busy: boolean;
   loading: boolean;
   locale: Locale;
@@ -76,6 +77,7 @@ function AccountsListSkeleton({ label }: { label: string }) {
 }
 
 export function AccountsPage({
+  hostedLoginEnabled,
   busy,
   loading,
   locale,
@@ -165,7 +167,11 @@ export function AccountsPage({
           <button
             className="button primary hero-action"
             aria-describedby="add-account-guide"
-            title={t("loginNewAccountHint")}
+            title={t(
+              hostedLoginEnabled
+                ? "loginNewAccountHint"
+                : "oauthLoginNewAccountHint",
+            )}
             disabled={busy || !status}
             onClick={() =>
               onLogin(
@@ -194,7 +200,9 @@ export function AccountsPage({
             {t("accountAddGuideLabel")}
             <ChevronDown size={14} aria-hidden="true" />
           </summary>
-          <p id="add-account-guide">{t("accountAddGuide")}</p>
+          <p id="add-account-guide">
+            {t(hostedLoginEnabled ? "accountAddGuide" : "oauthAccountAddGuide")}
+          </p>
         </details>
       </section>
 
@@ -282,6 +290,11 @@ export function AccountsPage({
                   <div className="account-main">
                     <div className="account-title-row">
                       <h3>{accountLabel}</h3>
+                      {account.pendingLogin && (
+                        <span className="active-badge">
+                          {t("hostedPendingSwitch")}
+                        </span>
+                      )}
                       {account.active && (
                         <span className="active-badge">{t("current")}</span>
                       )}
@@ -313,7 +326,7 @@ export function AccountsPage({
                     t={t}
                   />
                   <div className="account-actions">
-                    {!account.active && (
+                    {(!account.active || account.pendingLogin) && (
                       <SwitchAccountButton
                         disabled={busy || !status.supported}
                         switching={switchingId === account.id}

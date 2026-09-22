@@ -4,6 +4,7 @@ mod codex_app_server;
 mod desktop_client;
 mod device_login;
 mod diagnostics;
+mod hosted_login;
 mod manager;
 mod pricing;
 mod proxy;
@@ -16,14 +17,18 @@ use manager::{
     CodexManagedConfig, DeviceLoginResponse,
 };
 use serde::Serialize;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 use usage::{LocalUsageStats, ModelProviderState};
 
 struct AppState {
     device_login: device_login::DeviceLoginState,
-    operation_gate: Mutex<()>,
-    query_gate: query_gate::QueryGate,
+    hosted_login: hosted_login::HostedLoginState,
+    login_start_gate: Mutex<()>,
+    operation_gate: Arc<Mutex<()>>,
+    query_gate: Arc<query_gate::QueryGate>,
     prepared_auth_transfer: Mutex<Option<PreparedAuthTransferCache>>,
 }
 
@@ -247,12 +252,76 @@ async fn start_device_login(
     state: State<'_, AppState>,
     label: String,
 ) -> Result<DeviceLoginResponse, String> {
+    let _login = state.login_start_gate.lock().await;
+    if state.hosted_login.active().await {
+        return Err("请先完成或取消正在进行的登录".into());
+    }
     let response = account_manager(&app)?
         .start_device_login(&label)
         .await
         .map_err(|error| error.to_string())?;
     state.device_login.register(&response, label).await;
     Ok(response)
+}
+
+#[tauri::command]
+async fn start_hosted_login(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    label: String,
+) -> Result<hosted_login::LoginStatus, hosted_login::LoginError> {
+    let _login = state.login_start_gate.lock().await;
+    if state.device_login.active().await {
+        return Err(hosted_login::LoginError::Busy);
+    }
+    let manager = account_manager(&app).map_err(|_| hosted_login::LoginError::Storage)?;
+    state
+        .hosted_login
+        .start(
+            manager,
+            label,
+            state.operation_gate.clone(),
+            state.query_gate.clone(),
+        )
+        .await
+}
+
+#[tauri::command]
+async fn get_hosted_login(
+    state: State<'_, AppState>,
+) -> Result<Option<hosted_login::LoginStatus>, hosted_login::LoginError> {
+    Ok(state.hosted_login.status().await)
+}
+
+#[tauri::command]
+async fn cancel_hosted_login(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<hosted_login::LoginStatus, hosted_login::LoginError> {
+    state.hosted_login.cancel(&session_id).await
+}
+
+#[tauri::command]
+async fn open_hosted_login(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), hosted_login::LoginError> {
+    let url = state.hosted_login.auth_url(&session_id).await?;
+    app.opener()
+        .open_url(url, None::<String>)
+        .map_err(|_| hosted_login::LoginError::Browser)
+}
+
+#[tauri::command]
+async fn copy_hosted_login(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), hosted_login::LoginError> {
+    let url = state.hosted_login.auth_url(&session_id).await?;
+    arboard::Clipboard::new()
+        .and_then(|mut clipboard| clipboard.set_text(url))
+        .map_err(|_| hosted_login::LoginError::Clipboard)
 }
 
 #[tauri::command]
@@ -434,8 +503,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             device_login: device_login::DeviceLoginState::default(),
-            operation_gate: Mutex::new(()),
-            query_gate: query_gate::QueryGate::default(),
+            hosted_login: hosted_login::HostedLoginState::default(),
+            login_start_gate: Mutex::new(()),
+            operation_gate: Arc::new(Mutex::new(())),
+            query_gate: Arc::new(query_gate::QueryGate::default()),
             prepared_auth_transfer: Mutex::new(None),
         })
         .manage(app_update::AppUpdateState::default())
@@ -446,6 +517,7 @@ pub fn run() {
             if let Ok(manager) = account_manager(app.handle()) {
                 let path = manager.usage_cache_path();
                 tauri::async_runtime::spawn_blocking(move || {
+                    hosted_login::cleanup_stale(&manager);
                     let _ = usage::usage_cache_info(&path, false);
                 });
             }
@@ -475,6 +547,11 @@ pub fn run() {
             start_device_login,
             poll_device_login,
             cancel_device_login,
+            start_hosted_login,
+            get_hosted_login,
+            cancel_hosted_login,
+            open_hosted_login,
+            copy_hosted_login,
             switch_account,
             desktop_restart_supported,
             switch_account_with_options,
@@ -485,6 +562,11 @@ pub fn run() {
             import_auth_from_clipboard,
             import_auth_from_qr,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Codex Auth Switch");
+        .build(tauri::generate_context!())
+        .expect("failed to build Codex Auth Switch")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                tauri::async_runtime::block_on(app.state::<AppState>().hosted_login.shutdown());
+            }
+        });
 }

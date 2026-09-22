@@ -2,7 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { LoginFlow } from "./AccountFlow";
-import type { DeviceLoginResponse } from "./api";
+import type { DeviceLoginResponse, LoginMethod } from "./api";
 import { localizeBackendError } from "./i18n";
 import type { Locale, Translate } from "./i18n";
 import { containsEmail } from "./privacy";
@@ -52,7 +52,7 @@ const toBase64 = (bytes: Uint8Array) => {
   return btoa(binary);
 };
 
-function DialogPresence({
+export function DialogPresence({
   children,
   onBackdropMouseDown,
   open,
@@ -489,6 +489,11 @@ export function DeviceLoginDialog({
 }
 
 export function AccountNameDialog({
+  hostedLoginEnabled,
+  onOpenLabs,
+  loginError,
+  loginMethod,
+  onLoginMethodChange,
   label,
   mode,
   oauthTransitioning,
@@ -500,6 +505,11 @@ export function AccountNameDialog({
   storageMode,
   t,
 }: {
+  hostedLoginEnabled: boolean;
+  onOpenLabs: () => void;
+  loginError: string | null;
+  loginMethod: LoginMethod;
+  onLoginMethodChange: (method: LoginMethod) => void;
   label: string;
   mode: DialogMode;
   oauthTransitioning: boolean;
@@ -535,7 +545,22 @@ export function AccountNameDialog({
           }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          {mode === "login" && <LoginFlow t={t} />}
+          {mode === "login" &&
+            (loginMethod === "device" ? (
+              <LoginFlow t={t} />
+            ) : (
+              <section className="login-flow-guide hosted-guide">
+                <span className="eyebrow">Codex</span>
+                <h2>{t("hostedLoginTitle")}</h2>
+                <p>{t("hostedLoginIntro")}</p>
+                <ol>
+                  <li>{t("hostedStepBrowser")}</li>
+                  <li>{t("hostedStepSave")}</li>
+                  <li>{t("hostedStepSwitch")}</li>
+                </ol>
+                <p>{t("hostedPrerequisite")}</p>
+              </section>
+            ))}
           <div className={mode === "login" ? "login-form-pane" : undefined}>
             <span className="eyebrow">
               {mode === "login"
@@ -546,15 +571,53 @@ export function AccountNameDialog({
             </span>
             <h2>
               {mode === "login"
-                ? t("nameNewAccount")
+                ? t(hostedLoginEnabled ? "nameNewAccount" : "nameOAuthAccount")
                 : mode === "save"
                   ? t("saveThisAccount")
                   : t("renameAccount")}
             </h2>
+            {mode === "login" && hostedLoginEnabled && (
+              <fieldset className="login-methods" disabled={oauthTransitioning}>
+                <legend>{t("loginMethod")}</legend>
+                {(["hosted", "device"] as const).map((method) => (
+                  <label key={method}>
+                    <input
+                      type="radio"
+                      name="login-method"
+                      value={method}
+                      checked={loginMethod === method}
+                      autoFocus={loginMethod === method}
+                      onChange={() => onLoginMethodChange(method)}
+                    />
+                    <span>
+                      <strong>
+                        {t(
+                          method === "hosted"
+                            ? "hostedLoginTitle"
+                            : "deviceLoginMethod",
+                        )}
+                      </strong>
+                      {method === "hosted" && (
+                        <span className="experimental-badge">
+                          {t("experimental")}
+                        </span>
+                      )}
+                      <small>
+                        {t(
+                          method === "hosted"
+                            ? "hostedMethodHint"
+                            : "deviceMethodHint",
+                        )}
+                      </small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
             <label htmlFor="account-label">{t("displayName")}</label>
             <input
               id="account-label"
-              autoFocus
+              autoFocus={mode !== "login" || !hostedLoginEnabled}
               autoComplete="off"
               maxLength={60}
               type={privateMode && containsEmail(label) ? "password" : "text"}
@@ -571,7 +634,32 @@ export function AccountNameDialog({
                 <code>cli_auth_credentials_store = &quot;file&quot;</code>
               </div>
             )}
-            {mode === "login" && <p>{t("deviceLoginNextStep")}</p>}
+            {mode === "login" && (
+              <p>
+                {t(
+                  loginMethod === "hosted"
+                    ? "hostedSaveOnly"
+                    : "deviceLoginNextStep",
+                )}
+              </p>
+            )}
+            {mode === "login" && loginError && (
+              <p className="hosted-error" role="alert">
+                {loginError}
+              </p>
+            )}
+            {mode === "login" && !hostedLoginEnabled && (
+              <div className="login-labs-hint">
+                <span>{t("labsLoginHint")}</span>
+                <button
+                  type="button"
+                  disabled={oauthTransitioning}
+                  onClick={onOpenLabs}
+                >
+                  {t("openLabs")}
+                </button>
+              </div>
+            )}
             <div className="dialog-actions">
               <button
                 type="button"
@@ -589,9 +677,11 @@ export function AccountNameDialog({
                 disabled={!label.trim() || oauthTransitioning}
               >
                 {mode === "login"
-                  ? requiresFileStorage
-                    ? t("modifyConfigAndRequestLoginCode")
-                    : t("requestLoginCodeButton")
+                  ? loginMethod === "hosted"
+                    ? t("hostedStart")
+                    : requiresFileStorage
+                      ? t("modifyConfigAndRequestLoginCode")
+                      : t("requestLoginCodeButton")
                   : t("continue")}
                 {mode === "login" && (
                   <span className="oauth-pixel-burst" aria-hidden="true">
