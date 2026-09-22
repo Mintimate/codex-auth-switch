@@ -164,7 +164,7 @@ export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
       className="account-flow-section"
       aria-labelledby="account-flow-title"
     >
-      <div className="account-flow-heading">
+      <div className="accounts-section-heading account-flow-heading">
         <h2 id="account-flow-title">{t("flowTitle")}</h2>
         <p>
           <ShieldCheck size={14} aria-hidden="true" />

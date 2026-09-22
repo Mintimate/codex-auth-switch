@@ -2,10 +2,13 @@ import { AccountFlow } from "./AccountFlow";
 import { useState } from "react";
 import {
   ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   Pencil,
   Plus,
   QrCode,
+  RefreshCw,
   Save,
   Trash2,
 } from "lucide-react";
@@ -94,12 +97,22 @@ export function AccountsPage({
   status,
   t,
 }: AccountsPageProps) {
-  const [expandedQuotaId, setExpandedQuotaId] = useState<string | null>(null);
-  const active = status?.accounts.find((account) => account.active) ?? null;
+  const [expandedQuotaIds, setExpandedQuotaIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const accounts = status?.accounts ?? [];
+  const active = accounts.find((account) => account.active) ?? null;
+  const allQuotasExpanded =
+    accounts.length > 0 &&
+    accounts.every((account) => expandedQuotaIds.has(account.id));
+  const toggleAllLabel = t(
+    allQuotasExpanded ? "collapseAllAccountDetails" : "expandAllAccountDetails",
+  );
   const quotasByProfile = new Map(
     quotas?.map((quota) => [quota.profileId, quota]),
   );
   const quotaRefreshing = quotaRefreshingIds.length > 0;
+  const refreshingAccounts = loading || quotaRefreshing;
   const displayLabel = (value: string) =>
     privateMode ? redactEmails(value, t("emailHidden")) : value;
 
@@ -191,25 +204,61 @@ export function AccountsPage({
         t={t}
       />
 
-      <section className="accounts-section">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">{t("localVault")}</span>
-            <h2>{t("savedAccounts")}</h2>
-          </div>
-          <button
-            className="text-button"
-            disabled={busy || quotaRefreshing}
-            onClick={onRefresh}
+      <section
+        className="accounts-section"
+        aria-labelledby="saved-accounts-title"
+      >
+        <div className="accounts-section-heading">
+          <h2 id="saved-accounts-title">{t("savedAccounts")}</h2>
+          <div
+            className="account-list-toolbar"
+            role="group"
+            aria-label={t("accountListActions")}
           >
-            {loading || quotaRefreshing ? t("refreshing") : t("refresh")}
-          </button>
+            <button
+              type="button"
+              className={`text-button account-toolbar-button ${allQuotasExpanded ? "active" : ""}`}
+              title={toggleAllLabel}
+              aria-label={toggleAllLabel}
+              disabled={loading || accounts.length === 0}
+              onClick={() =>
+                setExpandedQuotaIds(
+                  allQuotasExpanded
+                    ? new Set()
+                    : new Set(accounts.map((account) => account.id)),
+                )
+              }
+            >
+              {allQuotasExpanded ? (
+                <ChevronsDownUp size={20} aria-hidden="true" />
+              ) : (
+                <ChevronsUpDown size={20} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="text-button account-toolbar-button"
+              title={t(refreshingAccounts ? "refreshing" : "refresh")}
+              aria-label={t(refreshingAccounts ? "refreshing" : "refresh")}
+              aria-busy={refreshingAccounts}
+              disabled={busy || quotaRefreshing}
+              onClick={onRefresh}
+            >
+              <RefreshCw
+                size={20}
+                className={refreshingAccounts ? "quota-icon-spinning" : ""}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <AccountsListSkeleton label={t("loadingStatus")} />
         ) : status?.accounts.length ? (
-          <div className="account-list">
+          <div
+            className={`account-list ${allQuotasExpanded ? "all-expanded" : ""}`}
+          >
             {status.accounts.map((account) => {
               const accountLabel = displayLabel(account.label);
               const quota = quotasByProfile.get(account.id) ?? null;
@@ -217,7 +266,7 @@ export function AccountsPage({
               const refreshError = rawError
                 ? displayLabel(localizeBackendError(rawError, locale))
                 : null;
-              const expanded = expandedQuotaId === account.id;
+              const expanded = expandedQuotaIds.has(account.id);
               const detailId = `account-quota-${account.id}`;
               const refreshing = quotaRefreshingIds.includes(account.id);
               return (
@@ -250,7 +299,12 @@ export function AccountsPage({
                     detailId={detailId}
                     expanded={expanded}
                     onToggle={() =>
-                      setExpandedQuotaId(expanded ? null : account.id)
+                      setExpandedQuotaIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(account.id)) next.delete(account.id);
+                        else next.add(account.id);
+                        return next;
+                      })
                     }
                     quota={quota}
                     refreshing={refreshing}
