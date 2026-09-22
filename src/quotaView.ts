@@ -20,15 +20,25 @@ const TOKEN_UNITS = [
   { minimum: 1_000, suffix: "K" },
 ];
 
-export const formatWindow = (minutes: number | null, t: Translate) => {
+export const formatWindow = (
+  minutes: number | null,
+  t: Translate,
+  compact = false,
+) => {
   if (!minutes) return t("quotaWindow");
   if (minutes % 1440 === 0) {
-    return t("daysWindow", { count: minutes / 1440 });
+    return t(compact ? "shortDaysWindow" : "daysWindow", {
+      count: minutes / 1440,
+    });
   }
   if (minutes % 60 === 0) {
-    return t("hoursWindow", { count: minutes / 60 });
+    return t(compact ? "shortHoursWindow" : "hoursWindow", {
+      count: minutes / 60,
+    });
   }
-  return t("minutesWindow", { count: minutes });
+  return t(compact ? "shortMinutesWindow" : "minutesWindow", {
+    count: minutes,
+  });
 };
 
 export const formatDate = (
@@ -77,6 +87,22 @@ export const quotaWindows = (quota: AccountQuota) =>
       Boolean(window),
     ),
   );
+
+// 首页最多展示一个额度池，避免把不同模型的窗口混为同一份额度。
+export const summaryQuotaBucket = (quota: AccountQuota | null) => {
+  if (!quota?.success) return null;
+  const buckets = quotaBuckets(quota).filter(
+    (bucket) => bucket.primary || bucket.secondary,
+  );
+  return buckets.find((bucket) => bucket.id === "codex") ?? buckets[0] ?? null;
+};
+
+export const remainingQuotaPercent = (window: UsageWindow | null) => {
+  if (!window || !Number.isFinite(window.usedPercent)) return null;
+  return (
+    Math.round(Math.min(100, Math.max(0, 100 - window.usedPercent)) * 10) / 10
+  );
+};
 
 export const quotaUtilization = (quota: AccountQuota) => {
   const windows = quotaWindows(quota);

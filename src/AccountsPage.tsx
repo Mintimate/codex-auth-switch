@@ -1,8 +1,22 @@
 import { AccountFlow } from "./AccountFlow";
-import { Pencil, QrCode, Trash2 } from "lucide-react";
+import { useState } from "react";
+import {
+  ChevronDown,
+  Download,
+  Pencil,
+  Plus,
+  QrCode,
+  Save,
+  Trash2,
+} from "lucide-react";
+import {
+  AccountQuotaDetails,
+  AccountQuotaSummary,
+} from "./AccountQuotaSummary";
 import { SwitchAccountButton } from "./SwitchAccountButton";
-import type { AccountSummary, AppStatus } from "./api";
-import type { Translate } from "./i18n";
+import type { AccountQuota, AccountSummary, AppStatus } from "./api";
+import { localizeBackendError } from "./i18n";
+import type { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
 
 const shortId = (value: string) =>
@@ -11,6 +25,11 @@ const shortId = (value: string) =>
 type AccountsPageProps = {
   busy: boolean;
   loading: boolean;
+  locale: Locale;
+  quotas: AccountQuota[] | null;
+  quotaRefreshingIds: string[];
+  quotaRefreshErrors: Record<string, string>;
+  onRefreshQuota: (profileId: string) => void;
   switchingId: string | null;
   onImport: () => void;
   onLogin: (label: string) => void;
@@ -40,8 +59,8 @@ function AccountsListSkeleton({ label }: { label: string }) {
           <div className="account-main">
             <span className="usage-skeleton-block skeleton-account-name" />
             <span className="usage-skeleton-block skeleton-account-email" />
-            <span className="usage-skeleton-block skeleton-account-id" />
           </div>
+          <span className="usage-skeleton-block skeleton-account-quota" />
           <div className="account-actions account-skeleton-actions">
             <span className="usage-skeleton-block" />
             <span className="usage-skeleton-block" />
@@ -56,6 +75,11 @@ function AccountsListSkeleton({ label }: { label: string }) {
 export function AccountsPage({
   busy,
   loading,
+  locale,
+  quotas,
+  quotaRefreshingIds,
+  quotaRefreshErrors,
+  onRefreshQuota,
   switchingId,
   onImport,
   onLogin,
@@ -70,7 +94,12 @@ export function AccountsPage({
   status,
   t,
 }: AccountsPageProps) {
+  const [expandedQuotaId, setExpandedQuotaId] = useState<string | null>(null);
   const active = status?.accounts.find((account) => account.active) ?? null;
+  const quotasByProfile = new Map(
+    quotas?.map((quota) => [quota.profileId, quota]),
+  );
+  const quotaRefreshing = quotaRefreshingIds.length > 0;
   const displayLabel = (value: string) =>
     privateMode ? redactEmails(value, t("emailHidden")) : value;
 
@@ -84,7 +113,16 @@ export function AccountsPage({
     >
       <section className="hero-card">
         <div className="hero-copy">
-          <span className="eyebrow">{t("currentLogin")}</span>
+          <div className="hero-login-status">
+            <span className="eyebrow">{t("currentLogin")}</span>
+            <span
+              className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
+              role="img"
+              aria-label={
+                status?.activeAccountId ? t("loggedIn") : t("loggedOut")
+              }
+            />
+          </div>
           <h2>
             {active ? displayLabel(active.label) : t("currentAccountUnsaved")}
           </h2>
@@ -100,22 +138,21 @@ export function AccountsPage({
                 : t("noChatGptLogin")}
           </p>
         </div>
-        <div
-          className={`status-orb ${status?.activeAccountId ? "online" : "offline"}`}
-          aria-label={status?.activeAccountId ? t("loggedIn") : t("loggedOut")}
-        />
         <div className="hero-actions">
           <button
             className="button secondary hero-action"
+            title={t("saveCurrentLoginHint")}
+            aria-label={t("saveCurrentLogin")}
             disabled={busy || !status?.activeAccountId || !status.supported}
             onClick={() => onSave(active?.label ?? t("workAccount"))}
           >
-            <strong>{t("saveCurrentLogin")}</strong>
-            <small>{t("saveCurrentLoginHint")}</small>
+            <Save size={16} aria-hidden="true" />
+            {t("saveCurrentLoginCompact")}
           </button>
           <button
             className="button primary hero-action"
             aria-describedby="add-account-guide"
+            title={t("loginNewAccountHint")}
             disabled={busy || !status}
             onClick={() =>
               onLogin(
@@ -125,24 +162,27 @@ export function AccountsPage({
               )
             }
           >
-            <strong>{t("loginNewAccount")}</strong>
-            <small>{t("loginNewAccountHint")}</small>
+            <Plus size={16} aria-hidden="true" />
+            {t("loginNewAccount")}
           </button>
           <button
             className="button secondary hero-action"
+            aria-label={t("importAuth")}
+            title={t("importAuthHint")}
             disabled={busy || !status?.supported}
             onClick={onImport}
           >
-            <strong>{t("importAuth")}</strong>
-            <small>{t("importAuthHint")}</small>
+            <Download size={16} aria-hidden="true" />
+            {t("importAuthCompact")}
           </button>
         </div>
-        <p className="hero-login-guide" id="add-account-guide">
-          <span className="hero-login-guide-label">
+        <details className="hero-login-guide">
+          <summary>
             {t("accountAddGuideLabel")}
-          </span>
-          <span>{t("accountAddGuide")}</span>
-        </p>
+            <ChevronDown size={14} aria-hidden="true" />
+          </summary>
+          <p id="add-account-guide">{t("accountAddGuide")}</p>
+        </details>
       </section>
 
       <AccountFlow
@@ -157,8 +197,12 @@ export function AccountsPage({
             <span className="eyebrow">{t("localVault")}</span>
             <h2>{t("savedAccounts")}</h2>
           </div>
-          <button className="text-button" disabled={busy} onClick={onRefresh}>
-            {loading ? t("refreshing") : t("refresh")}
+          <button
+            className="text-button"
+            disabled={busy || quotaRefreshing}
+            onClick={onRefresh}
+          >
+            {loading || quotaRefreshing ? t("refreshing") : t("refresh")}
           </button>
         </div>
 
@@ -168,6 +212,14 @@ export function AccountsPage({
           <div className="account-list">
             {status.accounts.map((account) => {
               const accountLabel = displayLabel(account.label);
+              const quota = quotasByProfile.get(account.id) ?? null;
+              const rawError = quotaRefreshErrors[account.id] ?? quota?.error;
+              const refreshError = rawError
+                ? displayLabel(localizeBackendError(rawError, locale))
+                : null;
+              const expanded = expandedQuotaId === account.id;
+              const detailId = `account-quota-${account.id}`;
+              const refreshing = quotaRefreshingIds.includes(account.id);
               return (
                 <article
                   className={`account-card ${account.active ? "active" : ""}`}
@@ -192,10 +244,20 @@ export function AccountsPage({
                           : account.email
                         : t("emailUnavailable")}
                     </p>
-                    <span className="account-id">
-                      {shortId(account.accountId)}
-                    </span>
                   </div>
+                  <AccountQuotaSummary
+                    accountLabel={accountLabel}
+                    detailId={detailId}
+                    expanded={expanded}
+                    onToggle={() =>
+                      setExpandedQuotaId(expanded ? null : account.id)
+                    }
+                    quota={quota}
+                    refreshing={refreshing}
+                    refreshError={refreshError}
+                    supported={status.supported}
+                    t={t}
+                  />
                   <div className="account-actions">
                     {!account.active && (
                       <SwitchAccountButton
@@ -234,6 +296,19 @@ export function AccountsPage({
                       <Trash2 size={17} aria-hidden="true" />
                     </button>
                   </div>
+                  <AccountQuotaDetails
+                    accountId={account.accountId}
+                    detailId={detailId}
+                    expanded={expanded}
+                    locale={locale}
+                    onRefresh={() => onRefreshQuota(account.id)}
+                    quota={quota}
+                    refreshing={refreshing}
+                    refreshDisabled={busy}
+                    refreshError={refreshError}
+                    supported={status.supported}
+                    t={t}
+                  />
                 </article>
               );
             })}

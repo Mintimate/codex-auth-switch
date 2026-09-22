@@ -7,6 +7,8 @@ import {
   nextQuotaReset,
   normalizeDailyUsage,
   quotaLevel,
+  remainingQuotaPercent,
+  summaryQuotaBucket,
   recentTokenUsage,
   summarizeQuotas,
 } from "../src/quotaView.ts";
@@ -45,6 +47,37 @@ const quota = (overrides = {}) => ({
   error: null,
   queriedAt: 100,
   ...overrides,
+});
+
+test("account summary prefers the core quota and preserves model-specific identity", () => {
+  const model = {
+    id: "spark",
+    name: "Spark",
+    primary: { usedPercent: 95, windowMinutes: 60, resetsAt: null },
+    secondary: null,
+  };
+  const core = {
+    id: "codex",
+    name: null,
+    primary: quota().primary,
+    secondary: null,
+  };
+  assert.equal(summaryQuotaBucket(quota({ buckets: [model, core] })), core);
+  assert.equal(summaryQuotaBucket(quota({ buckets: [model] })), model);
+  assert.deepEqual(summaryQuotaBucket(quota())?.primary, quota().primary);
+});
+
+test("account summary distinguishes missing or failed quotas from confirmed zero", () => {
+  assert.equal(summaryQuotaBucket(null), null);
+  assert.equal(summaryQuotaBucket(quota({ success: false })), null);
+  assert.equal(summaryQuotaBucket(quota({ primary: null })), null);
+  assert.equal(remainingQuotaPercent(null), null);
+  assert.equal(remainingQuotaPercent({ usedPercent: NaN }), null);
+  assert.equal(remainingQuotaPercent({ usedPercent: Infinity }), null);
+  assert.equal(remainingQuotaPercent({ usedPercent: 100 }), 0);
+  assert.equal(remainingQuotaPercent({ usedPercent: 130 }), 0);
+  assert.equal(remainingQuotaPercent({ usedPercent: -2 }), 100);
+  assert.equal(remainingQuotaPercent({ usedPercent: 36.25 }), 63.8);
 });
 
 test("recent usage includes UTC boundaries and excludes future/invalid buckets", () => {

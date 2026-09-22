@@ -1,3 +1,4 @@
+import { ChevronDown, ShieldCheck } from "lucide-react";
 import { AppStatus } from "./api";
 import { Translate } from "./i18n";
 import { SceneCat } from "./SceneCat";
@@ -164,33 +165,39 @@ export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
       aria-labelledby="account-flow-title"
     >
       <div className="account-flow-heading">
-        <div>
-          <span className="eyebrow">{t("flowEyebrow")}</span>
-          <h2 id="account-flow-title">{t("flowTitle")}</h2>
-        </div>
-        <p>{t("flowDescription")}</p>
+        <h2 id="account-flow-title">{t("flowTitle")}</h2>
+        <p>
+          <ShieldCheck size={14} aria-hidden="true" />
+          {t("flowLocalOnly")}
+        </p>
       </div>
 
       <AccountSwitchScene activeLabel={activeLabel} t={t} />
 
-      <div className="account-flow" role="list">
-        {steps.map((step, index) => (
-          <div className="account-flow-fragment" key={step.label}>
-            <div className="flow-step" role="listitem">
-              <div className={`flow-icon ${step.icon}`}>
-                <FlowIcon kind={step.icon} />
+      <details className="account-flow-details">
+        <summary>
+          {t("flowDetails")}
+          <ChevronDown size={14} aria-hidden="true" />
+        </summary>
+        <div className="account-flow" role="list">
+          {steps.map((step, index) => (
+            <div className="account-flow-fragment" key={step.label}>
+              <div className="flow-step" role="listitem">
+                <div className={`flow-icon ${step.icon}`}>
+                  <FlowIcon kind={step.icon} />
+                </div>
+                <strong>{step.label}</strong>
+                <span>{step.detail}</span>
               </div>
-              <strong>{step.label}</strong>
-              <span>{step.detail}</span>
+              {index < connectors.length && (
+                <FlowConnector label={connectors[index]} />
+              )}
             </div>
-            {index < connectors.length && (
-              <FlowConnector label={connectors[index]} />
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      <p className="account-flow-note">{t("flowPrivacyNote")}</p>
+        <p className="account-flow-note">{t("flowPrivacyNote")}</p>
+      </details>
     </section>
   );
 }

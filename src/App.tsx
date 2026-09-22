@@ -268,14 +268,21 @@ function App() {
 
   const refreshActiveData = useCallback(() => {
     if (activeTab === "usage") void refreshUsage();
-    if (activeTab === "quota" || activeTab === "value") void refreshQuotas();
+    if (
+      activeTab === "accounts" ||
+      activeTab === "quota" ||
+      activeTab === "value"
+    )
+      void refreshQuotas();
   }, [activeTab, refreshQuotas, refreshUsage]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       setError(null);
-      setStatus(await getStatus());
+      const nextStatus = await getStatus();
+      statusRef.current = nextStatus;
+      setStatus(nextStatus);
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
     } finally {
@@ -770,6 +777,11 @@ function App() {
               <AccountsPage
                 busy={Boolean(busy) || loading || switchingId !== null}
                 loading={loading}
+                locale={locale}
+                quotas={quotas}
+                quotaRefreshingIds={quotaRefreshingIds}
+                quotaRefreshErrors={quotaRefreshErrors}
+                onRefreshQuota={(id) => void refreshQuotas(id)}
                 switchingId={switchingId}
                 onImport={() => {
                   setError(null);
@@ -777,7 +789,7 @@ function App() {
                   setImportDialog(true);
                 }}
                 onLogin={(accountLabel) => openDialog("login", accountLabel)}
-                onRefresh={() => void refresh()}
+                onRefresh={() => void refresh().then(() => refreshQuotas())}
                 onRemove={(account, accountLabel) =>
                   setRemoveDialog({
                     profileId: account.id,
