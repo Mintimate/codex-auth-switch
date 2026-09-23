@@ -54,3 +54,46 @@ export function estimateQuotaCost(
     outputCost,
   };
 }
+
+// 差值以 A 为基准：负数表示 B 更便宜。零基准不计算百分比。
+function costDifference(
+  a: number | null | undefined,
+  b: number | null | undefined,
+) {
+  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b))
+    return null;
+  const delta = b - a;
+  const amount =
+    Math.abs(delta) <= Number.EPSILON * Math.max(a, b) * 4 ? 0 : delta;
+  return { amount, percent: a > 0 ? (amount / a) * 100 : null };
+}
+
+export function compareQuotaCosts(
+  totalTokens: number | null,
+  inputPercent: number,
+  referencePrice: ModelPrice | undefined,
+  comparisonPrice: ModelPrice | undefined,
+  cachePercent = 90,
+) {
+  // 两个模型只替换单价，共享同一份用量及输入、缓存假设。
+  const reference = estimateQuotaCost(
+    totalTokens,
+    inputPercent,
+    referencePrice,
+    cachePercent,
+  );
+  const comparison = estimateQuotaCost(
+    totalTokens,
+    inputPercent,
+    comparisonPrice,
+    cachePercent,
+  );
+  return {
+    reference,
+    comparison,
+    noCache: costDifference(reference?.noCache, comparison?.noCache),
+    withCache: costDifference(reference?.withCache, comparison?.withCache),
+  };
+}
+
+export type CostComparison = ReturnType<typeof compareQuotaCosts>;

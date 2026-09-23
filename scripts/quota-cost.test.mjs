@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { estimateQuotaCost } from "../src/quotaCost.ts";
+import { compareQuotaCosts, estimateQuotaCost } from "../src/quotaCost.ts";
 import { summarizeQuotas } from "../src/quotaView.ts";
 
 const price = {
@@ -231,4 +231,77 @@ test("simulation uses the same 7 / 30 day boundaries as the quota page", () => {
     estimateQuotaCost(summary.sevenDays.tokens, 80, price).noCache,
     0.0054,
   );
+});
+
+test("model comparison shares token assumptions and reports B relative to A", () => {
+  const cheaper = {
+    ...price,
+    model: "comparison",
+    input: 5,
+    cachedInput: 0.5,
+    output: 25,
+  };
+  const result = compareQuotaCosts(1_000_000, 80, price, cheaper, 50);
+  assert.equal(result.reference.withCache, 14.4);
+  assert.equal(result.comparison.withCache, 7.2);
+  assert.deepEqual(result.withCache, { amount: -7.2, percent: -50 });
+  assert.deepEqual(result.noCache, { amount: -9, percent: -50 });
+  for (const field of [
+    "inputTokens",
+    "outputTokens",
+    "cachedInputTokens",
+    "uncachedInputTokens",
+  ])
+    assert.equal(result.reference[field], result.comparison[field]);
+  const swapped = compareQuotaCosts(1_000_000, 80, cheaper, price, 50);
+  assert.deepEqual(swapped.withCache, { amount: 7.2, percent: 100 });
+  assert.deepEqual(swapped.noCache, { amount: 9, percent: 100 });
+});
+
+test("model comparison keeps cache scenarios independent and handles missing prices", () => {
+  const withoutCache = { ...price, cachedInput: null };
+  for (const [a, b] of [
+    [price, withoutCache],
+    [withoutCache, price],
+  ]) {
+    const result = compareQuotaCosts(1_000_000, 80, a, b, 90);
+    assert.equal(result.withCache, null);
+    assert.deepEqual(result.noCache, { amount: 0, percent: 0 });
+    const uncached = compareQuotaCosts(1_000_000, 80, a, b, 0);
+    assert.deepEqual(uncached.withCache, { amount: 0, percent: 0 });
+  }
+  for (const [a, b] of [
+    [price, undefined],
+    [undefined, price],
+  ]) {
+    const result = compareQuotaCosts(1_000_000, 80, a, b);
+    assert.equal(result.withCache, null);
+    assert.equal(result.noCache, null);
+  }
+});
+
+test("comparison distinguishes missing usage, zero usage, and a zero cost baseline", () => {
+  const missing = compareQuotaCosts(null, 80, price, price);
+  assert.equal(missing.withCache, null);
+  assert.equal(missing.noCache, null);
+  const zeroUsage = compareQuotaCosts(0, 80, price, price);
+  assert.deepEqual(zeroUsage.withCache, { amount: 0, percent: null });
+  const free = { ...price, input: 0, cachedInput: 0, output: 0 };
+  const zeroBaseline = compareQuotaCosts(1_000_000, 80, free, price);
+  assert.deepEqual(zeroBaseline.withCache, { amount: 11.52, percent: null });
+  const freeComparison = compareQuotaCosts(1_000_000, 80, price, free);
+  assert.deepEqual(freeComparison.withCache, { amount: -11.52, percent: -100 });
+});
+
+test("comparison updates both scenarios with ratios and preserves sub-cent differences", () => {
+  const other = { ...price, input: 2, cachedInput: 0.5, output: 60 };
+  const inputOnly = compareQuotaCosts(1_000_000, 100, price, other, 100);
+  assert.deepEqual(inputOnly.withCache, { amount: -0.5, percent: -50 });
+  const outputOnly = compareQuotaCosts(1_000_000, 0, price, other, 100);
+  assert.deepEqual(outputOnly.withCache, { amount: 10, percent: 20 });
+  assert.deepEqual(outputOnly.withCache, outputOnly.noCache);
+  const tiny = compareQuotaCosts(1, 100, price, other, 100);
+  assert.equal(tiny.withCache.amount, -0.0000005);
+  const same = compareQuotaCosts(1_000_000, 99.7, price, price, 90);
+  assert.deepEqual(same.withCache, { amount: 0, percent: 0 });
 });
