@@ -1,0 +1,93 @@
+name: 部署在线预览
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-preview.yml"
+      - "src/**"
+      - "public/**"
+      - "scripts/demo.test.mjs"
+      - "package*.json"
+      - "index.html"
+      - "vite.config.*"
+      - "tsconfig*.json"
+      - "edgeone.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-preview.yml"
+      - "src/**"
+      - "public/**"
+      - "scripts/demo.test.mjs"
+      - "package*.json"
+      - "index.html"
+      - "vite.config.*"
+      - "tsconfig*.json"
+      - "edgeone.json"
+
+permissions:
+  contents: read
+
+# 部署已经提交到 EdgeOne 后，取消 runner 不会撤销远端部署；按顺序完成，避免旧版本覆盖新版本。
+concurrency:
+  group: deploy-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: 构建与部署演示站
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 验证演示数据隔离与只读边界
+        run: |
+          npm run format:check
+          npm run test:demo
+
+      - name: 构建在线预览
+        run: npm run build:demo
+
+      - name: 检查 EdgeOne 凭据
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+        run: |
+          if [[ -z "${EDGEONE_API_TOKEN}" ]]; then
+            echo "::error::请先配置 Actions Secret：EDGEONE_API_TOKEN"
+            exit 1
+          fi
+
+      - name: 安装 EdgeOne CLI
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          PAGES_SOURCE: skills
+        run: npm install --global edgeone@1.6.8
+
+      - name: 部署到 EdgeOne Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          PAGES_SOURCE: skills
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+        run: |
+          edgeone makers deploy dist-demo \
+            --name codex-auth-switch-preview \
+            --env production \
+            --token "${EDGEONE_API_TOKEN}" \
+            --json
+          echo '在线预览已更新：https://codex-auth-switch.mintimate.cn' >> "${GITHUB_STEP_SUMMARY}"

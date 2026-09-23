@@ -251,6 +251,10 @@ For EdgeOne Pages, upload only `dist-demo`. After signing in with the EdgeOne CL
 PAGES_SOURCE=skills edgeone makers deploy dist-demo -n codex-auth-switch-preview --json
 ```
 
+The [Deploy live demo](.github/workflows/deploy-preview.yml) workflow handles automatic updates. Add `EDGEONE_API_TOKEN` under **Settings → Secrets and variables → Actions**, using an API token created in the EdgeOne console. This credential is only used by deployment steps and is not included in frontend build output.
+
+Frontend, demo test or build configuration changes on `main` trigger validation, build and production deployment to the [live demo](https://codex-auth-switch.mintimate.cn). Pull requests only validate the build. You can also run the workflow manually in Actions; only `main` is deployed. The workflow uses Node.js 24 and EdgeOne CLI pinned to 1.6.8, with deployments running sequentially.
+
 The repository's `edgeone.json` also sets `npm ci`, `npm run build:demo` and `dist-demo` for Git-based builds; use Node.js 22.12+ in the build environment. Bind a custom domain for a permanent public link. See [EdgeOne domain access rules](https://edgeone.cloud.tencent.com/pages/document/175191784523485184); keep all parameters in temporary deployment URLs and do not commit them as permanent README links.
 
 Checks before committing:

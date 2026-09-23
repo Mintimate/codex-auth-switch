@@ -251,6 +251,10 @@ npm run preview:demo  # 本地检查构建产物
 PAGES_SOURCE=skills edgeone makers deploy dist-demo -n codex-auth-switch-preview --json
 ```
 
+自动更新由 [部署在线预览](.github/workflows/deploy-preview.yml) 工作流完成。先在仓库的 **Settings → Secrets and variables → Actions** 中添加 `EDGEONE_API_TOKEN`，值为 EdgeOne 控制台创建的 API Token。此凭据仅在部署步骤使用，不写入前端构建产物。
+
+`main` 上的前端、演示测试或构建配置改动会触发验证、构建及生产部署，更新 [在线预览](https://codex-auth-switch.mintimate.cn)。PR 只验证构建，不部署；也可在 Actions 中手动运行该工作流，只有选择 `main` 才会部署。工作流使用 Node.js 24 和固定版本的 EdgeOne CLI 1.6.8，并串行完成部署。
+
 仓库中的 `edgeone.json` 也配置了 `npm ci`、`npm run build:demo` 和 `dist-demo`，便于通过代码仓库构建；构建环境需使用 Node.js 22.12+。长期公开入口请绑定自定义域名。预置域名的访问规则见 [EdgeOne 域名说明](https://edgeone.cloud.tencent.com/pages/document/175191784523485184)，部署输出中的完整临时链接不应删去参数或作为永久地址写入 README。
 
 提交前检查：
