@@ -23,7 +23,6 @@ import {
 } from "./api";
 import type { AppTab } from "./appTypes";
 import type { Locale, MessageKey, Translate } from "./i18n";
-import { ThemeMode } from "./theme";
 import { UpdateSourcePicker } from "./UpdateSourcePicker";
 
 const UPDATE_SOURCE_STORAGE_KEY = "codex-auth-switch-update-source";
@@ -117,11 +116,8 @@ type SettingsPanelProps = {
   onOpenCodexDirectory: () => void;
   onPrivateModeChange: (enabled: boolean) => void;
   onRevealVault: () => void;
-  onThemeChange: (theme: ThemeMode) => void;
   status: AppStatus | null;
   t: Translate;
-  theme: ThemeMode;
-  themeOptions: Option<ThemeMode>[];
   privateMode: boolean;
 };
 
@@ -172,11 +168,8 @@ export function SettingsPanel({
   onOpenCodexDirectory,
   onPrivateModeChange,
   onRevealVault,
-  onThemeChange,
   status,
   t,
-  theme,
-  themeOptions,
   privateMode,
 }: SettingsPanelProps) {
   const [usageCache, setUsageCache] = useState<UsageCacheInfo | null>(null);
@@ -503,19 +496,6 @@ export function SettingsPanel({
             >
               <span />
             </button>
-          </div>
-
-          <div className="settings-row">
-            <div>
-              <strong>{t("appearance")}</strong>
-              <span>{t("appearanceHint")}</span>
-            </div>
-            <SegmentedControl
-              ariaLabel={t("appearance")}
-              options={themeOptions}
-              value={theme}
-              onChange={onThemeChange}
-            />
           </div>
 
           <div className="settings-row">

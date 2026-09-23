@@ -1,22 +1,31 @@
 import { FlaskConical } from "lucide-react";
 import type { Translate } from "./i18n";
+import type { ThemePreferences } from "./themePreferences";
+import { ThemePicker } from "./ThemePicker";
 
 export function LabsPanel({
   hostedLoginEnabled,
   onHostedLoginChange,
   onTryHostedLogin,
+  theme,
+  onThemeChange,
   t,
 }: {
   hostedLoginEnabled: boolean;
   onHostedLoginChange: (enabled: boolean) => void;
   onTryHostedLogin: () => void;
+  theme: ThemePreferences;
+  onThemeChange: (theme: ThemePreferences) => void;
   t: Translate;
 }) {
   return (
     <div className="settings-page labs-page">
       <header className="page-heading">
         <span className="eyebrow">{t("labsEyebrow")}</span>
-        <h2>{t("labsTab")}</h2>
+        <h2 className="labs-page-title">
+          <FlaskConical size={25} aria-hidden="true" />
+          {t("labsTab")}
+        </h2>
         <p>{t("labsDescription")}</p>
       </header>
 
@@ -24,15 +33,12 @@ export function LabsPanel({
         className="settings-group labs-feature"
         aria-labelledby="labs-hosted-title"
       >
-        <div className="settings-group-heading labs-feature-heading">
-          <FlaskConical size={24} aria-hidden="true" />
-          <div>
-            <div className="labs-feature-title">
-              <h3 id="labs-hosted-title">{t("hostedLoginTitle")}</h3>
-              <span className="experimental-badge">{t("experimental")}</span>
-            </div>
-            <p>{t("labsHostedDescription")}</p>
+        <div className="settings-group-heading">
+          <div className="labs-feature-title">
+            <h3 id="labs-hosted-title">{t("hostedLoginTitle")}</h3>
+            <span className="experimental-badge">{t("experimental")}</span>
           </div>
+          <p>{t("labsHostedDescription")}</p>
         </div>
         <div className="settings-row">
           <div>
@@ -74,6 +80,7 @@ export function LabsPanel({
           </div>
         </div>
       </section>
+      <ThemePicker value={theme} onChange={onThemeChange} t={t} />
     </div>
   );
 }

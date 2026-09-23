@@ -50,7 +50,7 @@ import { localizeBackendError, Locale, MessageKey, useI18n } from "./i18n";
 import { SettingsPanel } from "./SettingsPanel";
 import { LabsPanel } from "./LabsPanel";
 import { CodexConfigPanel } from "./CodexConfigPanel";
-import { ThemeMode, useAppearance } from "./theme";
+import { useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
 import { SubscriptionValuePage } from "./SubscriptionValuePage";
 import { UsagePanel } from "./UsagePanel";
@@ -101,11 +101,6 @@ function App() {
   useDesktopInteractions();
   const { setTheme, theme } = useAppearance();
   const { locale, setLocale, t } = useI18n();
-  const themeOptions: { label: string; value: ThemeMode }[] = [
-    { label: t("light"), value: "light" },
-    { label: t("dark"), value: "dark" },
-    { label: t("system"), value: "system" },
-  ];
   const languageOptions: {
     label: string;
     value: Locale;
@@ -883,6 +878,8 @@ function App() {
                 aria-label={t("labsTab")}
               >
                 <LabsPanel
+                  theme={theme}
+                  onThemeChange={setTheme}
                   hostedLoginEnabled={hostedLoginEnabled}
                   onHostedLoginChange={(enabled) => {
                     setHostedLoginEnabled(enabled);
@@ -928,11 +925,8 @@ function App() {
                   onOpenCodexDirectory={openCodexDirectory}
                   onPrivateModeChange={setPrivateMode}
                   onRevealVault={revealVault}
-                  onThemeChange={setTheme}
                   status={status}
                   t={t}
-                  theme={theme}
-                  themeOptions={themeOptions}
                   privateMode={privateMode}
                 />
               </div>

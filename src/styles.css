@@ -6498,15 +6498,14 @@ button:disabled {
   }
 }
 
-.labs-feature-heading {
+.labs-page-title {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
+  gap: 10px;
 }
-.labs-feature-heading > svg {
+.labs-page-title > svg {
   color: var(--accent);
   flex-shrink: 0;
-  margin-top: 2px;
 }
 .labs-feature-title {
   display: flex;
