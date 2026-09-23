@@ -140,9 +140,9 @@ pub fn set(next: ProxySettings) -> Result<ProxySettings, String> {
     let mut guard = settings_runtime()
         .write()
         .map_err(|_| "代理设置保存失败".to_string())?;
-    // 复用 manager::atomic_write：tempfile::persist 在 Windows 上也能替换已存在目标,
+    // 复用 storage::atomic_write：tempfile::persist 在 Windows 上也能替换已存在目标,
     // 避免 std::fs::rename 在 Windows 首次保存后稳定失败的问题。
-    crate::manager::atomic_write(path, &bytes).map_err(|error| error.to_string())?;
+    crate::storage::atomic_write(path, &bytes).map_err(|error| error.to_string())?;
     *guard = Ok(next.clone());
     cache.clear();
     Ok(next)

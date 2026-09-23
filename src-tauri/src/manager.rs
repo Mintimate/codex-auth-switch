@@ -1,3 +1,7 @@
+pub use crate::quota::{
+    AccountQuota, AccountUsageDailyBucket, AccountUsageSummary, QuotaBucket, UsageResetCredits,
+    UsageWindow,
+};
 use crate::{
     auth_share::{self, ImportedAuth},
     codex_app_server, proxy,
@@ -15,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     env, fmt, fs,
-    io::Write,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -176,66 +179,6 @@ pub struct DeviceLoginResponse {
     pub verification_uri: String,
     pub expires_in: u64,
     pub interval: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageWindow {
-    pub used_percent: f64,
-    pub window_minutes: Option<u64>,
-    pub resets_at: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageResetCredits {
-    pub available_count: u64,
-    pub expires_at: Vec<u64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuotaBucket {
-    pub id: String,
-    pub name: Option<String>,
-    pub primary: Option<UsageWindow>,
-    pub secondary: Option<UsageWindow>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountUsageSummary {
-    pub lifetime_tokens: Option<u64>,
-    pub peak_daily_tokens: Option<u64>,
-    pub longest_running_turn_sec: Option<u64>,
-    pub current_streak_days: Option<u64>,
-    pub longest_streak_days: Option<u64>,
-    pub daily_usage_buckets: Vec<AccountUsageDailyBucket>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountUsageDailyBucket {
-    pub start_date: String,
-    pub tokens: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountQuota {
-    pub profile_id: String,
-    pub account_id: String,
-    pub label: String,
-    pub primary: Option<UsageWindow>,
-    pub secondary: Option<UsageWindow>,
-    pub buckets: Vec<QuotaBucket>,
-    pub reset_credits: Option<UsageResetCredits>,
-    pub plan_type: Option<String>,
-    pub official_usage: Option<AccountUsageSummary>,
-    pub source: Option<String>,
-    pub success: bool,
-    pub error: Option<String>,
-    pub queried_at: u64,
 }
 
 pub struct PreparedAuthTransfer {
@@ -2370,69 +2313,12 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ManagerError> 
     atomic_write(path, &contents)
 }
 
-// 兼容旧版 Windows 两步替换中断后留下的备份。目标存在时不覆盖、不删除备份。
-#[cfg(windows)]
+fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerError> {
+    crate::storage::atomic_write(path, contents).map_err(ManagerError::Io)
+}
+
 fn recover_legacy_backup(path: &Path) -> Result<(), ManagerError> {
-    let backup = path.with_extension("cam-backup");
-    if !path.exists() && backup.is_file() {
-        fs::rename(&backup, path)
-            .map_err(|error| ManagerError::Io(format!("恢复旧认证备份失败: {error}")))?;
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn recover_legacy_backup(_path: &Path) -> Result<(), ManagerError> {
-    Ok(())
-}
-
-pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ManagerError> {
-    recover_legacy_backup(path)?;
-    let parent = path
-        .parent()
-        .ok_or_else(|| ManagerError::Io(format!("无法定位 {} 的父目录", path.display())))?;
-    fs::create_dir_all(parent).map_err(|error| {
-        ManagerError::Io(format!("创建目录 {} 失败: {error}", parent.display()))
-    })?;
-    secure_directory(parent)?;
-
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("credentials");
-    let mut temporary = tempfile::Builder::new()
-        .prefix(&format!(".{file_name}.cam-"))
-        .suffix(".tmp")
-        .tempfile_in(parent)
-        .map_err(|error| ManagerError::Io(format!("创建临时文件失败: {error}")))?;
-    temporary
-        .write_all(contents)
-        .map_err(|error| ManagerError::Io(format!("写入临时文件失败: {error}")))?;
-    temporary
-        .as_file()
-        .sync_all()
-        .map_err(|error| ManagerError::Io(format!("同步临时文件失败: {error}")))?;
-    // tempfile 在 Windows 使用 MoveFileExW(REPLACE_EXISTING)，不会先移走目标文件。
-    temporary.persist(path).map_err(|error| {
-        ManagerError::Io(format!("原子替换 {} 失败: {}", path.display(), error.error))
-    })?;
-    #[cfg(unix)]
-    fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| ManagerError::Io(format!("同步目录失败: {error}")))?;
-    Ok(())
-}
-
-#[cfg(unix)]
-fn secure_directory(path: &Path) -> Result<(), ManagerError> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-        .map_err(|error| ManagerError::Io(format!("设置目录 {} 权限失败: {error}", path.display())))
-}
-
-#[cfg(not(unix))]
-fn secure_directory(_path: &Path) -> Result<(), ManagerError> {
-    Ok(())
+    crate::storage::recover_legacy_backup(path).map_err(ManagerError::Io)
 }
 
 fn unix_timestamp() -> u64 {

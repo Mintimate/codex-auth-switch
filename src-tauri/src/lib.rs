@@ -9,6 +9,8 @@ mod manager;
 mod pricing;
 mod proxy;
 mod query_gate;
+mod quota;
+mod storage;
 mod usage;
 
 use diagnostics::LocalDiagnostics;

@@ -234,7 +234,7 @@ pub async fn get_prices(app_data: &Path, refresh: bool) -> Result<ModelPrices, S
             Ok(snapshot) => {
                 let bytes =
                     serde_json::to_vec(&snapshot).map_err(|_| "无法保存模型价格".to_string())?;
-                if crate::manager::atomic_write(&path, &bytes).is_err() {
+                if crate::storage::atomic_write(&path, &bytes).is_err() {
                     result.warning = Some("cacheWriteFailed");
                 }
                 result.snapshot = snapshot;

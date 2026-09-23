@@ -597,7 +597,7 @@ pub(crate) fn scan_local_usage_cached(
             bounded_cache_bytes(&mut cache, MAX_CACHE_BYTES, MAX_CACHE_DECODED_BYTES)
         {
             // 容量淘汰只影响下次读取速度，当前返回值始终使用完整统计。
-            let _ = crate::manager::atomic_write(cache_path, &bytes);
+            let _ = crate::storage::atomic_write(cache_path, &bytes);
         }
     }
     stats
