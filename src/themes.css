@@ -1,0 +1,129 @@
+/* 配色灵感来自 Mintimate / oh-my-rime 的 squirrel.yaml：
+   https://github.com/Mintimate/oh-my-rime/blob/main/squirrel.yaml
+   原文件使用 BGR；转换为 CSS RGB 后，针对应用调整水鸭配色与文字对比度。
+   页面与预览共用这些变量，避免预览与实际主题偏离。 */
+:root[data-palette^="mint_"],
+.theme-preview[data-palette^="mint_"] {
+  --foreground: rgb(var(--palette-ink));
+  --accent: rgb(var(--palette-accent));
+  --card: var(--card-solid);
+  --surface-active: rgba(var(--palette-accent), 0.13);
+  --border: rgba(var(--palette-ink), 0.12);
+  --panel-border: rgba(var(--palette-ink), 0.2);
+  --border-strong: rgba(var(--palette-accent), 0.4);
+  --accent-soft: rgba(var(--palette-accent), 0.14);
+  --accent-ring: rgba(var(--palette-accent), 0.2);
+  --accent-pulse: rgba(var(--palette-accent), 0.16);
+  --input: var(--card-solid);
+  --glow-start: rgba(var(--palette-accent), 0.05);
+  --glow-end: rgba(var(--palette-accent), 0.03);
+  --hero-orb: rgba(var(--palette-accent), 0.08);
+  --hint: var(--surface-hover);
+  --activity-3: var(--accent);
+  --activity-4: var(--accent-deep);
+}
+
+/* 水鸭主题参考 TT Switch 的 themePalettes.ts：
+   用背景与文字色推导页面、侧栏、卡片和交互底色，强调色单独配对。
+   下方保留推导后的 sRGB 色值，兼容不支持 color-mix 的 WebView。 */
+:root[data-palette="mint_light_blue"],
+:root[data-palette="mint_dark_blue"],
+.theme-preview[data-palette="mint_light_blue"],
+.theme-preview[data-palette="mint_dark_blue"] {
+  --accent-pulse: rgba(var(--palette-accent), 0.06);
+  --accent-soft: var(--surface-active);
+  --shadow: none;
+  --glow-start: transparent;
+  --glow-end: transparent;
+  --hero-orb: transparent;
+}
+
+:root[data-palette="mint_light_blue"],
+.theme-preview[data-palette="mint_light_blue"] {
+  /* One Light：背景 #fafafa、文字 #383a42、强调 #526fff，层次参数 45。
+     小字保留足够对比度，按钮蓝色按白字对比度加深。 */
+  --background: #fafafa;
+  --palette-ink: 56, 58, 66;
+  --muted: #5f6067;
+  --muted-soft: #67686e;
+  --card-solid: #fbfbfb;
+  --sidebar: #f8f8fa;
+  --sidebar-hover: #f0f0f0;
+  --sidebar-active: #f0f0f0;
+  --surface: #f0f0f0;
+  --surface-hover: #f0f1f1;
+  --surface-active: #eaebeb;
+  --border: #dfdfe0;
+  --panel-border: #d7d7d9;
+  --accent-shadow: rgba(56, 58, 66, 0.08);
+  --activity-0: #e3e3e4;
+  --activity-1: #d4dcf8;
+  --activity-2: #9aabee;
+  --palette-accent: 75, 102, 235; /* #4b66eb */
+  --accent-hover: #425bd3;
+  --accent-deep: #4058c6;
+  --accent-foreground: #ffffff;
+}
+
+:root[data-palette="mint_dark_blue"],
+.theme-preview[data-palette="mint_dark_blue"] {
+  /* Dark Plus 中性底色 + Material Dark 水鸭青，层次参数 60。
+     侧栏混入 3.36% 文字色，卡片混入 8.46%；卡片悬停再混入 7.2%。 */
+  --background: #1e1e1e;
+  --palette-ink: 212, 212, 212;
+  --muted: #aaaaaa;
+  --muted-soft: #a6a6a6;
+  --card-solid: #2d2d2d;
+  --sidebar: #242424;
+  --sidebar-hover: #2b2b2b;
+  --sidebar-active: #2b2b2b;
+  --surface: #242424;
+  --surface-hover: #393939;
+  --surface-active: #393939;
+  --border: #434343;
+  --panel-border: #585858;
+  --accent-shadow: rgba(0, 0, 0, 0.14);
+  --activity-0: #424242;
+  --activity-1: #355653;
+  --activity-2: #527f7b;
+  --palette-accent: 128, 203, 196; /* #80cbc4 */
+  --accent-hover: #92d3cd;
+  --accent-deep: #80cbc4;
+  --accent-foreground: #0f172a;
+}
+
+:root[data-palette="mint_light_green"],
+.theme-preview[data-palette="mint_light_green"] {
+  --background: #efefef;
+  --palette-ink: 50, 50, 50;
+  --muted: #586b61;
+  --muted-soft: #61746a;
+  --card-solid: #f9fcfa;
+  --surface: #f6f7f6;
+  --surface-hover: #e9ecea;
+  --activity-0: #d8d8d8;
+  --activity-1: #bfdbcc;
+  --activity-2: #97cbaf;
+  --palette-accent: 79, 174, 123; /* #4fae7b */
+  --accent-hover: #66bd8e;
+  --accent-deep: #286a47;
+  --accent-foreground: #122b20;
+}
+
+:root[data-palette="mint_dark_green"],
+.theme-preview[data-palette="mint_dark_green"] {
+  --background: #323232;
+  --palette-ink: 232, 232, 232;
+  --muted: #bebebe;
+  --muted-soft: #b0bdb6;
+  --card-solid: #3b403d;
+  --surface: #383b39;
+  --surface-hover: #494d4b;
+  --activity-0: #484848;
+  --activity-1: #2b5f4a;
+  --activity-2: #26845f;
+  --palette-accent: 28, 200, 131; /* #1cc883 */
+  --accent-hover: #42d497;
+  --accent-deep: #6adeaf;
+  --accent-foreground: #102d21;
+}
