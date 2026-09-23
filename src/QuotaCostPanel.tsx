@@ -1,11 +1,11 @@
 import { useEffect, useId, useState } from "react";
-import { Check, ChevronDown, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown, RefreshCw } from "lucide-react";
 import { ExternalLink } from "./ExternalLink";
 import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
 import type { Locale, Translate } from "./i18n";
-import { estimateQuotaCost } from "./quotaCost";
-import { formatCount, summarizeQuotas } from "./quotaView";
+import { QuotaCostPeriod } from "./QuotaCostPeriod";
+import { summarizeQuotas } from "./quotaView";
 
 const periods = ["sevenDays", "thirtyDays"] as const;
 const periodKeys = {
@@ -112,6 +112,7 @@ export function QuotaCostPanel({
   const [linkFailed, setLinkFailed] = useState(false);
   const [profileId, setProfileId] = useState("");
   const [model, setModel] = useState("");
+  const [comparisonModel, setComparisonModel] = useState("");
   const [inputPercent, setInputPercent] = useState<number>(
     taskPresets[0].input,
   );
@@ -135,7 +136,16 @@ export function QuotaCostPanel({
     (quota) => quota.success && refreshErrors[quota.profileId],
   );
   const prices = pricing?.prices ?? [];
+  const sortedPrices = [...prices].sort((a, b) =>
+    a.model.localeCompare(b.model),
+  );
   const selectedPrice = prices.find((price) => price.model === model);
+  const comparisonPrice = prices.find(
+    (price) => price.model === comparisonModel,
+  );
+  const activePrices = prices.filter(
+    (price) => price === selectedPrice || price === comparisonPrice,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -218,27 +228,59 @@ export function QuotaCostPanel({
                 <ChevronDown size={16} aria-hidden="true" />
               </div>
             </div>
-            <div className="cost-field">
-              <label htmlFor={`${id}-model`}>{t("costReferenceModel")}</label>
-              <div className="cost-select">
-                <select
-                  id={`${id}-model`}
-                  value={selectedPrice ? model : ""}
-                  disabled={!prices.length}
-                  onChange={(event) => setModel(event.target.value)}
-                >
-                  <option value="">{t("costChooseModel")}</option>
-                  {[...prices]
-                    .sort((a, b) => a.model.localeCompare(b.model))
-                    .map((price) => (
+            {(
+              [
+                {
+                  key: "model",
+                  label: "costReferenceModel",
+                  value: selectedPrice?.model ?? "",
+                  empty: "costChooseModel",
+                  onChange: setModel,
+                },
+                {
+                  key: "comparison",
+                  label: "costComparisonModel",
+                  value: comparisonPrice?.model ?? "",
+                  empty: "costNoComparison",
+                  onChange: setComparisonModel,
+                },
+              ] as const
+            ).map((field) => (
+              <div className="cost-field" key={field.key}>
+                <label htmlFor={`${id}-${field.key}`}>{t(field.label)}</label>
+                <div className="cost-select">
+                  <select
+                    id={`${id}-${field.key}`}
+                    value={field.value}
+                    disabled={!prices.length}
+                    onChange={(event) => field.onChange(event.target.value)}
+                  >
+                    <option value="">{t(field.empty)}</option>
+                    {sortedPrices.map((price) => (
                       <option value={price.model} key={price.model}>
                         {price.model}
                       </option>
                     ))}
-                </select>
-                <ChevronDown size={16} aria-hidden="true" />
+                  </select>
+                  <ChevronDown size={16} aria-hidden="true" />
+                </div>
               </div>
-            </div>
+            ))}
+          </div>
+          <div className="cost-comparison-guide">
+            <p className="cost-note">{t("costComparisonHint")}</p>
+            <button
+              type="button"
+              className="text-button cost-swap"
+              disabled={!selectedPrice || !comparisonPrice}
+              onClick={() => {
+                setModel(comparisonModel);
+                setComparisonModel(model);
+              }}
+            >
+              <ArrowLeftRight size={14} aria-hidden="true" />
+              {t("costSwapModels")}
+            </button>
           </div>
           <fieldset className="cost-presets">
             <legend>{t("costTaskPresets")}</legend>
@@ -311,101 +353,34 @@ export function QuotaCostPanel({
             {t("costChooseModelHint")}
           </p>
         )}
-        {selectedPrice?.cachedInput === null &&
-          cachePercent > 0 &&
-          inputPercent > 0 &&
-          periods.some((period) => (summary[period].tokens ?? 0) > 0) && (
-            <p className="cost-warning">{t("costNoCacheRate")}</p>
+        {activePrices
+          .filter((price) => price.cachedInput === null)
+          .map((price) =>
+            cachePercent > 0 &&
+            inputPercent > 0 &&
+            periods.some((period) => (summary[period].tokens ?? 0) > 0) ? (
+              <p className="cost-warning" key={price.model}>
+                {price.model} · {t("costNoCacheRate")}
+              </p>
+            ) : null,
           )}
 
         <div className="cost-periods" aria-live="polite">
-          {periods.map((period) => {
-            const usage = summary[period];
-            const estimate = estimateQuotaCost(
-              usage.tokens,
-              inputPercent,
-              selectedPrice,
-              cachePercent,
-            );
-            return (
-              <article className="cost-period" key={period}>
-                <h3>
-                  {t(periodKeys[period])}
-                  <small>{formatCount(usage.tokens, locale)} tokens</small>
-                </h3>
-                <dl>
-                  <div>
-                    <dt>{t("costNoCache")}</dt>
-                    <dd>{formatMoney(estimate?.noCache)}</dd>
-                  </div>
-                  <div className="cost-cache-scenario">
-                    <dt>
-                      {t("costWithCache", {
-                        cache: percent.format(cachePercent),
-                      })}
-                    </dt>
-                    <dd>{formatMoney(estimate?.withCache)}</dd>
-                  </div>
-                </dl>
-                {estimate && (
-                  <div className="cost-breakdown">
-                    <p>{t("costBreakdownTitle")}</p>
-                    <dl>
-                      <div>
-                        <dt>
-                          {t("costUncachedInput")}
-                          <small>
-                            {formatCount(estimate.uncachedInputTokens, locale)}{" "}
-                            tokens
-                          </small>
-                        </dt>
-                        <dd>{formatMoney(estimate.uncachedInputCost)}</dd>
-                      </div>
-                      <div>
-                        <dt>
-                          {t("costCachedInput")}
-                          <small>
-                            {formatCount(estimate.cachedInputTokens, locale)}{" "}
-                            tokens
-                          </small>
-                        </dt>
-                        <dd>{formatMoney(estimate.cachedInputCost)}</dd>
-                      </div>
-                      <div>
-                        <dt>
-                          {t("costOutput")}
-                          <small>
-                            {formatCount(estimate.outputTokens, locale)} tokens
-                          </small>
-                        </dt>
-                        <dd>{formatMoney(estimate.outputCost)}</dd>
-                      </div>
-                    </dl>
-                    {estimate.withCache !== null && estimate.withCache > 0 && (
-                      <p className="cost-output-share">
-                        {t("costOutputShare", {
-                          share: percent.format(
-                            (100 * estimate.outputCost) / estimate.withCache,
-                          ),
-                        })}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <p className="cost-coverage">
-                  {t("quotaUsageCoverage", {
-                    count: usage.count,
-                    total: accountCount,
-                  })}
-                </p>
-                {usage.tokens === null ? (
-                  <p className="cost-warning">{t("costNoQuotaUsage")}</p>
-                ) : usage.count < accountCount ? (
-                  <p className="cost-warning">{t("costPartialAccounts")}</p>
-                ) : null}
-              </article>
-            );
-          })}
+          {periods.map((period) => (
+            <QuotaCostPeriod
+              key={period}
+              title={t(periodKeys[period])}
+              usage={summary[period]}
+              accountCount={accountCount}
+              referencePrice={selectedPrice}
+              comparisonPrice={comparisonPrice}
+              inputPercent={inputPercent}
+              cachePercent={cachePercent}
+              formatMoney={formatMoney}
+              locale={locale}
+              t={t}
+            />
+          ))}
         </div>
         <p className="cost-note">{t("costDisclaimer")}</p>
         {pricing && (
@@ -448,19 +423,19 @@ export function QuotaCostPanel({
         <details className="cost-details">
           <summary>{t("costDetails")}</summary>
           <p className="cost-note">{t("costScenariosHint")}</p>
-          {selectedPrice && (
-            <p className="cost-note">
+          {activePrices.map((price) => (
+            <p className="cost-note" key={price.model}>
               {t("costSelectedRates", {
-                model: selectedPrice.model,
-                input: rate.format(selectedPrice.input),
+                model: price.model,
+                input: rate.format(price.input),
                 cached:
-                  selectedPrice.cachedInput === null
+                  price.cachedInput === null
                     ? "—"
-                    : rate.format(selectedPrice.cachedInput),
-                output: rate.format(selectedPrice.output),
+                    : rate.format(price.cachedInput),
+                output: rate.format(price.output),
               })}
             </p>
-          )}
+          ))}
           <p className="cost-note">{t("costRatesHint")}</p>
         </details>
       </div>

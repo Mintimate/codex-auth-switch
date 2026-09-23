@@ -2075,7 +2075,7 @@ button:disabled {
 .cost-selectors {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 0.9fr) repeat(2, minmax(0, 1.1fr));
   gap: 16px;
 }
 .cost-field {
@@ -2266,6 +2266,88 @@ button:disabled {
 }
 .cost-breakdown > .cost-output-share {
   margin: 10px 0 0;
+}
+
+.cost-comparison-guide {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: -8px;
+}
+.cost-comparison-guide .cost-note {
+  flex: 1;
+  margin: 0;
+}
+.cost-swap {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  font-size: var(--text-caption);
+}
+.cost-comparison-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-normal);
+}
+.cost-comparison-table th,
+.cost-comparison-table td {
+  padding: 12px 6px;
+  text-align: end;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.cost-comparison-table th:first-child {
+  text-align: start;
+  padding-inline-start: 0;
+}
+.cost-comparison-table td:last-child,
+.cost-comparison-table th:last-child {
+  padding-inline-end: 0;
+}
+.cost-comparison-table thead th {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  border-bottom: 1px solid var(--border);
+}
+.cost-comparison-table tbody th {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+}
+.cost-model-badge {
+  display: inline-block;
+  margin-inline-end: 6px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  font-weight: var(--weight-semibold);
+}
+.cost-comparison-current {
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+.cost-comparison-table small {
+  display: block;
+  margin-top: 5px;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  color: var(--muted);
+}
+.cost-difference-row > * {
+  border-top: 1px solid var(--border);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+}
+.cost-difference-lower {
+  color: var(--success-text);
+}
+.cost-comparison-breakdown summary {
+  font-size: var(--text-caption);
 }
 
 @media (max-width: 1040px) {
