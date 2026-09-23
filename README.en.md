@@ -153,13 +153,15 @@ Selecting **Default** removes the corresponding fields so Codex can use its defa
 | Subscription quotas          | Online account limits and daily Token totals               | Available quota, recovery times, and account usage; some fields may be unavailable |
 | Subscription value simulator | The same account daily totals, plus reference model prices | An API cost simulation based on assumptions, not a subscription or API bill        |
 
-All three pages can refresh on demand; opening Accounts does not query quotas. Disable **Refresh when opened** under **Settings → Usage and quotas** to load data manually. The value simulator can refresh account usage directly, without opening the quota page first.
+Rust refreshes subscription quotas in the background by default: once at startup, then every 15 minutes for saved accounts. You do not need to open the quota page, and changing pages does not trigger duplicate queries. **Settings → Usage and quotas** provides a single **Background refresh** switch. Users who disabled automatic refresh in an earlier version retain that preference. Manual refresh remains available; Token usage reads local data when its page opens.
+
+Background refresh pauses during sign-in, coordinates with account switching and transfers, and skips in-flight queries. Offline queries back off on failure. Manual queries postpone the next refresh for that account. Failures double the retry interval up to 2 hours; success restores the 15-minute interval. Previous results remain visible. Quitting stops polling; hiding, minimizing, or reloading the WebView does not stop the Rust timer. System sleep can delay it, without replaying missed runs on resume. The local `quota-refresh.v1.json` stores the preference, migrated from the earlier WebView setting on first launch. Disabling does not cancel queries already sent.
 
 Refresh all accounts or one account at a time. Different accounts share two concurrent query slots; requests for the same account are serialized. Failures retain previous results and their timestamps; an initial failure offers a retry, and missing data stays unknown. Not every account returns every quota field. Wait before retrying a rate-limited request.
 
 ### Quota history
 
-Open the history icon in **Subscription quotas**, or **Account details → Quota history**, to review observations over 24 hours, 7 days or 30 days. Successful manual and page-triggered queries record returned window percentages, timestamps, source and plan metadata. Viewing history itself does not send an online query, reconstruct past data or record failures as zero.
+Open the history icon in **Subscription quotas**, or **Account details → Quota history**, to review observations over 24 hours, 7 days or 30 days. Successful manual and background queries record returned window percentages, timestamps, source and plan metadata. Viewing history itself does not send an online query, reconstruct past data or record failures as zero.
 
 Percentage-point changes are calculated only for the same account, bucket, window, source, plan, duration and known reset timestamp. Period boundaries, source changes or missing metadata break the trend line. A rise in remaining quota does not confirm a reset or identify which device or task caused a change.
 

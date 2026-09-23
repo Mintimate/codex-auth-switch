@@ -51,6 +51,10 @@ export const useI18n = () => {
 };
 
 const backendErrorTranslations: Record<string, string> = {
+  "无法读取后台刷新设置，请重新设置开关":
+    "Could not read background refresh preferences. Set the switch again.",
+  保存后台刷新设置失败: "Could not save background refresh preferences.",
+
   "清理额度历史失败，请先清空本机额度历史后重试":
     "Could not remove quota history. Clear local quota history first, then try again.",
   请先完成或取消正在进行的登录: "Complete or cancel the current sign-in first.",

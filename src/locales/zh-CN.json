@@ -132,9 +132,7 @@
   "proxyLoadFailed": "代理配置读取失败，登录与在线查询已暂停。请修复 network-proxy.json 后重新打开设置页。",
   "proxySaveFailed": "代理设置保存失败，修改尚未生效。请检查代理地址或稍后重试。",
   "usageSettings": "用量与额度",
-  "usageSettingsHint": "控制何时读取本机会话或查询在线订阅额度。",
-  "autoRefreshUsage": "进入页面时自动刷新",
-  "autoRefreshUsageHint": "打开账号管理、Token 用量、订阅额度或订阅价值模拟时，刷新对应数据。",
+  "usageSettingsHint": "自动更新订阅额度，管理本地用量缓存。",
   "softwareUpdate": "软件更新",
   "softwareUpdateHint": "从所选发布源检查并安装经过签名的更新。",
   "updateSource": "更新源",
@@ -686,5 +684,8 @@
   "historyClearAll": "清空本机额度历史",
   "historyClearConfirm": "将清空所有账号的额度历史，保留账号与凭据；后续成功查询会重新记录。",
   "historyQueryFailed": "本次额度查询失败，未新增记录；下方保留已有的本机历史。",
+  "quotaAutoRefresh": "后台自动刷新",
+  "quotaAutoRefreshHint": "应用运行时，每 15 分钟更新订阅额度。",
+  "quotaAutoRefreshUnsupported": "启用文件凭据存储后生效。",
   "accountRemovedHistoryWarning": "账号已移除，但额度历史清理失败。原历史文件已保留，可稍后在额度变化记录中清理。"
 }

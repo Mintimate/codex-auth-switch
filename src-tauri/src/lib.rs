@@ -11,6 +11,7 @@ mod proxy;
 mod query_gate;
 mod quota;
 mod quota_history;
+mod quota_refresh;
 mod storage;
 mod usage;
 
@@ -21,7 +22,7 @@ use manager::{
 };
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 use usage::{LocalUsageStats, ModelProviderState};
@@ -223,24 +224,95 @@ async fn verify_account_switch(
     .map_err(|_| "无法检查切换结果，请重试".into())
 }
 
+const QUOTA_REFRESH_EVENT: &str = "quota-refresh-state";
+
+fn emit_quota_state(app: &AppHandle, snapshot: quota_refresh::RefreshState) {
+    let _ = app.emit(QUOTA_REFRESH_EVENT, snapshot);
+}
+
+#[tauri::command]
+async fn initialize_quota_refresh(
+    app: AppHandle,
+    legacy_enabled: bool,
+) -> Result<quota_refresh::RefreshState, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<quota_refresh::QuotaRefresh>()
+            .initialize(legacy_enabled)
+    })
+    .await
+    .map_err(|_| "无法读取后台刷新设置，请重新设置开关".to_string())?
+}
+
+#[tauri::command]
+fn get_quota_refresh_state(app: AppHandle) -> quota_refresh::RefreshState {
+    app.state::<quota_refresh::QuotaRefresh>().snapshot()
+}
+
+#[tauri::command]
+async fn set_background_quota_refresh(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<quota_refresh::RefreshState, String> {
+    let handle = app.clone();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .state::<quota_refresh::QuotaRefresh>()
+            .set_enabled(enabled)
+    })
+    .await
+    .map_err(|_| "保存后台刷新设置失败".to_string())??;
+    emit_quota_state(&app, snapshot.clone());
+    Ok(snapshot)
+}
+
 #[tauri::command]
 async fn refresh_account_quotas(
     app: AppHandle,
     state: State<'_, AppState>,
-    profile_ids: Vec<String>,
-    on_update: tauri::ipc::Channel<AccountQuota>,
-) -> Result<Vec<AccountQuota>, String> {
-    account_manager(&app)?
-        .account_quotas_with_updates(
+    profile_ids: Option<Vec<String>>,
+) -> Result<quota_refresh::RefreshState, String> {
+    app.state::<quota_refresh::QuotaRefresh>()
+        .refresh(
+            &account_manager(&app)?,
             &state.operation_gate,
             &state.query_gate,
-            Some(&profile_ids),
-            |quota| {
-                let _ = on_update.send(quota);
-            },
+            profile_ids.as_deref(),
+            false,
+            |snapshot| emit_quota_state(&app, snapshot),
         )
         .await
-        .map_err(|error| error.to_string())
+}
+
+fn start_quota_worker(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let refresh = app.state::<quota_refresh::QuotaRefresh>();
+        refresh
+            .run(std::time::Duration::from_secs(30), || async {
+                let state = app.state::<AppState>();
+                // 只观察后端真实操作状态，不依赖前端弹窗是否仍然挂载。
+                let Ok(starting_login) = state.login_start_gate.try_lock() else {
+                    return;
+                };
+                if state.device_login.active().await || state.hosted_login.active().await {
+                    return;
+                }
+                drop(starting_login);
+                let Ok(manager) = account_manager(&app) else {
+                    return;
+                };
+                let _ = refresh
+                    .refresh(
+                        &manager,
+                        &state.operation_gate,
+                        &state.query_gate,
+                        None,
+                        true,
+                        |snapshot| emit_quota_state(&app, snapshot),
+                    )
+                    .await;
+            })
+            .await;
+    });
 }
 
 #[tauri::command]
@@ -545,9 +617,11 @@ pub fn run() {
         })
         .manage(app_update::AppUpdateState::default())
         .setup(|app| {
+            app.manage(quota_refresh::QuotaRefresh::new(app.path().app_data_dir()?));
             if let Ok(app_data_dir) = app.path().app_data_dir() {
                 proxy::init(app_data_dir);
             }
+            start_quota_worker(app.handle().clone());
             if let Ok(manager) = account_manager(app.handle()) {
                 let path = manager.usage_cache_path();
                 tauri::async_runtime::spawn_blocking(move || {
@@ -578,6 +652,9 @@ pub fn run() {
             clear_quota_history,
             verify_account_switch,
             refresh_account_quotas,
+            initialize_quota_refresh,
+            get_quota_refresh_state,
+            set_background_quota_refresh,
             get_usage_overview,
             get_model_provider_state,
             save_current,
@@ -603,6 +680,7 @@ pub fn run() {
         .expect("failed to build Codex Auth Switch")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                app.state::<quota_refresh::QuotaRefresh>().stop();
                 tauri::async_runtime::block_on(app.state::<AppState>().hosted_login.shutdown());
             }
         });

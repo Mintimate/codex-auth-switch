@@ -132,9 +132,7 @@
   "proxyLoadFailed": "Could not load proxy settings. Sign-in and online queries are paused. Fix network-proxy.json, then reopen Settings.",
   "proxySaveFailed": "Proxy changes have not been applied. Check the proxy URL or try again later.",
   "usageSettings": "Usage and quotas",
-  "usageSettingsHint": "Control when local sessions or online subscription quotas are queried.",
-  "autoRefreshUsage": "Refresh when opened",
-  "autoRefreshUsageHint": "Refresh the corresponding data when opening Accounts, Token usage, Subscription quotas, or the subscription value simulator.",
+  "usageSettingsHint": "Keep subscription quotas updated and manage the local usage cache.",
   "softwareUpdate": "Software update",
   "softwareUpdateHint": "Check for and install signed updates from the selected release source.",
   "updateSource": "Update source",
@@ -686,5 +684,8 @@
   "historyClearAll": "Clear all local quota history",
   "historyClearConfirm": "Clear history for all accounts? Accounts and credentials remain. Subsequent successful queries will be recorded.",
   "historyQueryFailed": "The quota query failed and no observation was added. Existing local history is shown below.",
+  "quotaAutoRefresh": "Background refresh",
+  "quotaAutoRefreshHint": "Update subscription quotas every 15 minutes while the app runs.",
+  "quotaAutoRefreshUnsupported": "Enable file credential storage to use this feature.",
   "accountRemovedHistoryWarning": "Account removed, but quota history cleanup failed. Clear local history in Subscription quotas → Quota history to recover."
 }

@@ -2,12 +2,10 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppStatus,
-  AccountQuota,
   ModelProviderState,
   copyAuthTransfer,
   cancelDeviceLogin,
   enableFileCredentialStorage,
-  refreshAccountQuotas,
   getLocalUsage,
   getModelProviderState,
   prepareAuthTransfer,
@@ -61,12 +59,12 @@ import type { SwitchReport } from "./SwitchResultPanel";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
 import { redactEmails } from "./privacy";
 import { useDesktopInteractions } from "./useDesktopInteractions";
+import { useAccountQuotas } from "./useAccountQuotas";
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
-const AUTO_REFRESH_USAGE_STORAGE_KEY = "codex-auth-switch-auto-refresh-usage";
 const PRIVATE_MODE_STORAGE_KEY = "codex-auth-switch-private-mode";
 const SWITCH_PREFERENCE_STORAGE_KEY = "codex-auth-switch-switch-preference";
 const LABS_HOSTED_LOGIN_STORAGE_KEY = "codex-auth-switch-labs-hosted-login";
@@ -96,9 +94,6 @@ const storedDefaultTab = (): AppTab => {
     : "accounts";
 };
 
-const storedAutoRefreshUsage = () =>
-  window.localStorage.getItem(AUTO_REFRESH_USAGE_STORAGE_KEY) !== "false";
-
 const storedPrivateMode = () =>
   window.localStorage.getItem(PRIVATE_MODE_STORAGE_KEY) === "true";
 
@@ -120,9 +115,6 @@ function App() {
   ];
   const [defaultTab, setDefaultTab] = useState<AppTab>(storedDefaultTab);
   const [activeTab, setActiveTab] = useState<AppTab>(storedDefaultTab);
-  const [autoRefreshUsage, setAutoRefreshUsage] = useState(
-    storedAutoRefreshUsage,
-  );
   const [privateMode, setPrivateMode] = useState(storedPrivateMode);
   const [switchPreference, setSwitchPreference] = useState(
     storedSwitchPreference,
@@ -185,19 +177,21 @@ function App() {
   const [modelProvider, setModelProvider] = useState<ModelProviderState | null>(
     null,
   );
-  const [quotas, setQuotas] = useState<AccountQuota[] | null>(null);
-  const [quotaRefreshingIds, setQuotaRefreshingIds] = useState<string[]>([]);
-  const [quotaRefreshErrors, setQuotaRefreshErrors] = useState<
-    Record<string, string>
-  >({});
-  const quotaLoading = quotaRefreshingIds.length > 0;
+  const {
+    quotas,
+    quotaRefreshingIds,
+    quotaRefreshErrors,
+    quotaLoading,
+    quotaError,
+    backgroundRefresh,
+    backgroundRefreshSaving,
+    backgroundRefreshError,
+    setBackgroundRefresh,
+    refreshQuotas,
+  } = useAccountQuotas(locale);
   const statusRef = useRef(status);
   statusRef.current = status;
-  const [quotaError, setQuotaError] = useState<string | null>(null);
   const usageRefreshInFlightRef = useRef(false);
-  const quotaRefreshInFlightRef = useRef(new Set<string>());
-  const quotaRequestIdsRef = useRef(new Map<string, number>());
-  const nextQuotaRequestRef = useRef(0);
 
   const refreshUsage = useCallback(async () => {
     if (usageRefreshInFlightRef.current) return;
@@ -218,92 +212,6 @@ function App() {
       usageRefreshInFlightRef.current = false;
     }
   }, [locale]);
-
-  const refreshQuotas = useCallback(
-    async (profileId?: string) => {
-      const current = statusRef.current;
-      if (!current?.supported) return;
-      const ids = current.accounts
-        .map((account) => account.id)
-        .filter(
-          (id) =>
-            (!profileId || id === profileId) &&
-            !quotaRefreshInFlightRef.current.has(id),
-        );
-      if (!ids.length) return;
-      const requestId = ++nextQuotaRequestRef.current;
-      const pending = new Set(ids);
-      for (const id of ids) {
-        quotaRefreshInFlightRef.current.add(id);
-        quotaRequestIdsRef.current.set(id, requestId);
-      }
-      setQuotaRefreshingIds([...quotaRefreshInFlightRef.current]);
-      setQuotas((current) => current ?? []);
-      setQuotaError(null);
-      setQuotaRefreshErrors((current) => {
-        const next = { ...current };
-        ids.forEach((id) => delete next[id]);
-        return next;
-      });
-      const accept = (quota: AccountQuota) => {
-        if (
-          !ids.includes(quota.profileId) ||
-          quotaRequestIdsRef.current.get(quota.profileId) !== requestId
-        )
-          return;
-        pending.delete(quota.profileId);
-        quotaRefreshInFlightRef.current.delete(quota.profileId);
-        setQuotaRefreshingIds([...quotaRefreshInFlightRef.current]);
-        if (
-          !statusRef.current?.accounts.some(
-            (account) => account.id === quota.profileId,
-          )
-        )
-          return;
-        setQuotas((current) => {
-          const previous = current?.find(
-            (item) => item.profileId === quota.profileId,
-          );
-          // 刷新失败保留上次成功快照，错误单独显示。
-          const next = !quota.success && previous?.success ? previous : quota;
-          return [
-            ...(current ?? []).filter(
-              (item) => item.profileId !== quota.profileId,
-            ),
-            next,
-          ];
-        });
-        setQuotaRefreshErrors((current) => {
-          const next = { ...current };
-          if (quota.success) delete next[quota.profileId];
-          else next[quota.profileId] = quota.error ?? "额度查询失败";
-          return next;
-        });
-      };
-      try {
-        const results = await refreshAccountQuotas(ids, accept);
-        results.forEach(accept);
-      } catch (reason) {
-        const message = localizeBackendError(messageOf(reason), locale);
-        setQuotaError(message);
-        setQuotaRefreshErrors((current) => {
-          const next = { ...current };
-          pending.forEach((id) => {
-            if (quotaRequestIdsRef.current.get(id) === requestId)
-              next[id] = message;
-          });
-          return next;
-        });
-      } finally {
-        ids.forEach((id) => {
-          if (quotaRequestIdsRef.current.get(id) === requestId)
-            quotaRefreshInFlightRef.current.delete(id);
-        });
-        setQuotaRefreshingIds([...quotaRefreshInFlightRef.current]);
-      }
-    },
-    [locale],
-  );
 
   const refreshActiveData = useCallback(() => {
     if (activeTab === "usage") void refreshUsage();
@@ -347,9 +255,8 @@ function App() {
   }, [switchPreference]);
 
   useEffect(() => {
-    if (autoRefreshUsage && (activeTab === "usage" || status?.supported))
-      refreshActiveData();
-  }, [autoRefreshUsage, activeTab, refreshActiveData, status?.supported]);
+    if (activeTab === "usage") void refreshUsage();
+  }, [activeTab, refreshUsage]);
 
   useEffect(() => {
     window.localStorage.setItem(DEFAULT_TAB_STORAGE_KEY, defaultTab);
@@ -365,13 +272,6 @@ function App() {
   useEffect(() => {
     workspaceRef.current?.scrollTo({ top: 0 });
   }, [activeTab]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      AUTO_REFRESH_USAGE_STORAGE_KEY,
-      String(autoRefreshUsage),
-    );
-  }, [autoRefreshUsage]);
 
   useEffect(() => {
     window.localStorage.setItem(PRIVATE_MODE_STORAGE_KEY, String(privateMode));
@@ -1013,14 +913,16 @@ function App() {
                 aria-label={t("settingsTab")}
               >
                 <SettingsPanel
-                  autoRefreshUsage={autoRefreshUsage}
+                  backgroundRefresh={backgroundRefresh}
+                  backgroundRefreshSaving={backgroundRefreshSaving}
+                  backgroundRefreshError={backgroundRefreshError}
+                  onBackgroundRefreshChange={setBackgroundRefresh}
                   switchPreference={switchPreference}
                   onSwitchPreferenceChange={setSwitchPreference}
                   restartSupported={restartSupported}
                   defaultTab={defaultTab}
                   languageOptions={languageOptions}
                   locale={locale}
-                  onAutoRefreshUsageChange={setAutoRefreshUsage}
                   onDefaultTabChange={setDefaultTab}
                   onLocaleChange={setLocale}
                   onOpenCodexDirectory={openCodexDirectory}

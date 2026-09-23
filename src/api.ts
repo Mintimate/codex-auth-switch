@@ -848,7 +848,7 @@ export const getAccountQuotas = async () => {
   }
 };
 
-export const refreshAccountQuotas = async (
+export const refreshPreviewQuotas = async (
   profileIds: string[],
   onUpdate: (quota: AccountQuota) => void,
 ) => {
@@ -893,12 +893,7 @@ export const refreshAccountQuotas = async (
     }
     return results;
   }
-  const channel = new Channel<AccountQuota>();
-  channel.onmessage = onUpdate;
-  return invoke<AccountQuota[]>("refresh_account_quotas", {
-    profileIds,
-    onUpdate: channel,
-  });
+  throw new Error("网页预览数据不可在桌面版查询");
 };
 
 export type UsageCacheInfo = { bytes: number; maxBytes: number };

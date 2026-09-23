@@ -105,11 +105,13 @@ type SettingsPanelProps = {
   switchPreference: SwitchPreference;
   onSwitchPreferenceChange: (value: SwitchPreference) => void;
   restartSupported: boolean;
-  autoRefreshUsage: boolean;
+  backgroundRefresh: boolean;
+  backgroundRefreshSaving: boolean;
+  backgroundRefreshError: string | null;
+  onBackgroundRefreshChange: (enabled: boolean) => void;
   defaultTab: AppTab;
   languageOptions: Option<Locale>[];
   locale: Locale;
-  onAutoRefreshUsageChange: (enabled: boolean) => void;
   onDefaultTabChange: (tab: AppTab) => void;
   onLocaleChange: (locale: Locale) => void;
   onOpenCodexDirectory: () => void;
@@ -158,11 +160,13 @@ export function SettingsPanel({
   switchPreference,
   onSwitchPreferenceChange,
   restartSupported,
-  autoRefreshUsage,
+  backgroundRefresh,
+  backgroundRefreshSaving,
+  backgroundRefreshError,
+  onBackgroundRefreshChange,
   defaultTab,
   languageOptions,
   locale,
-  onAutoRefreshUsageChange,
   onDefaultTabChange,
   onLocaleChange,
   onOpenCodexDirectory,
@@ -652,16 +656,26 @@ export function SettingsPanel({
 
           <div className="settings-row">
             <div>
-              <strong>{t("autoRefreshUsage")}</strong>
-              <span>{t("autoRefreshUsageHint")}</span>
+              <strong>{t("quotaAutoRefresh")}</strong>
+              <span>{t("quotaAutoRefreshHint")}</span>
+              {backgroundRefreshError && (
+                <p className="usage-inline-error" role="status">
+                  {backgroundRefreshError}
+                </p>
+              )}
+
+              {!status?.supported && (
+                <span>{t("quotaAutoRefreshUnsupported")}</span>
+              )}
             </div>
             <button
               type="button"
-              className={`toggle${autoRefreshUsage ? " active" : ""}`}
+              className={`toggle${backgroundRefresh ? " active" : ""}`}
               role="switch"
-              aria-checked={autoRefreshUsage}
-              aria-label={t("autoRefreshUsage")}
-              onClick={() => onAutoRefreshUsageChange(!autoRefreshUsage)}
+              aria-checked={backgroundRefresh}
+              disabled={backgroundRefreshSaving}
+              aria-label={t("quotaAutoRefresh")}
+              onClick={() => onBackgroundRefreshChange(!backgroundRefresh)}
             >
               <span />
             </button>
