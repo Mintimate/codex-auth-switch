@@ -56,7 +56,8 @@ import { ThemeMode, useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
 import { SubscriptionValuePage } from "./SubscriptionValuePage";
 import { UsagePanel } from "./UsagePanel";
-import { RestartRequiredAlert } from "./RestartRequiredAlert";
+import { SwitchResultPanel } from "./SwitchResultPanel";
+import type { SwitchReport } from "./SwitchResultPanel";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
 import { redactEmails } from "./privacy";
 import { useDesktopInteractions } from "./useDesktopInteractions";
@@ -129,7 +130,7 @@ function App() {
   const [restartSupported, setRestartSupported] = useState(false);
   const [switchDialogId, setSwitchDialogId] = useState<string | null>(null);
   const [switchStage, setSwitchStage] = useState<SwitchStage | null>(null);
-  const [switchWarning, setSwitchWarning] = useState<MessageKey | null>(null);
+  const [switchReport, setSwitchReport] = useState<SwitchReport | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -137,7 +138,6 @@ function App() {
   const switchingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [restartRequired, setRestartRequired] = useState(false);
   const [hostedStartError, setHostedStartError] = useState<MessageKey | null>(
     null,
   );
@@ -492,10 +492,10 @@ function App() {
     setSwitchingId(profileId);
     setError(null);
     setNotice(null);
-    setSwitchWarning(null);
-    setRestartRequired(false);
+    setSwitchReport(null);
     setSwitchStage("checking");
     let acceptProgress = true;
+    let lastStage: SwitchStage = "checking";
     try {
       // 请求立即发出；快速成功时只让局部反馈完成一个周期，不挂载全屏遮罩。
       const feedbackMs = window.matchMedia("(prefers-reduced-motion: reduce)")
@@ -504,22 +504,25 @@ function App() {
         : ACCOUNT_SWITCH_FEEDBACK_MS;
       const [result] = await Promise.all([
         switchAccountWithOptions(profileId, restart, (stage) => {
-          if (acceptProgress) setSwitchStage(stage);
+          if (acceptProgress) {
+            lastStage = stage;
+            setSwitchStage(stage);
+          }
         }),
         new Promise<void>((resolve) => window.setTimeout(resolve, feedbackMs)),
       ]);
       const nextStatus = result.status;
       statusRef.current = nextStatus;
       setStatus(nextStatus);
-      setRestartRequired(result.restart === "notRequested");
-      if (result.restart === "restarted") setNotice(t("switchRestarted"));
-      if (result.restart === "launchFailed")
-        setSwitchWarning("switchLaunchFailed");
-      if (result.restart === "notRunning")
-        setSwitchWarning("switchClientNotRunning");
+      setSwitchReport({ profileId, restart: result.restart });
       refreshActiveData();
     } catch (reason) {
       setError(localizeBackendError(messageOf(reason), locale));
+      setSwitchReport({
+        profileId,
+        restart: "failed",
+        failedStage: lastStage,
+      });
       // 原子写入后若持久化或 IPC 中断，重新读取真实状态，避免继续显示旧账号。
       try {
         const latest = await getStatus();
@@ -784,7 +787,7 @@ function App() {
               </section>
             )}
 
-            {notice && !error && !restartRequired && (
+            {notice && !error && (
               <section
                 className="alert success"
                 role="status"
@@ -803,13 +806,6 @@ function App() {
               </section>
             )}
 
-            {restartRequired && !error && (
-              <RestartRequiredAlert
-                onDismiss={() => setRestartRequired(false)}
-                t={t}
-              />
-            )}
-
             {switchStage && (
               <section
                 className="alert switch-progress"
@@ -820,21 +816,17 @@ function App() {
                 <span>{t(switchStageKeys[switchStage])}</span>
               </section>
             )}
-            {switchWarning && !error && (
-              <section
-                className="alert warning"
-                role="status"
-                aria-live="polite"
-              >
-                <span>{t(switchWarning)}</span>
-                <button
-                  type="button"
-                  className="alert-close"
-                  onClick={() => setSwitchWarning(null)}
-                >
-                  {t("acknowledge")}
-                </button>
-              </section>
+            {switchReport && activeTab === "accounts" && (
+              <SwitchResultPanel
+                report={switchReport}
+                status={status}
+                busy={Boolean(busy) || switchingId !== null}
+                privateMode={privateMode}
+                locale={locale}
+                t={t}
+                onRetry={() => requestSwitch(switchReport.profileId)}
+                onDismiss={() => setSwitchReport(null)}
+              />
             )}
 
             {activeTab === "accounts" && (

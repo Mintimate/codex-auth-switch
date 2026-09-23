@@ -1,3 +1,116 @@
+.switch-result-panel {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.switch-result-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+}
+.switch-result-summary > svg,
+.switch-result-summary > button {
+  flex-shrink: 0;
+}
+.switch-result-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.switch-result-message small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.switch-result-toggle,
+.switch-result-recheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.switch-result-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.switch-result-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+}
+.switch-result-details dl {
+  margin: 0;
+}
+.switch-result-details dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 7rem) minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.switch-result-details dt {
+  color: var(--muted);
+}
+.switch-result-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.switch-result-hint {
+  margin: 8px 0;
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+.observation-heading,
+.observation-actions,
+.history-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.observation-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+.observation-heading h3 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: var(--weight-semibold);
+}
+.observation-heading p,
+.observation-hint,
+.history-empty p {
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: var(--leading-relaxed);
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.observation-actions small,
+.history-summary small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-relaxed);
+  margin-top: 6px;
+}
+.observation-success {
+  color: var(--success-text);
+}
+.observation-actions {
+  justify-content: flex-start;
+  font-size: var(--text-body);
+}
+.observation-actions .button,
+.observation-heading .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 :root {
   /* 全局文字层级：按用途选用，新增界面不再单独指定像素字号。见 docs/typography.md。 */
   --text-caption: 0.75rem;

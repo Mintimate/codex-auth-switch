@@ -42,6 +42,45 @@ pub struct SwitchResult {
     pub restart: RestartOutcome,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DesktopState {
+    Running,
+    NotRunning,
+    Unsupported,
+    Unavailable,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchVerification {
+    pub credential_file: crate::manager::CredentialFileState,
+    pub desktop: DesktopState,
+    pub checked_at: u64,
+}
+
+pub fn verify_switch(manager: &AccountManager, profile_id: &str) -> SwitchVerification {
+    let desktop = if !supported() {
+        DesktopState::Unsupported
+    } else if ensure_default_home(manager.codex_home_path()).is_err() {
+        DesktopState::Unavailable
+    } else {
+        match SystemClient.prepare() {
+            Ok(Some(_)) => DesktopState::Running,
+            Ok(None) => DesktopState::NotRunning,
+            Err(_) => DesktopState::Unavailable,
+        }
+    };
+    SwitchVerification {
+        credential_file: manager.verify_credential_file(profile_id),
+        desktop,
+        checked_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    }
+}
+
 // 仅在后端使用，不把路径、PID 或其它进程信息发送到 WebView。
 #[derive(Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

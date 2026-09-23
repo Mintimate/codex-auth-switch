@@ -192,6 +192,21 @@ async fn get_account_quotas(
 }
 
 #[tauri::command]
+async fn verify_account_switch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> Result<desktop_client::SwitchVerification, String> {
+    let _guard = state.operation_gate.lock().await;
+    let manager = account_manager(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        desktop_client::verify_switch(&manager, &profile_id)
+    })
+    .await
+    .map_err(|_| "无法检查切换结果，请重试".into())
+}
+
+#[tauri::command]
 async fn refresh_account_quotas(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -542,6 +557,7 @@ pub fn run() {
             get_usage_cache_info,
             clear_usage_cache,
             get_account_quotas,
+            verify_account_switch,
             refresh_account_quotas,
             get_usage_overview,
             get_model_provider_state,

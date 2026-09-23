@@ -120,6 +120,8 @@ Restarting validates the target and desktop app, requests a normal quit, waits f
 
 The local restart compatibility layer supports macOS (`com.openai.codex`) and identifiable OpenAI Codex desktop executables on Windows. It does not terminate standalone CLI or IDE sessions. Use **Switch only** and restart manually on Linux, with a custom `CODEX_HOME`, multiple desktop instances, or an unidentified client. This preference does not affect Device Code sign-in or Auth imports; switching after local Codex sign-in uses this preference. This is a local compatibility implementation, not an officially guaranteed account-switching API.
 
+After switching a saved account, the Accounts page shows the operation outcome, credential-file match and desktop process state. **Check again** reads local state without signing in or restarting. Verify the identity inside Codex; a running or restarted process does not confirm its account. The report lasts for the current app session.
+
 ### 4. Transfer to another device (optional)
 
 One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions on the sending device first; the receiver immediately refreshes and validates the account during import, then restart Codex after the credentials are written for the switch to take effect. For ongoing access on both devices, start a new OAuth authorization on the receiving device instead.

@@ -54,6 +54,18 @@ export type SwitchResult = {
   restart: "notRequested" | "notRunning" | "restarted" | "launchFailed";
 };
 
+export type SwitchVerification = {
+  credentialFile:
+    | "matched"
+    | "different"
+    | "unavailable"
+    | "unsupported"
+    | "pendingLogin"
+    | "targetRemoved";
+  desktop: "running" | "notRunning" | "unsupported" | "unavailable";
+  checkedAt: number;
+};
+
 export type LocalDiagnosticId =
   | "codexHome"
   | "config"
@@ -522,6 +534,20 @@ const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (import.meta.env.DEV && !isTauri()) {
+    if (command === "verify_account_switch") {
+      const target = previewStatus.accounts.find(
+        (account) => account.id === args?.profileId,
+      );
+      return Promise.resolve({
+        credentialFile: !target
+          ? "targetRemoved"
+          : previewStatus.activeAccountId === target.accountId
+            ? "matched"
+            : "different",
+        desktop: "running",
+        checkedAt: Math.floor(Date.now() / 1000),
+      } as T);
+    }
     if (command === "start_hosted_login") {
       previewHostedLogin = {
         sessionId: "preview-hosted",
@@ -810,6 +836,9 @@ export const cancelDeviceLogin = (deviceCode: string) =>
 
 export const switchAccount = (profileId: string) =>
   call<AppStatus>("switch_account", { profileId });
+
+export const verifyAccountSwitch = (profileId: string) =>
+  call<SwitchVerification>("verify_account_switch", { profileId });
 
 export const desktopRestartSupported = () =>
   call<boolean>("desktop_restart_supported");

@@ -181,6 +181,17 @@ pub struct DeviceLoginResponse {
     pub interval: u64,
 }
 
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CredentialFileState {
+    Matched,
+    Different,
+    Unavailable,
+    Unsupported,
+    PendingLogin,
+    TargetRemoved,
+}
+
 pub struct PreparedAuthTransfer {
     pub text: String,
     pub qr_data_url: Option<String>,
@@ -394,6 +405,54 @@ impl AccountManager {
 
     pub(crate) fn vault_path(&self) -> &Path {
         &self.vault_path
+    }
+
+    // 只比较磁盘上的账号身份，不启动 App Server，也不声称验证了运行中客户端。
+    pub(crate) fn verify_credential_file(&self, profile_id: &str) -> CredentialFileState {
+        let config = match fs::read_to_string(self.config_path()) {
+            Ok(config) => config,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(_) => return CredentialFileState::Unavailable,
+        };
+        let Ok(document) = config.parse::<DocumentMut>() else {
+            return CredentialFileState::Unavailable;
+        };
+        if document
+            .get("cli_auth_credentials_store")
+            .is_some_and(|item| {
+                !item
+                    .as_str()
+                    .is_some_and(|mode| mode.eq_ignore_ascii_case("file"))
+            })
+        {
+            return CredentialFileState::Unsupported;
+        }
+        let Some(vault) = fs::read(&self.vault_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Vault>(&bytes).ok())
+        else {
+            return CredentialFileState::Unavailable;
+        };
+        if vault.version != VAULT_VERSION {
+            return CredentialFileState::Unavailable;
+        }
+        let Some(profile) = vault.profiles.iter().find(|p| p.id == profile_id) else {
+            return CredentialFileState::TargetRemoved;
+        };
+        let Some(identity) = fs::read(self.auth_path())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .and_then(|auth| validate_chatgpt_auth(&auth).ok())
+        else {
+            return CredentialFileState::Unavailable;
+        };
+        if identity.account_id != profile.account_id {
+            return CredentialFileState::Different;
+        }
+        if profile.pending_login {
+            return CredentialFileState::PendingLogin;
+        }
+        CredentialFileState::Matched
     }
 
     pub fn status(&self) -> Result<AppStatus, ManagerError> {
@@ -2334,6 +2393,66 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
     use tempfile::TempDir;
+
+    #[test]
+    fn switch_verification_is_read_only_and_tracks_external_identity_changes() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("account-a", "a@example.com", "synthetic-a"))
+            .unwrap();
+        manager.save_current("A").unwrap();
+        let vault_before = fs::read(manager.vault_path()).unwrap();
+        let auth_before = fs::read(manager.auth_path()).unwrap();
+        assert_eq!(
+            manager.verify_credential_file("account-a"),
+            CredentialFileState::Matched
+        );
+        assert_eq!(fs::read(manager.vault_path()).unwrap(), vault_before);
+        assert_eq!(fs::read(manager.auth_path()).unwrap(), auth_before);
+        manager
+            .write_live_auth(&auth("account-b", "b@example.com", "synthetic-b"))
+            .unwrap();
+        assert_eq!(
+            manager.verify_credential_file("account-a"),
+            CredentialFileState::Different
+        );
+        assert_eq!(
+            manager.verify_credential_file("missing"),
+            CredentialFileState::TargetRemoved
+        );
+        fs::write(manager.auth_path(), b"invalid").unwrap();
+        assert_eq!(
+            manager.verify_credential_file("account-a"),
+            CredentialFileState::Unavailable
+        );
+        write_config(&manager, "cli_auth_credentials_store = \"keyring\"\n");
+        assert_eq!(
+            manager.verify_credential_file("account-a"),
+            CredentialFileState::Unsupported
+        );
+    }
+
+    #[test]
+    fn new_sign_in_is_not_verified_as_the_old_live_session() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("account-a", "a@example.com", "synthetic-old"))
+            .unwrap();
+        manager.save_current("A").unwrap();
+        let mut vault = manager.load_vault().unwrap();
+        vault.profiles[0].pending_login = true;
+        vault.profiles[0].auth = auth("account-a", "a@example.com", "synthetic-new");
+        manager.save_vault(&vault).unwrap();
+        assert_eq!(
+            manager.verify_credential_file("account-a"),
+            CredentialFileState::PendingLogin
+        );
+        manager.switch_account("account-a").unwrap();
+        assert_eq!(
+            manager.verify_credential_file("account-a"),
+            CredentialFileState::Matched
+        );
+    }
 
     #[test]
     fn local_usage_and_provider_state_work_without_file_credentials() {
