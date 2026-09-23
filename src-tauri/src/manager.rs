@@ -6,6 +6,7 @@ use crate::{
     auth_share::{self, ImportedAuth},
     codex_app_server, proxy,
     query_gate::{QueryGate, QueryPermit},
+    quota_history,
     usage::{
         provider_label, scan_local_usage_cached, AccountLabel, ActivationRecord, LocalUsageStats,
         ModelProviderKind, ModelProviderOption, ModelProviderState, ProviderCatalog,
@@ -169,6 +170,13 @@ pub struct AppStatus {
     pub supported: bool,
     pub active_account_id: Option<String>,
     pub accounts: Vec<AccountSummary>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveAccountResult {
+    pub status: AppStatus,
+    pub history_cleanup_failed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -407,6 +415,23 @@ impl AccountManager {
         &self.vault_path
     }
 
+    pub(crate) fn quota_history_path(&self) -> PathBuf {
+        self.vault_path.with_file_name("quota-history.v1.json")
+    }
+
+    pub fn quota_history(&self) -> Result<quota_history::QuotaHistory, String> {
+        let vault = self
+            .load_vault()
+            .map_err(|_| "无法读取账号列表".to_string())?;
+        let ids = vault
+            .profiles
+            .iter()
+            .map(|p| p.id.clone())
+            .collect::<Vec<_>>();
+        quota_history::read(&self.quota_history_path(), &ids, unix_timestamp())
+            .map_err(str::to_string)
+    }
+
     // 只比较磁盘上的账号身份，不启动 App Server，也不声称验证了运行中客户端。
     pub(crate) fn verify_credential_file(&self, profile_id: &str) -> CredentialFileState {
         let config = match fs::read_to_string(self.config_path()) {
@@ -563,7 +588,7 @@ impl AccountManager {
         self.status()
     }
 
-    pub fn remove_account(&self, profile_id: &str) -> Result<AppStatus, ManagerError> {
+    pub fn remove_account(&self, profile_id: &str) -> Result<RemoveAccountResult, ManagerError> {
         let mut vault = self.load_vault()?;
         if !vault
             .profiles
@@ -573,8 +598,19 @@ impl AccountManager {
             return Err(ManagerError::ProfileNotFound);
         }
         vault.profiles.retain(|profile| profile.id != profile_id);
+        // 账号库是主操作，额度历史是附属数据；历史损坏或不可写不能阻止删除凭据。
         self.save_vault(&vault)?;
-        self.status()
+        let ids = vault
+            .profiles
+            .iter()
+            .map(|p| p.id.clone())
+            .collect::<Vec<_>>();
+        let history_cleanup_failed =
+            quota_history::read(&self.quota_history_path(), &ids, unix_timestamp()).is_err();
+        Ok(RemoveAccountResult {
+            status: self.status()?,
+            history_cleanup_failed,
+        })
     }
 
     pub async fn prepare_auth_transfer(
@@ -998,7 +1034,7 @@ impl AccountManager {
         };
 
         let profile = &vault.profiles[profile_index];
-        let quota = match result {
+        let mut quota = match result {
             Ok(details) => AccountQuota {
                 profile_id: profile.id.clone(),
                 account_id: profile.account_id.clone(),
@@ -1013,6 +1049,7 @@ impl AccountManager {
                 success: true,
                 error: None,
                 queried_at,
+                history_warning: None,
             },
             Err(QuotaQueryError::Unauthorized) => AccountQuota {
                 profile_id: profile.id.clone(),
@@ -1028,6 +1065,7 @@ impl AccountManager {
                 success: false,
                 error: Some("订阅凭据已失效，请重新登录该账号".to_string()),
                 queried_at,
+                history_warning: None,
             },
             Err(QuotaQueryError::Message(message)) => AccountQuota {
                 profile_id: profile.id.clone(),
@@ -1043,8 +1081,20 @@ impl AccountManager {
                 success: false,
                 error: Some(message),
                 queried_at,
+                history_warning: None,
             },
         };
+        let ids = vault
+            .profiles
+            .iter()
+            .map(|p| p.id.clone())
+            .collect::<Vec<_>>();
+        if let Err(message) =
+            quota_history::record(&self.quota_history_path(), &quota, &ids, unix_timestamp())
+        {
+            // 历史写入失败不能撤销已轮换的凭据，也不能把成功的额度查询报告成失败。
+            quota.history_warning = Some(message.into());
+        }
         Ok(Some(quota))
     }
 
@@ -2455,6 +2505,56 @@ mod tests {
     }
 
     #[test]
+    fn quota_history_failure_does_not_discard_successful_query_or_rotated_credentials() {
+        let (_root, manager) = test_manager();
+        let original = auth("account-a", "a@example.com", "synthetic-old");
+        manager.write_live_auth(&original).unwrap();
+        manager.save_current("A").unwrap();
+        let outcome = |original_auth: Value, refreshed_auth: Option<Value>| QuotaOutcome {
+            query_permit: None,
+            profile_id: "account-a".into(),
+            account_id: "account-a".into(),
+            original_auth,
+            queried_at: unix_timestamp(),
+            refreshed_auth,
+            result: Ok(QuotaDetails {
+                primary: Some(UsageWindow {
+                    used_percent: 25.0,
+                    window_minutes: Some(300),
+                    resets_at: Some(unix_timestamp() + 1000),
+                }),
+                secondary: None,
+                buckets: vec![],
+                reset_credits: None,
+                plan_type: None,
+                official_usage: None,
+                source: "appServer".into(),
+            }),
+        };
+        let first = manager
+            .merge_quota_outcome(outcome(original.clone(), None))
+            .unwrap()
+            .unwrap();
+        assert!(first.success);
+        assert!(first.history_warning.is_none());
+        assert_eq!(manager.quota_history().unwrap().points.len(), 1);
+        fs::write(manager.quota_history_path(), b"invalid").unwrap();
+        let rotated = auth("account-a", "a@example.com", "synthetic-rotated");
+        let second = manager
+            .merge_quota_outcome(outcome(original, Some(rotated.clone())))
+            .unwrap()
+            .unwrap();
+        assert!(second.success);
+        assert!(second.history_warning.is_some());
+        assert!(manager.read_live_auth().unwrap() == rotated);
+        assert_eq!(fs::read(manager.quota_history_path()).unwrap(), b"invalid");
+        quota_history::clear(&manager.quota_history_path()).unwrap();
+        manager.merge_quota_outcome(outcome(rotated, None)).unwrap();
+        manager.remove_account("account-a").unwrap();
+        assert!(manager.quota_history().unwrap().points.is_empty());
+    }
+
+    #[test]
     fn local_usage_and_provider_state_work_without_file_credentials() {
         for mode in ["auto", "keyring"] {
             let (_root, manager) = test_manager();
@@ -2966,13 +3066,81 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_history_does_not_prevent_removal_or_touch_other_credentials() {
+        let (_root, manager) = test_manager();
+        for id in ["a", "b"] {
+            manager
+                .write_live_auth(&auth(id, "test@example.com", "synthetic"))
+                .unwrap();
+            manager.save_current(id).unwrap();
+        }
+        let live_before = fs::read(manager.auth_path()).unwrap();
+        fs::write(manager.quota_history_path(), b"invalid history").unwrap();
+        let removed = manager.remove_account("a").unwrap();
+        assert!(removed.history_cleanup_failed);
+        assert_eq!(removed.status.accounts.len(), 1);
+        assert_eq!(removed.status.accounts[0].id, "b");
+        assert_eq!(fs::read(manager.auth_path()).unwrap(), live_before);
+        assert_eq!(
+            fs::read(manager.quota_history_path()).unwrap(),
+            b"invalid history"
+        );
+        assert_eq!(manager.load_vault().unwrap().profiles.len(), 1);
+        // 额度页不可用的 keyring 模式下，账号删除也不依赖历史清理入口。
+        write_config(&manager, "cli_auth_credentials_store = \"keyring\"\n");
+        assert!(manager
+            .remove_account("b")
+            .unwrap()
+            .status
+            .accounts
+            .is_empty());
+    }
+
+    #[test]
+    fn unreadable_history_does_not_prevent_removal() {
+        let (_root, manager) = test_manager();
+        manager
+            .write_live_auth(&auth("a", "test@example.com", "synthetic"))
+            .unwrap();
+        manager.save_current("A").unwrap();
+        fs::create_dir(manager.quota_history_path()).unwrap();
+        let removed = manager.remove_account("a").unwrap();
+        assert!(removed.history_cleanup_failed);
+        assert!(removed.status.accounts.is_empty());
+    }
+
+    #[test]
+    fn removal_cleans_only_the_deleted_accounts_healthy_history() {
+        let (_root, manager) = test_manager();
+        for id in ["a", "b"] {
+            manager
+                .write_live_auth(&auth(id, "test@example.com", "synthetic"))
+                .unwrap();
+            manager.save_current(id).unwrap();
+        }
+        let points = ["a", "b"].map(|id| json!({
+            "profileId": id, "queriedAt": unix_timestamp(), "bucketId": "codex", "window": "primary",
+            "windowMinutes": 300, "usedPercent": 25, "resetsAt": null, "source": "appServer", "planType": "plus"
+        }));
+        fs::write(
+            manager.quota_history_path(),
+            serde_json::to_vec(&json!({"version":1,"points":points})).unwrap(),
+        )
+        .unwrap();
+        assert!(!manager.remove_account("a").unwrap().history_cleanup_failed);
+        let history = manager.quota_history().unwrap();
+        assert_eq!(history.points.len(), 1);
+        assert_eq!(history.points[0].profile_id, "b");
+    }
+
+    #[test]
     fn removes_the_active_saved_profile_without_logging_out() {
         let (_root, manager) = test_manager();
         let live_auth = auth("account-a", "a@example.com", "refresh-a");
         manager.write_live_auth(&live_auth).unwrap();
         manager.save_current("个人账号").unwrap();
 
-        let status = manager.remove_account("account-a").unwrap();
+        let status = manager.remove_account("account-a").unwrap().status;
 
         assert!(status.accounts.is_empty());
         assert_eq!(status.active_account_id.as_deref(), Some("account-a"));

@@ -51,6 +51,8 @@ export const useI18n = () => {
 };
 
 const backendErrorTranslations: Record<string, string> = {
+  "清理额度历史失败，请先清空本机额度历史后重试":
+    "Could not remove quota history. Clear local quota history first, then try again.",
   请先完成或取消正在进行的登录: "Complete or cancel the current sign-in first.",
   "无法安全识别 Codex 桌面客户端，请手动退出后选择仅切换":
     "Could not safely identify the Codex desktop app. Quit it manually, then choose Switch only.",

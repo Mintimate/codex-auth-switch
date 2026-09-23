@@ -157,6 +157,14 @@ All three pages can refresh on demand; opening Accounts does not query quotas. D
 
 Refresh all accounts or one account at a time. Different accounts share two concurrent query slots; requests for the same account are serialized. Failures retain previous results and their timestamps; an initial failure offers a retry, and missing data stays unknown. Not every account returns every quota field. Wait before retrying a rate-limited request.
 
+### Quota history
+
+Open the history icon in **Subscription quotas**, or **Account details → Quota history**, to review observations over 24 hours, 7 days or 30 days. Successful manual and page-triggered queries record returned window percentages, timestamps, source and plan metadata. Viewing history itself does not send an online query, reconstruct past data or record failures as zero.
+
+Percentage-point changes are calculated only for the same account, bucket, window, source, plan, duration and known reset timestamp. Period boundaries, source changes or missing metadata break the trend line. A rise in remaining quota does not confirm a reset or identify which device or task caused a change.
+
+The separate local `quota-history.v1.json` retains up to 30 days, 12,000 window observations overall and 2,000 per account, with an 8 MiB file limit. Access and writes prune expired and oldest entries, so storage cannot grow indefinitely. Each window counts separately; more frequent queries or additional windows retain fewer days once the record cap is reached. A history-write failure is reported separately and preserves successful quota results and refreshed credentials. Confirm **Clear all local quota history** to start over without deleting accounts or credentials. Removing an account also attempts to remove its history. Cleanup failures produce a separate notice and never block account removal or alter other credentials. Corrupt history is preserved until explicitly cleared.
+
 <details>
 <summary>Local usage cache and cleanup</summary>
 

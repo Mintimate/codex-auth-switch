@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import type { AccountQuota, AccountSummary } from "./api";
 import type { Locale, Translate } from "./i18n";
+import { QuotaHistoryPanel } from "./QuotaHistoryPanel";
 import { QuotaCard } from "./QuotaCard";
 import type { QuotaDetailView } from "./quotaView";
 
@@ -104,7 +105,7 @@ export function QuotaDetailDialog({
         role="tablist"
         aria-label={t("quotaAccountDetails")}
       >
-        {(["quota", "usage"] as const).map((tab) => (
+        {(["quota", "usage", "history"] as const).map((tab) => (
           <button
             type="button"
             key={tab}
@@ -123,19 +124,27 @@ export function QuotaDetailDialog({
               )
                 return;
               event.preventDefault();
+              const tabs = ["quota", "usage", "history"] as const;
+              const index = tabs.indexOf(view);
               const next =
-                event.key === "Home"
-                  ? "quota"
-                  : event.key === "End"
-                    ? "usage"
-                    : view === "quota"
-                      ? "usage"
-                      : "quota";
+                tabs[
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? 2
+                      : (index + (event.key === "ArrowRight" ? 1 : 2)) % 3
+                ];
               setView(next);
               tabsRef.current[next]?.focus();
             }}
           >
-            {t(tab === "quota" ? "quotaTab" : "officialAccountUsage")}
+            {t(
+              tab === "quota"
+                ? "quotaTab"
+                : tab === "history"
+                  ? "historyTitle"
+                  : "officialAccountUsage",
+            )}
           </button>
         ))}
       </div>
@@ -146,18 +155,32 @@ export function QuotaDetailDialog({
         aria-labelledby={`${id}-tab-${view}`}
         tabIndex={0}
       >
-        <QuotaCard
-          activeAccountId={activeAccountId}
-          account={account}
-          accountLabel={displayLabel(account.label)}
-          locale={locale}
-          quota={quota}
-          refreshing={refreshing}
-          refreshError={refreshError}
-          onRefresh={onRefresh}
-          view={view}
-          t={t}
-        />
+        {view === "history" ? (
+          <QuotaHistoryPanel
+            key={account.id}
+            profileId={account.id}
+            revision={quota?.queriedAt}
+            warning={quota?.historyWarning}
+            queryFailed={Boolean(refreshError)}
+            refreshing={refreshing}
+            locale={locale}
+            t={t}
+            onRefreshQuota={onRefresh}
+          />
+        ) : (
+          <QuotaCard
+            activeAccountId={activeAccountId}
+            account={account}
+            accountLabel={displayLabel(account.label)}
+            locale={locale}
+            quota={quota}
+            refreshing={refreshing}
+            refreshError={refreshError}
+            onRefresh={onRefresh}
+            view={view}
+            t={t}
+          />
+        )}
       </div>
     </dialog>,
     document.body,

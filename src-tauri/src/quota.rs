@@ -59,4 +59,5 @@ pub struct AccountQuota {
     pub success: bool,
     pub error: Option<String>,
     pub queried_at: u64,
+    pub history_warning: Option<String>,
 }

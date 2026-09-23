@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  History,
   RefreshCw,
   Search,
   X,
@@ -257,6 +258,11 @@ export function QuotaAccountTable({
                             : t("quotaQueryFailed")}
                       </small>
                     )}
+                    {quota?.historyWarning && (
+                      <small className="quota-row-error">
+                        {t("historyWriteFailed")}
+                      </small>
+                    )}
                   </th>
                   <td>
                     <strong className="quota-table-number">
@@ -335,6 +341,17 @@ export function QuotaAccountTable({
                           className={refreshing ? "quota-icon-spinning" : ""}
                           aria-hidden="true"
                         />
+                      </button>
+                      <button
+                        type="button"
+                        className="quota-icon-button"
+                        onClick={() => onDetails(account.id, "history")}
+                        title={t("historyTitle")}
+                        aria-label={t("historyAccountAction", {
+                          account: label,
+                        })}
+                      >
+                        <History size={16} aria-hidden="true" />
                       </button>
                       <button
                         type="button"

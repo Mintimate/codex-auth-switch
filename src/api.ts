@@ -66,6 +66,25 @@ export type SwitchVerification = {
   checkedAt: number;
 };
 
+export type QuotaPoint = {
+  profileId: string;
+  queriedAt: number;
+  bucketId: string;
+  window: "primary" | "secondary";
+  windowMinutes: number | null;
+  usedPercent: number;
+  resetsAt: number | null;
+  source: "appServer" | "compatibility";
+  planType: string | null;
+};
+
+export type QuotaHistory = {
+  points: QuotaPoint[];
+  retentionDays: number;
+  maxPoints: number;
+  maxProfilePoints: number;
+};
+
 export type LocalDiagnosticId =
   | "codexHome"
   | "config"
@@ -190,6 +209,7 @@ export type AccountQuota = {
   success: boolean;
   error: string | null;
   queriedAt: number;
+  historyWarning?: string | null;
 };
 
 export type LocalUsageStats = {
@@ -528,12 +548,50 @@ const previewShareQr = `data:image/svg+xml,${encodeURIComponent(`
 `)}`;
 
 let previewHostedLogin: HostedLoginStatus | null = null;
+let previewHistory: QuotaPoint[] = previewQuotas.flatMap((quota) => {
+  const now = Math.floor(Date.now() / 1000);
+  return (["primary", "secondary"] as const).flatMap((kind) => {
+    const window = quota[kind];
+    if (!window) return [];
+    return Array.from({ length: 12 }, (_, index) => ({
+      profileId: quota.profileId,
+      queriedAt: now - (11 - index) * 1200,
+      bucketId: "codex",
+      window: kind,
+      windowMinutes: window.windowMinutes,
+      usedPercent:
+        kind === "primary" && index < 5
+          ? 65 + index * 5
+          : Math.max(
+              0,
+              window.usedPercent -
+                (11 - index) * (kind === "primary" ? 4 : 1.5),
+            ),
+      resetsAt: kind === "primary" && index < 5 ? now - 7800 : window.resetsAt,
+      source: quota.source ?? "appServer",
+      planType: quota.planType,
+    }));
+  });
+});
 let previewCacheBytes = 256 * 1024;
 
 const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (import.meta.env.DEV && !isTauri()) {
+    if (command === "get_quota_history")
+      return Promise.resolve(
+        structuredClone({
+          points: previewHistory,
+          retentionDays: 30,
+          maxPoints: 12000,
+          maxProfilePoints: 2000,
+        }) as T,
+      );
+    if (command === "clear_quota_history") {
+      previewHistory = [];
+      return Promise.resolve(undefined as T);
+    }
     if (command === "verify_account_switch") {
       const target = previewStatus.accounts.find(
         (account) => account.id === args?.profileId,
@@ -595,6 +653,20 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
                 restart: args?.restart ? "restarted" : "notRequested",
               },
         ) as T,
+      );
+    }
+    if (command === "remove_account") {
+      previewStatus.accounts = previewStatus.accounts.filter(
+        (a) => a.id !== args?.profileId,
+      );
+      previewHistory = previewHistory.filter(
+        (p) => p.profileId !== args?.profileId,
+      );
+      return Promise.resolve(
+        structuredClone({
+          status: previewStatus,
+          historyCleanupFailed: false,
+        }) as T,
       );
     }
     if (command === "start_device_login") {
@@ -787,6 +859,36 @@ export const refreshAccountQuotas = async (
     for (const quota of results) {
       await new Promise((resolve) => window.setTimeout(resolve, 500));
       quota.queriedAt = Math.floor(Date.now() / 1000);
+      for (const bucket of quota.buckets.length
+        ? quota.buckets
+        : [
+            { id: "codex", primary: quota.primary, secondary: quota.secondary },
+          ]) {
+        for (const kind of ["primary", "secondary"] as const) {
+          const window = bucket[kind];
+          if (!window) continue;
+          previewHistory = previewHistory.filter(
+            (point) =>
+              !(
+                point.profileId === quota.profileId &&
+                point.bucketId === bucket.id &&
+                point.window === kind &&
+                point.queriedAt === quota.queriedAt
+              ),
+          );
+          previewHistory.push({
+            profileId: quota.profileId,
+            queriedAt: quota.queriedAt,
+            bucketId: bucket.id,
+            window: kind,
+            windowMinutes: window.windowMinutes,
+            usedPercent: window.usedPercent,
+            resetsAt: window.resetsAt,
+            source: quota.source ?? "appServer",
+            planType: quota.planType,
+          });
+        }
+      }
       onUpdate(quota);
     }
     return results;
@@ -839,6 +941,8 @@ export const switchAccount = (profileId: string) =>
 
 export const verifyAccountSwitch = (profileId: string) =>
   call<SwitchVerification>("verify_account_switch", { profileId });
+export const getQuotaHistory = () => call<QuotaHistory>("get_quota_history");
+export const clearQuotaHistory = () => call<void>("clear_quota_history");
 
 export const desktopRestartSupported = () =>
   call<boolean>("desktop_restart_supported");
@@ -868,7 +972,9 @@ export const renameAccount = (profileId: string, label: string) =>
   call<AppStatus>("rename_account", { profileId, label });
 
 export const removeAccount = (profileId: string) =>
-  call<AppStatus>("remove_account", { profileId });
+  call<{ status: AppStatus; historyCleanupFailed: boolean }>("remove_account", {
+    profileId,
+  });
 
 export const copyAuthTransfer = (profileId: string) =>
   call<void>("copy_auth_transfer", { profileId });

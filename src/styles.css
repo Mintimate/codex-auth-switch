@@ -111,6 +111,130 @@
   align-items: center;
   gap: 6px;
 }
+.quota-history-panel {
+  padding: 20px;
+}
+.history-controls {
+  justify-content: flex-start;
+  margin: 20px 0;
+  align-items: stretch;
+}
+.history-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-body);
+  min-width: 0;
+}
+.history-controls label:first-child {
+  flex: 1;
+}
+.history-controls select {
+  max-width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--foreground);
+  font: inherit;
+}
+.history-empty {
+  padding: 32px 16px;
+  text-align: center;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.history-empty strong {
+  font-size: var(--text-heading);
+}
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.history-summary > div {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  min-width: 0;
+}
+.history-summary span {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+.history-summary strong {
+  display: block;
+  font-size: var(--text-stat);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+}
+.history-summary strong.history-change-label {
+  font-size: var(--text-heading);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+}
+.history-chart {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  overflow: visible;
+}
+.history-chart text {
+  fill: var(--muted);
+  font-size: var(--text-chart);
+}
+.history-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.history-line {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.history-dot {
+  fill: var(--accent);
+}
+.history-table-scroll {
+  overflow-x: auto;
+  margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  min-width: 540px;
+}
+.history-table th {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+  background: var(--surface);
+}
+.history-table th,
+.history-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.quota-history-panel > .observation-hint {
+  margin: 12px 0 18px;
+  font-size: var(--text-caption);
+}
+@media (max-width: 900px) {
+  .history-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .quota-history-panel {
+    padding: 14px;
+  }
+}
+
 :root {
   /* 全局文字层级：按用途选用，新增界面不再单独指定像素字号。见 docs/typography.md。 */
   --text-caption: 0.75rem;

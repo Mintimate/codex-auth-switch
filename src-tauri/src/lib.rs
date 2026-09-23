@@ -10,6 +10,7 @@ mod pricing;
 mod proxy;
 mod query_gate;
 mod quota;
+mod quota_history;
 mod storage;
 mod usage;
 
@@ -189,6 +190,22 @@ async fn get_account_quotas(
     state: State<'_, AppState>,
 ) -> Result<Vec<AccountQuota>, String> {
     query_account_quotas(&app, state.inner()).await
+}
+
+#[tauri::command]
+async fn get_quota_history(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<quota_history::QuotaHistory, String> {
+    let _guard = state.operation_gate.lock().await;
+    account_manager(&app)?.quota_history()
+}
+
+#[tauri::command]
+async fn clear_quota_history(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let _queries = state.query_gate.exclusive().await;
+    let _guard = state.operation_gate.lock().await;
+    quota_history::clear(&account_manager(&app)?.quota_history_path()).map_err(str::to_string)
 }
 
 #[tauri::command]
@@ -423,7 +440,7 @@ async fn remove_account(
     app: AppHandle,
     state: State<'_, AppState>,
     profile_id: String,
-) -> Result<AppStatus, String> {
+) -> Result<manager::RemoveAccountResult, String> {
     let _guard = state.operation_gate.lock().await;
     account_manager(&app)?
         .remove_account(&profile_id)
@@ -557,6 +574,8 @@ pub fn run() {
             get_usage_cache_info,
             clear_usage_cache,
             get_account_quotas,
+            get_quota_history,
+            clear_quota_history,
             verify_account_switch,
             refresh_account_quotas,
             get_usage_overview,

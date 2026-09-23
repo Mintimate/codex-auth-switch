@@ -4,7 +4,7 @@ import type { Locale, Translate } from "./i18n";
 export type QuotaLevel =
   "healthy" | "attention" | "tight" | "unknown" | "error";
 
-export type QuotaDetailView = "quota" | "usage";
+export type QuotaDetailView = "quota" | "usage" | "history";
 
 export type QuotaEvent = {
   accountId: string;

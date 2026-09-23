@@ -651,7 +651,18 @@ function App() {
     if (!removeDialog) return;
     const { profileId } = removeDialog;
     setRemoveDialog(null);
-    await run(t("removeAccountAction"), () => removeAccount(profileId));
+    let historyCleanupFailed = false;
+    await run(
+      t("removeAccountAction"),
+      async () => {
+        const result = await removeAccount(profileId);
+        historyCleanupFailed = result.historyCleanupFailed;
+        return result.status;
+      },
+      () => {
+        if (historyCleanupFailed) setNotice(t("accountRemovedHistoryWarning"));
+      },
+    );
   };
 
   const openShareDialog = (profileId: string, accountLabel: string) => {
