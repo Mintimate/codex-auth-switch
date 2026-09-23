@@ -3,6 +3,7 @@ import { BrandIcon } from "./BrandIcon";
 import { ExternalLink } from "./ExternalLink";
 import type { Translate } from "./i18n";
 import { PROJECT_LINKS } from "./projectLinks";
+import { isPublicDemo } from "./runtime";
 
 const APP_TABS: AppTab[] = [
   "accounts",
@@ -205,8 +206,30 @@ export function WorkspaceToolbar({
         >
           <BrandIcon brand="github" size={14} />
         </ExternalLink>
-        <span className="unofficial">{t("localOnly")}</span>
+        <span className="unofficial">
+          {t(isPublicDemo ? "demoTitle" : "localOnly")}
+        </span>
       </div>
     </header>
+  );
+}
+
+export function DemoBanner({ t }: { t: Translate }) {
+  if (!isPublicDemo) return null;
+  return (
+    <aside className="demo-banner" aria-label={t("demoTitle")}>
+      <div>
+        <strong>{t("demoHeading")}</strong>
+        <p>{t("demoDescription")}</p>
+      </div>
+      <a
+        className="button secondary compact"
+        href={PROJECT_LINKS.githubReleases}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        {t("demoDownload")}
+      </a>
+    </aside>
   );
 }

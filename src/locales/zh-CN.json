@@ -713,5 +713,10 @@
   "costComparisonLowerPercent": "低 {percent}%",
   "costComparisonHigherPercent": "高 {percent}%",
   "costComparisonZeroBase": "A 为零，不计算比例",
-  "costTokenComponent": "用量拆分"
+  "costTokenComponent": "用量拆分",
+  "demoTitle": "在线预览",
+  "demoHeading": "先逛逛，再装也不迟",
+  "demoDescription": "这里的账号与用量均为虚构数据。可以浏览页面、切换主题和模拟费用；登录、账号操作及本机设置需使用桌面版。",
+  "demoDownload": "下载桌面版",
+  "demoDesktopOnly": "请在桌面版中使用此功能"
 }

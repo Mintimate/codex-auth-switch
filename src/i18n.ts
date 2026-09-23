@@ -51,6 +51,8 @@ export const useI18n = () => {
 };
 
 const backendErrorTranslations: Record<string, string> = {
+  "在线预览仅支持浏览，请下载桌面版进行此操作":
+    "This demo is read-only. Download the desktop app to use this feature.",
   "无法读取后台刷新设置，请重新设置开关":
     "Could not read background refresh preferences. Set the switch again.",
   保存后台刷新设置失败: "Could not save background refresh preferences.",

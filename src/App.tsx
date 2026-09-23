@@ -1,3 +1,4 @@
+import { isPublicDemo } from "./runtime";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -33,7 +34,7 @@ import {
   hostedActive,
 } from "./HostedLoginDialog";
 import { AccountsPage } from "./AccountsPage";
-import { AppSidebar, WorkspaceToolbar } from "./AppChrome";
+import { AppSidebar, DemoBanner, WorkspaceToolbar } from "./AppChrome";
 import type { AppTab } from "./appTypes";
 import {
   AccountNameDialog,
@@ -644,7 +645,7 @@ function App() {
   ) => run(description, action, () => setImportDialog(false));
 
   const revealVault = () => {
-    if (!status?.vaultPath) return;
+    if (isPublicDemo || !status?.vaultPath) return;
     void revealItemInDir(status.vaultPath).catch((reason) =>
       setError(
         t("revealVaultFailed", {
@@ -655,7 +656,7 @@ function App() {
   };
 
   const openCodexDirectory = () => {
-    if (!status?.codexHome) return;
+    if (isPublicDemo || !status?.codexHome) return;
     void revealItemInDir(status.codexHome).catch((reason) =>
       setError(
         t("openCodexDirectoryFailed", {
@@ -681,6 +682,8 @@ function App() {
           privateMode={privateMode}
           t={t}
         />
+
+        <DemoBanner t={t} />
 
         {loading && !status ? (
           <section className="loading-card">{t("loadingStatus")}</section>

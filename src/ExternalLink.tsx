@@ -1,4 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isPublicDemo } from "./runtime";
 import type { ComponentPropsWithoutRef, MouseEvent } from "react";
 
 type ExternalLinkProps = Omit<
@@ -18,7 +19,7 @@ export function ExternalLink({
 }: ExternalLinkProps) {
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     onOpen?.();
-    if (!("__TAURI_INTERNALS__" in window)) return;
+    if (isPublicDemo || !("__TAURI_INTERNALS__" in window)) return;
     event.preventDefault();
     void openUrl(event.currentTarget.href).catch(() => onOpenError());
   }

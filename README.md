@@ -13,6 +13,7 @@
 <p align="center">纯本地的 Codex ChatGPT 多账号切换器</p>
 
 <p align="center">
+  <a href="https://codex-auth-switch.mintimate.cn">在线预览</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">下载</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#codex-配置">Codex 配置</a> ·
@@ -21,6 +22,8 @@
   <a href="#开发">开发</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">反馈问题</a>
 </p>
+
+[在线体验](https://codex-auth-switch.mintimate.cn)：无需安装即可浏览各页面、切换主题和模拟费用；账号与用量均为虚构数据，真实登录及账号操作需使用桌面版。
 
 <a href="./docs/images/dashboard-light.jpg">
   <picture>
@@ -232,6 +235,23 @@ npm run dev
 ```
 
 仅预览界面可运行 `npm run dev:web`，打开终端给出的浏览器地址。浏览器开发模式使用内置演示数据，可查看各页面和主题；真实账号操作需在 Tauri 应用中验证。界面修改请遵循[字体规范](docs/typography.md)，并检查中英文、明暗主题及窄窗口布局。
+
+公开在线演示使用独立的 `demo` 构建，复用虚构账号和用量数据，允许页面浏览、主题切换及费用模拟。登录、账号迁移、账号切换、本机配置写入和更新安装均禁用，不读取本机凭据或连接业务后端。
+
+```bash
+npm run dev:demo      # 开发只读演示界面
+npm run test:demo     # 验证数据隔离和只读边界
+npm run build:demo    # 输出到 dist-demo，与桌面版 dist 分开
+npm run preview:demo  # 本地检查构建产物
+```
+
+部署到 EdgeOne Pages 时，只上传 `dist-demo`。已登录 EdgeOne CLI 后可运行：
+
+```bash
+PAGES_SOURCE=skills edgeone makers deploy dist-demo -n codex-auth-switch-preview --json
+```
+
+仓库中的 `edgeone.json` 也配置了 `npm ci`、`npm run build:demo` 和 `dist-demo`，便于通过代码仓库构建；构建环境需使用 Node.js 22.12+。长期公开入口请绑定自定义域名。预置域名的访问规则见 [EdgeOne 域名说明](https://edgeone.cloud.tencent.com/pages/document/175191784523485184)，部署输出中的完整临时链接不应删去参数或作为永久地址写入 README。
 
 提交前检查：
 

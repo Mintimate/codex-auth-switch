@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { isPublicDemo } from "./runtime";
 import { ArrowLeftRight, Check, ChevronDown, RefreshCw } from "lucide-react";
 import { ExternalLink } from "./ExternalLink";
 import { getModelPrices } from "./api";
@@ -201,7 +202,8 @@ export function QuotaCostPanel({
           <button
             type="button"
             className="text-button cost-refresh"
-            disabled={loading}
+            disabled={isPublicDemo || loading}
+            title={isPublicDemo ? t("demoDesktopOnly") : undefined}
             onClick={() => void refresh()}
           >
             <RefreshCw size={14} aria-hidden="true" />

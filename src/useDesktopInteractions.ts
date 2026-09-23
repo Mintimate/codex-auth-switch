@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isPublicDemo } from "./runtime";
 
 const textInputTypes = new Set([
   "text",
@@ -24,6 +25,7 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
 
 export function useDesktopInteractions() {
   useEffect(() => {
+    if (isPublicDemo) return;
     const preventOutsideEditor = (event: Event) => {
       if (!isTextEditingTarget(event.target)) event.preventDefault();
     };

@@ -1,0 +1,77 @@
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: min(100%, var(--content-max));
+  margin: 0 auto 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.demo-banner strong {
+  color: var(--accent-deep);
+}
+
+.demo-banner p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.demo-banner a {
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+html[data-demo] body {
+  min-width: 320px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (max-width: 760px) {
+  html[data-demo] .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  html[data-demo] .app-sidebar {
+    position: static;
+    height: auto;
+    min-height: 0;
+    padding: 16px 16px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  html[data-demo] .brand h1 {
+    font-size: var(--text-heading);
+  }
+
+  html[data-demo] .app-tabs {
+    flex-direction: row;
+    overflow-x: auto;
+    margin-top: 14px;
+    padding-bottom: 6px;
+  }
+
+  html[data-demo] .app-tabs button {
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 10px 12px;
+  }
+
+  html[data-demo] .app-workspace {
+    padding: 16px 16px 32px;
+  }
+
+  .demo-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+}

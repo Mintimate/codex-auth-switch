@@ -1,3 +1,4 @@
+import { isPublicDemo } from "./runtime";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -359,11 +360,11 @@ export function SettingsPanel({
     void getAppVersion()
       .then(setAppVersion)
       .catch(() => undefined);
-    void runUpdateCheck();
+    if (!isPublicDemo) void runUpdateCheck();
   }, [runUpdateCheck]);
 
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
+    if (isPublicDemo || !("__TAURI_INTERNALS__" in window)) return;
 
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
@@ -422,8 +423,9 @@ export function SettingsPanel({
     updateTotal && updateTotal > 0
       ? Math.min(100, Math.round((updateDownloaded / updateTotal) * 100))
       : null;
-  const updateStatus =
-    updateError?.phase === "install"
+  const updateStatus = isPublicDemo
+    ? t("demoDesktopOnly")
+    : updateError?.phase === "install"
       ? t("appUpdateInstallFailed")
       : updateError?.phase === "check"
         ? t("appUpdateCheckFailed")
@@ -521,6 +523,7 @@ export function SettingsPanel({
             <select
               className="switch-preference-select"
               aria-label={t("switchPreference")}
+              disabled={isPublicDemo}
               value={switchPreference}
               onChange={(event) =>
                 onSwitchPreferenceChange(event.target.value as SwitchPreference)
@@ -555,7 +558,7 @@ export function SettingsPanel({
               </div>
               <SegmentedControl
                 ariaLabel={t("proxyMode")}
-                disabled={!proxyLoaded}
+                disabled={isPublicDemo || !proxyLoaded}
                 options={proxyModeOptions}
                 value={networkProxy.mode}
                 onChange={(mode) =>
@@ -579,7 +582,7 @@ export function SettingsPanel({
                     autoCorrect="off"
                     spellCheck={false}
                     aria-label={t("proxyUrl")}
-                    disabled={!proxyLoaded}
+                    disabled={isPublicDemo || !proxyLoaded}
                     value={networkProxy.proxyUrl}
                     placeholder={t("proxyUrlPlaceholder")}
                     onChange={(event) =>
@@ -602,7 +605,7 @@ export function SettingsPanel({
                     autoCorrect="off"
                     spellCheck={false}
                     aria-label={t("proxyNoProxy")}
-                    disabled={!proxyLoaded}
+                    disabled={isPublicDemo || !proxyLoaded}
                     value={networkProxy.noProxy}
                     onChange={(event) =>
                       updateNetworkProxy({
@@ -622,6 +625,7 @@ export function SettingsPanel({
                   <button
                     type="button"
                     className="button secondary compact"
+                    disabled={isPublicDemo}
                     onClick={() => updateNetworkProxy({ ...networkProxy })}
                   >
                     {t("retry")}
@@ -656,7 +660,7 @@ export function SettingsPanel({
                 className={`toggle${backgroundRefresh ? " active" : ""}`}
                 role="switch"
                 aria-checked={backgroundRefresh}
-                disabled={backgroundRefreshSaving}
+                disabled={isPublicDemo || backgroundRefreshSaving}
                 aria-label={t("quotaAutoRefresh")}
                 onClick={() => onBackgroundRefreshChange(!backgroundRefresh)}
               >
@@ -682,7 +686,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 className="button secondary compact cache-clear-button"
-                disabled={clearingCache}
+                disabled={isPublicDemo || clearingCache}
                 onClick={() => void clearCache()}
               >
                 {t(clearingCache ? "clearingUsageCache" : "clearUsageCache")}
@@ -704,7 +708,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 className="button secondary compact"
-                disabled={!status?.codexHome}
+                disabled={isPublicDemo || !status?.codexHome}
                 onClick={onOpenCodexDirectory}
               >
                 {t("openCodexDirectory")}
@@ -716,7 +720,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 className="button secondary compact"
-                disabled={!status?.vaultPath}
+                disabled={isPublicDemo || !status?.vaultPath}
                 onClick={onRevealVault}
               >
                 {t("openVaultDirectory")}
@@ -800,7 +804,7 @@ export function SettingsPanel({
           </div>
 
           <UpdateSourcePicker
-            disabled={checkingUpdate || installingUpdate}
+            disabled={isPublicDemo || checkingUpdate || installingUpdate}
             value={updateSource}
             onChange={(source) => {
               setAppUpdate(null);
@@ -818,7 +822,7 @@ export function SettingsPanel({
             <button
               type="button"
               className="button secondary compact"
-              disabled={checkingUpdate || installingUpdate}
+              disabled={isPublicDemo || checkingUpdate || installingUpdate}
               onClick={() => void runUpdateCheck()}
             >
               {checkingUpdate ? t("checkingUpdate") : t("checkForUpdates")}
@@ -852,7 +856,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 className="button primary compact"
-                disabled={installingUpdate}
+                disabled={isPublicDemo || installingUpdate}
                 onClick={() => void installUpdate()}
               >
                 {installingUpdate

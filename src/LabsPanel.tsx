@@ -1,3 +1,4 @@
+import { isPublicDemo } from "./runtime";
 import { FlaskConical } from "lucide-react";
 import type { Translate } from "./i18n";
 import type { ThemePreferences } from "./themePreferences";
@@ -56,6 +57,7 @@ export function LabsPanel({
             aria-checked={hostedLoginEnabled}
             aria-labelledby="labs-hosted-toggle-label"
             aria-describedby="labs-hosted-toggle-hint"
+            disabled={isPublicDemo}
             onClick={() => onHostedLoginChange(!hostedLoginEnabled)}
           >
             <span />
@@ -72,6 +74,7 @@ export function LabsPanel({
               <button
                 type="button"
                 className="button secondary"
+                disabled={isPublicDemo}
                 onClick={onTryHostedLogin}
               >
                 {t("labsTryLogin")}

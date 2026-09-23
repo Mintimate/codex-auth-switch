@@ -1,3 +1,4 @@
+import { isPublicDemo } from "./runtime";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { clearQuotaHistory, getQuotaHistory } from "./api";
@@ -321,7 +322,7 @@ export function QuotaHistoryPanel({
             <button
               type="button"
               className="text-button"
-              disabled={clearing || refreshing || loading}
+              disabled={isPublicDemo || clearing || refreshing || loading}
               onClick={() => void clear()}
             >
               {t("historyClearAll")}
@@ -339,7 +340,7 @@ export function QuotaHistoryPanel({
           <button
             type="button"
             className="text-button"
-            disabled={clearing || refreshing || loading}
+            disabled={isPublicDemo || clearing || refreshing || loading}
             onClick={() => setConfirmClear(true)}
           >
             {t("historyClearAll")}

@@ -713,5 +713,10 @@
   "costComparisonLowerPercent": "{percent}% lower",
   "costComparisonHigherPercent": "{percent}% higher",
   "costComparisonZeroBase": "A is zero; no percentage",
-  "costTokenComponent": "Token breakdown"
+  "costTokenComponent": "Token breakdown",
+  "demoTitle": "Live demo",
+  "demoHeading": "Take a look around before you install",
+  "demoDescription": "Accounts and usage are fictional. Explore pages, themes and cost estimates. Sign-in, account actions and local settings are available in the desktop app.",
+  "demoDownload": "Get the desktop app",
+  "demoDesktopOnly": "Available in the desktop app"
 }

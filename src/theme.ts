@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useLayoutEffect, useState } from "react";
+import { isPublicDemo } from "./runtime";
 import {
   readThemePreferences,
   resolveTheme,
@@ -48,7 +49,7 @@ export const useAppearance = () => {
   }, [theme]);
 
   useLayoutEffect(() => {
-    if ("__TAURI_INTERNALS__" in window) {
+    if (!isPublicDemo && "__TAURI_INTERNALS__" in window) {
       void getCurrentWindow()
         .setTheme(theme.mode === "system" ? null : theme.mode)
         .catch(() => undefined);

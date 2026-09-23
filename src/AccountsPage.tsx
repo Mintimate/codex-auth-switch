@@ -1,3 +1,4 @@
+import { isPublicDemo } from "./runtime";
 import { AccountFlow } from "./AccountFlow";
 import { useState } from "react";
 import {
@@ -158,7 +159,12 @@ export function AccountsPage({
             className="button secondary hero-action"
             title={t("saveCurrentLoginHint")}
             aria-label={t("saveCurrentLogin")}
-            disabled={busy || !status?.activeAccountId || !status.supported}
+            disabled={
+              isPublicDemo ||
+              busy ||
+              !status?.activeAccountId ||
+              !status.supported
+            }
             onClick={() => onSave(active?.label ?? t("workAccount"))}
           >
             <Save size={16} aria-hidden="true" />
@@ -172,7 +178,7 @@ export function AccountsPage({
                 ? "loginNewAccountHint"
                 : "oauthLoginNewAccountHint",
             )}
-            disabled={busy || !status}
+            disabled={isPublicDemo || busy || !status}
             onClick={() =>
               onLogin(
                 t("numberedAccount", {
@@ -188,7 +194,7 @@ export function AccountsPage({
             className="button secondary hero-action"
             aria-label={t("importAuth")}
             title={t("importAuthHint")}
-            disabled={busy || !status?.supported}
+            disabled={isPublicDemo || busy || !status?.supported}
             onClick={onImport}
           >
             <Download size={16} aria-hidden="true" />
@@ -328,7 +334,7 @@ export function AccountsPage({
                   <div className="account-actions">
                     {(!account.active || account.pendingLogin) && (
                       <SwitchAccountButton
-                        disabled={busy || !status.supported}
+                        disabled={isPublicDemo || busy || !status.supported}
                         switching={switchingId === account.id}
                         onClick={() => onSwitch(account.id)}
                         restart={autoRestart}
@@ -339,7 +345,7 @@ export function AccountsPage({
                       className="account-action account-icon-action"
                       title={t("shareAuth")}
                       aria-label={t("shareAuth")}
-                      disabled={busy || !status.supported}
+                      disabled={isPublicDemo || busy || !status.supported}
                       onClick={() => onShare(account.id, accountLabel)}
                     >
                       <QrCode size={17} aria-hidden="true" />
@@ -348,7 +354,7 @@ export function AccountsPage({
                       className="account-action account-icon-action"
                       title={t("rename")}
                       aria-label={t("rename")}
-                      disabled={busy}
+                      disabled={isPublicDemo || busy}
                       onClick={() => onRename(account)}
                     >
                       <Pencil size={17} aria-hidden="true" />
@@ -357,7 +363,7 @@ export function AccountsPage({
                       className="account-action account-icon-action danger"
                       title={t("removeFromVault")}
                       aria-label={t("removeFromVault")}
-                      disabled={busy}
+                      disabled={isPublicDemo || busy}
                       onClick={() => onRemove(account, accountLabel)}
                     >
                       <Trash2 size={17} aria-hidden="true" />

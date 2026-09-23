@@ -1,3 +1,4 @@
+import { isPublicDemo } from "./runtime";
 import { useCallback, useEffect, useState } from "react";
 import {
   CodexConfigChoice,
@@ -185,7 +186,7 @@ export function CodexConfigPanel({
       </div>
       <ConfigChoiceControl
         customLabel={t("contextModeCustom")}
-        disabled={loading || savingKey !== null || !config}
+        disabled={isPublicDemo || loading || savingKey !== null || !config}
         label={title}
         options={options}
         value={config?.[key].value ?? "default"}
@@ -239,7 +240,9 @@ export function CodexConfigPanel({
             </div>
             <ConfigChoiceControl
               customLabel={t("contextModeCustom")}
-              disabled={loading || savingKey !== null || !config}
+              disabled={
+                isPublicDemo || loading || savingKey !== null || !config
+              }
               label={t("contextWindow")}
               options={contextOptions}
               value={config?.context.mode ?? "default"}

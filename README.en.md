@@ -13,6 +13,7 @@
 <p align="center">A local-only account switcher for Codex ChatGPT</p>
 
 <p align="center">
+  <a href="https://codex-auth-switch.mintimate.cn">Live demo</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#codex-configuration">Codex configuration</a> ·
@@ -21,6 +22,8 @@
   <a href="#development">Development</a> ·
   <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
 </p>
+
+[Try the live demo](https://codex-auth-switch.mintimate.cn): explore pages, themes and cost estimates without installing. Accounts and usage are fictional; real sign-in and account actions require the desktop app.
 
 <a href="./docs/images/dashboard-light.jpg">
   <picture>
@@ -232,6 +235,23 @@ npm run dev
 ```
 
 For a browser UI preview, run `npm run dev:web` and open the address printed in the terminal. Browser development mode uses built-in demo data for pages and themes; validate real account operations in the Tauri app. Follow the [typography guide](docs/typography.md) when changing the UI, and check both languages, themes, and narrow-window layouts.
+
+The public demo uses a separate `demo` build with fictional accounts and usage. Page browsing, theme selection and cost estimates are interactive. Sign-in, account transfers, account switching, local configuration writes and update installation are disabled. It does not read local credentials or connect to an application backend.
+
+```bash
+npm run dev:demo      # Develop the read-only demo
+npm run test:demo     # Verify data isolation and read-only boundaries
+npm run build:demo    # Output to dist-demo, separate from the desktop dist
+npm run preview:demo  # Inspect the built demo locally
+```
+
+For EdgeOne Pages, upload only `dist-demo`. After signing in with the EdgeOne CLI:
+
+```bash
+PAGES_SOURCE=skills edgeone makers deploy dist-demo -n codex-auth-switch-preview --json
+```
+
+The repository's `edgeone.json` also sets `npm ci`, `npm run build:demo` and `dist-demo` for Git-based builds; use Node.js 22.12+ in the build environment. Bind a custom domain for a permanent public link. See [EdgeOne domain access rules](https://edgeone.cloud.tencent.com/pages/document/175191784523485184); keep all parameters in temporary deployment URLs and do not commit them as permanent README links.
 
 Checks before committing:
 
