@@ -1,6 +1,7 @@
 // 仅供网页预览；桌面版的调度和缓存完全由 Rust 管理。
-import { getStatus, refreshPreviewQuotas } from "./api";
+import { getAccountQuotas, getStatus, refreshPreviewQuotas } from "./api";
 import type { QuotaRefreshState } from "./quotaRefreshState";
+import { isPublicDemo } from "./runtime";
 
 let state: QuotaRefreshState = {
   enabled: false,
@@ -64,12 +65,13 @@ async function tick() {
   // 等待读取状态期间，用户可能关闭开关。
   if (state.enabled && ids.length) await refresh(ids);
 }
-export function initialize(enabled: boolean) {
+export async function initialize(enabled: boolean) {
   if (!initialized) {
     initialized = true;
     state.enabled = enabled;
+    if (isPublicDemo) state.quotas = await getAccountQuotas();
     publish();
-    timer = window.setInterval(() => void tick(), 30_000);
+    if (!isPublicDemo) timer = window.setInterval(() => void tick(), 30_000);
     void tick();
   }
   return snapshot();

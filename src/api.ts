@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import packageMetadata from "../package.json";
 import pricingSnapshot from "./pricing-snapshot.json";
+import { demoReadOnlyError, isBrowserPreview, isPublicDemo } from "./runtime";
 
 export type AccountSummary = {
   id: string;
@@ -575,10 +576,28 @@ let previewHistory: QuotaPoint[] = previewQuotas.flatMap((quota) => {
 });
 let previewCacheBytes = 256 * 1024;
 
-const isTauri = () => "__TAURI_INTERNALS__" in window;
+// 默认拒绝新命令，避免后续新增功能意外开放登录、凭据或本机写入入口。
+const demoCommands = new Set([
+  "get_status",
+  "get_quota_history",
+  "get_hosted_login",
+  "desktop_restart_supported",
+  "get_usage_cache_info",
+  "get_local_usage",
+  "get_model_prices",
+  "get_model_provider_state",
+  "get_account_quotas",
+  "get_usage_overview",
+  "get_local_diagnostics",
+  "get_network_proxy",
+  "get_codex_managed_config",
+  "get_app_version",
+]);
 
 const call = <T>(command: string, args?: Record<string, unknown>) => {
-  if (import.meta.env.DEV && !isTauri()) {
+  if (isPublicDemo && !demoCommands.has(command))
+    return Promise.reject(demoReadOnlyError());
+  if (isBrowserPreview()) {
     if (command === "get_quota_history")
       return Promise.resolve(
         structuredClone({
@@ -631,7 +650,7 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
     if (command === "open_hosted_login" || command === "copy_hosted_login")
       return Promise.reject("unavailable");
     if (command === "desktop_restart_supported")
-      return Promise.resolve(true as T);
+      return Promise.resolve(!isPublicDemo as T);
     if (
       command === "switch_account" ||
       command === "switch_account_with_options"
@@ -852,7 +871,7 @@ export const refreshPreviewQuotas = async (
   profileIds: string[],
   onUpdate: (quota: AccountQuota) => void,
 ) => {
-  if (import.meta.env.DEV && !isTauri()) {
+  if (isBrowserPreview()) {
     const results = structuredClone(
       previewQuotas.filter((quota) => profileIds.includes(quota.profileId)),
     );
@@ -947,7 +966,8 @@ export const switchAccountWithOptions = (
   restart: boolean,
   onProgress: (stage: SwitchStage) => void,
 ) => {
-  if (import.meta.env.DEV && !isTauri()) {
+  if (isPublicDemo) return Promise.reject(demoReadOnlyError());
+  if (isBrowserPreview()) {
     onProgress("switching");
     return call<SwitchResult>("switch_account_with_options", {
       profileId,

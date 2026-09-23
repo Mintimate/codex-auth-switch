@@ -3,6 +3,8 @@
 
 # Frontend build output and test coverage
 /dist/
+/dist-demo/
+/.edgeone/
 /coverage/
 
 # Tauri / Rust generated output

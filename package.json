@@ -16,7 +16,11 @@
     "bump": "node scripts/bump-version.mjs",
     "release": "node scripts/bump-version.mjs --release",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
+    "dev:demo": "vite --mode demo",
+    "build:demo": "npm run typecheck && vite build --mode demo --outDir dist-demo",
+    "preview:demo": "vite preview --outDir dist-demo",
+    "test:demo": "node --test scripts/demo.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
