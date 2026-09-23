@@ -555,157 +555,161 @@ export function SettingsPanel({
           </div>
         </section>
 
-        <section className="settings-group settings-network-group">
-          <div className="settings-group-heading">
-            <h3>{t("networkProxySettings")}</h3>
-            <p>{t("networkProxySettingsHint")}</p>
-          </div>
-
-          <div className="settings-row">
-            <div>
-              <strong>{t("proxyMode")}</strong>
-              <span>
-                {networkProxy.mode === "off"
-                  ? t("proxyModeOffHint")
-                  : networkProxy.mode === "manual"
-                    ? t("proxyModeManualHint")
-                    : t("proxyModeSystemHint")}
-              </span>
+        <div className="settings-secondary-column">
+          <section className="settings-group settings-network-group">
+            <div className="settings-group-heading">
+              <h3>{t("networkProxySettings")}</h3>
+              <p>{t("networkProxySettingsHint")}</p>
             </div>
-            <SegmentedControl
-              ariaLabel={t("proxyMode")}
-              disabled={!proxyLoaded}
-              options={proxyModeOptions}
-              value={networkProxy.mode}
-              onChange={(mode) => updateNetworkProxy({ ...networkProxy, mode })}
-            />
-          </div>
 
-          {networkProxy.mode === "manual" && (
-            <>
-              <div className="settings-row">
-                <div>
-                  <strong>{t("proxyUrl")}</strong>
-                  <span>{t("proxyUrlPlaceholder")}</span>
-                </div>
-                <input
-                  className="settings-input"
-                  type="text"
-                  inputMode="url"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  aria-label={t("proxyUrl")}
-                  disabled={!proxyLoaded}
-                  value={networkProxy.proxyUrl}
-                  placeholder={t("proxyUrlPlaceholder")}
-                  onChange={(event) =>
-                    updateNetworkProxy({
-                      ...networkProxy,
-                      proxyUrl: event.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="settings-row">
-                <div>
-                  <strong>{t("proxyNoProxy")}</strong>
-                  <span>{t("proxyNoProxyHint")}</span>
-                </div>
-                <input
-                  className="settings-input"
-                  type="text"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  aria-label={t("proxyNoProxy")}
-                  disabled={!proxyLoaded}
-                  value={networkProxy.noProxy}
-                  onChange={(event) =>
-                    updateNetworkProxy({
-                      ...networkProxy,
-                      noProxy: event.target.value,
-                    })
-                  }
-                />
-              </div>
-            </>
-          )}
-
-          {proxyError && (
-            <p className="settings-error" role="alert">
-              {t(proxyError)}
-              {proxyError === "proxySaveFailed" && (
-                <button
-                  type="button"
-                  className="button secondary compact"
-                  onClick={() => updateNetworkProxy({ ...networkProxy })}
-                >
-                  {t("retry")}
-                </button>
-              )}
-            </p>
-          )}
-        </section>
-
-        <section className="settings-group">
-          <div className="settings-group-heading">
-            <h3>{t("usageSettings")}</h3>
-            <p>{t("usageSettingsHint")}</p>
-          </div>
-
-          <div className="settings-row">
-            <div>
-              <strong>{t("quotaAutoRefresh")}</strong>
-              <span>{t("quotaAutoRefreshHint")}</span>
-              {backgroundRefreshError && (
-                <p className="usage-inline-error" role="status">
-                  {backgroundRefreshError}
-                </p>
-              )}
-
-              {!status?.supported && (
-                <span>{t("quotaAutoRefreshUnsupported")}</span>
-              )}
-            </div>
-            <button
-              type="button"
-              className={`toggle${backgroundRefresh ? " active" : ""}`}
-              role="switch"
-              aria-checked={backgroundRefresh}
-              disabled={backgroundRefreshSaving}
-              aria-label={t("quotaAutoRefresh")}
-              onClick={() => onBackgroundRefreshChange(!backgroundRefresh)}
-            >
-              <span />
-            </button>
-          </div>
-          <div className="settings-row">
-            <div>
-              <strong>{t("usageCacheTitle")}</strong>
-              <span>{t("usageCacheHint")}</span>
-              {usageCache && (
+            <div className="settings-row">
+              <div>
+                <strong>{t("proxyMode")}</strong>
                 <span>
-                  {t("usageCacheSize", {
-                    size: new Intl.NumberFormat(locale, {
-                      maximumFractionDigits: 2,
-                    }).format(usageCache.bytes / 1048576),
-                    limit: usageCache.maxBytes / 1048576,
-                  })}
+                  {networkProxy.mode === "off"
+                    ? t("proxyModeOffHint")
+                    : networkProxy.mode === "manual"
+                      ? t("proxyModeManualHint")
+                      : t("proxyModeSystemHint")}
                 </span>
-              )}
-              {cacheMessage && <span role="status">{t(cacheMessage)}</span>}
+              </div>
+              <SegmentedControl
+                ariaLabel={t("proxyMode")}
+                disabled={!proxyLoaded}
+                options={proxyModeOptions}
+                value={networkProxy.mode}
+                onChange={(mode) =>
+                  updateNetworkProxy({ ...networkProxy, mode })
+                }
+              />
             </div>
-            <button
-              type="button"
-              className="button secondary compact cache-clear-button"
-              disabled={clearingCache}
-              onClick={() => void clearCache()}
-            >
-              {t(clearingCache ? "clearingUsageCache" : "clearUsageCache")}
-            </button>
-          </div>
-        </section>
+
+            {networkProxy.mode === "manual" && (
+              <>
+                <div className="settings-row">
+                  <div>
+                    <strong>{t("proxyUrl")}</strong>
+                    <span>{t("proxyUrlPlaceholder")}</span>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="text"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    aria-label={t("proxyUrl")}
+                    disabled={!proxyLoaded}
+                    value={networkProxy.proxyUrl}
+                    placeholder={t("proxyUrlPlaceholder")}
+                    onChange={(event) =>
+                      updateNetworkProxy({
+                        ...networkProxy,
+                        proxyUrl: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="settings-row">
+                  <div>
+                    <strong>{t("proxyNoProxy")}</strong>
+                    <span>{t("proxyNoProxyHint")}</span>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    aria-label={t("proxyNoProxy")}
+                    disabled={!proxyLoaded}
+                    value={networkProxy.noProxy}
+                    onChange={(event) =>
+                      updateNetworkProxy({
+                        ...networkProxy,
+                        noProxy: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+
+            {proxyError && (
+              <p className="settings-error" role="alert">
+                {t(proxyError)}
+                {proxyError === "proxySaveFailed" && (
+                  <button
+                    type="button"
+                    className="button secondary compact"
+                    onClick={() => updateNetworkProxy({ ...networkProxy })}
+                  >
+                    {t("retry")}
+                  </button>
+                )}
+              </p>
+            )}
+          </section>
+
+          <section className="settings-group">
+            <div className="settings-group-heading">
+              <h3>{t("usageSettings")}</h3>
+              <p>{t("usageSettingsHint")}</p>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <strong>{t("quotaAutoRefresh")}</strong>
+                <span>{t("quotaAutoRefreshHint")}</span>
+                {backgroundRefreshError && (
+                  <p className="usage-inline-error" role="status">
+                    {backgroundRefreshError}
+                  </p>
+                )}
+
+                {!status?.supported && (
+                  <span>{t("quotaAutoRefreshUnsupported")}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                className={`toggle${backgroundRefresh ? " active" : ""}`}
+                role="switch"
+                aria-checked={backgroundRefresh}
+                disabled={backgroundRefreshSaving}
+                aria-label={t("quotaAutoRefresh")}
+                onClick={() => onBackgroundRefreshChange(!backgroundRefresh)}
+              >
+                <span />
+              </button>
+            </div>
+            <div className="settings-row">
+              <div>
+                <strong>{t("usageCacheTitle")}</strong>
+                <span>{t("usageCacheHint")}</span>
+                {usageCache && (
+                  <span>
+                    {t("usageCacheSize", {
+                      size: new Intl.NumberFormat(locale, {
+                        maximumFractionDigits: 2,
+                      }).format(usageCache.bytes / 1048576),
+                      limit: usageCache.maxBytes / 1048576,
+                    })}
+                  </span>
+                )}
+                {cacheMessage && <span role="status">{t(cacheMessage)}</span>}
+              </div>
+              <button
+                type="button"
+                className="button secondary compact cache-clear-button"
+                disabled={clearingCache}
+                onClick={() => void clearCache()}
+              >
+                {t(clearingCache ? "clearingUsageCache" : "clearUsageCache")}
+              </button>
+            </div>
+          </section>
+        </div>
 
         <section className="settings-group settings-data-group">
           <div className="settings-group-heading">

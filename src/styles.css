@@ -3248,6 +3248,12 @@ button:disabled {
   gap: 18px;
 }
 
+.settings-secondary-column {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
 .config-page .settings-grid {
   grid-template-columns: 1fr;
 }
