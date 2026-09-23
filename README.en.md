@@ -13,27 +13,51 @@
 <p align="center">A local-only account switcher for Codex ChatGPT</p>
 
 <p align="center">
-  <a href="https://codex-auth-switch.mintimate.cn">Live demo</a> ·
-  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">Download</a> ·
+  <a href="https://codex-auth-switch.mintimate.cn"><strong>Live demo</strong></a> ·
+  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest"><strong>Download desktop app</strong></a> ·
+  <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
+</p>
+
+<p align="center">
+  <a href="#highlights">Highlights</a> ·
+  <a href="#interface-preview">Interface preview</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#codex-configuration">Codex configuration</a> ·
   <a href="#subscription-value-simulator">Value simulator</a> ·
   <a href="#security-boundaries">Security</a> ·
-  <a href="#development">Development</a> ·
-  <a href="https://github.com/Mintimate/codex-auth-switch/issues">Report an issue</a>
+  <a href="#development">Development</a>
 </p>
 
 [Try the live demo](https://codex-auth-switch.mintimate.cn): explore pages, themes and cost estimates without installing. Accounts and usage are fictional; real sign-in and account actions require the desktop app.
 
-<a href="./docs/images/dashboard-light.jpg">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
-    <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch: current account, sign-in actions, and switching flow">
-  </picture>
-</a>
+<table>
+  <tr>
+    <th width="50%">Accounts and switching</th>
+    <th width="50%">Subscription value simulator</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="./docs/images/dashboard-light.jpg">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
+          <img src="./docs/images/dashboard-light.jpg" width="100%" alt="Current account, sign-in actions, and switching flow">
+        </picture>
+      </a>
+      <a href="./docs/images/dashboard-light.jpg">Light original</a> · <a href="./docs/images/dashboard-dark.jpg">Dark original</a>
+    </td>
+    <td align="center" valign="top">
+      <a href="./docs/images/value-light.jpg">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="./docs/images/value-dark.jpg">
+          <img src="./docs/images/value-light.jpg" width="100%" alt="Value simulator: task presets, input and cache shares, and cost breakdown">
+        </picture>
+      </a>
+      <a href="./docs/images/value-light.jpg">Light original</a> · <a href="./docs/images/value-dark.jpg">Dark original</a>
+    </td>
+  </tr>
+</table>
 
-> Both READMEs use Chinese UI screenshots from the app's built-in demo data. They contain no real accounts, tokens, or authentication data.
-> Static screenshots are rendered at 2× resolution, with originals 2880 pixels wide; the GIF retains its original dimensions. Click an image to view the original.
+> Chinese UI screenshots and animations use built-in demo data, with no real accounts or usable credentials. Click an image to view the original.
 
 Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device. It also provides Codex configuration editing, local Token usage, subscription quotas, subscription value simulation, and environment diagnostics. It does not proxy Codex requests, collect telemetry, or manage API keys, subscription billing, or workspace seats.
 
@@ -57,30 +81,55 @@ Consistent text sizes and responsive layouts keep controls, cards, and scrollabl
 
 ## Interface Preview
 
-**Subscription value simulator: task presets, input and cache shares, and cost breakdown**
-
-[![Dedicated value simulator: task presets, input and cache shares, and cost breakdown](docs/images/value-light.jpg)](docs/images/value-light.jpg)
+[Try the live demo](https://codex-auth-switch.mintimate.cn) to explore the interface, or expand a group of screenshots below:
 
 <details>
-<summary>View the value simulator in dark mode</summary>
+<summary><strong>Usage and quotas</strong> · Token trends, account quotas, and activity heatmaps</summary>
 
-[![Subscription value simulator in dark mode](docs/images/value-dark.jpg)](docs/images/value-dark.jpg)
+<table>
+  <tr>
+    <th width="50%">Token usage</th>
+    <th width="50%">Subscription quotas</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="./docs/images/usage-light.jpg"><img src="./docs/images/usage-light.jpg" width="100%" alt="Token usage: local session totals, trends, and attribution"></a></td>
+    <td valign="top"><a href="./docs/images/quota-light.jpg"><img src="./docs/images/quota-light.jpg" width="100%" alt="Subscription quotas: account comparisons, filters, and activity heatmap"></a></td>
+  </tr>
+</table>
 
 </details>
 
-| Codex configuration                                                                                                         | Token usage                                                                                                               |
-| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| [![Codex configuration: credential storage and context window](docs/images/config-light.jpg)](docs/images/config-light.jpg) | [![Token usage: local session totals, trends, and attribution](docs/images/usage-light.jpg)](docs/images/usage-light.jpg) |
+<details>
+<summary><strong>Configuration and settings</strong> · Codex options, appearance, and app preferences</summary>
 
-| Subscription quotas                                                                                                                    | Settings                                                                                                                              |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| [![Subscription quotas: account comparisons, filters, and activity heatmap](docs/images/quota-light.jpg)](docs/images/quota-light.jpg) | [![Settings: language, privacy, appearance, default page, and proxy](docs/images/settings-light.jpg)](docs/images/settings-light.jpg) |
+<table>
+  <tr>
+    <th width="50%">Codex configuration</th>
+    <th width="50%">Settings</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="./docs/images/config-light.jpg"><img src="./docs/images/config-light.jpg" width="100%" alt="Codex configuration: credential storage and context window"></a></td>
+    <td valign="top"><a href="./docs/images/settings-light.jpg"><img src="./docs/images/settings-light.jpg" width="100%" alt="Settings: language, privacy, appearance, default page, and proxy"></a></td>
+  </tr>
+</table>
 
-| Diagnostics                                                                                                                    | One-time Auth transfer                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| [![Read-only environment diagnostics and check results](docs/images/diagnostics-light.jpg)](docs/images/diagnostics-light.jpg) | [![Auth transfer animation: preparation and demo QR-code states](docs/images/auth-share-dialog.gif)](docs/images/auth-share-dialog.gif) |
+</details>
 
-The Auth transfer animation uses a built-in demo pattern with no usable credentials.
+<details>
+<summary><strong>Diagnostics and Auth transfer</strong> · Check results and transfer animation</summary>
+
+<table>
+  <tr>
+    <th width="50%">Diagnostics</th>
+    <th width="50%">One-time Auth transfer</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="./docs/images/diagnostics-light.jpg"><img src="./docs/images/diagnostics-light.jpg" width="100%" alt="Read-only environment diagnostics and check results"></a></td>
+    <td valign="top"><a href="./docs/images/auth-share-dialog.gif"><img src="./docs/images/auth-share-dialog.gif" width="100%" alt="Auth transfer animation: preparation and demo QR-code states"></a></td>
+  </tr>
+</table>
+
+</details>
 
 ## Download and Install
 

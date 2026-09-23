@@ -13,27 +13,51 @@
 <p align="center">纯本地的 Codex ChatGPT 多账号切换器</p>
 
 <p align="center">
-  <a href="https://codex-auth-switch.mintimate.cn">在线预览</a> ·
-  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest">下载</a> ·
+  <a href="https://codex-auth-switch.mintimate.cn"><strong>在线预览</strong></a> ·
+  <a href="https://github.com/Mintimate/codex-auth-switch/releases/latest"><strong>下载桌面版</strong></a> ·
+  <a href="https://github.com/Mintimate/codex-auth-switch/issues">反馈问题</a>
+</p>
+
+<p align="center">
+  <a href="#主要能力">主要能力</a> ·
+  <a href="#界面预览">界面预览</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#codex-配置">Codex 配置</a> ·
   <a href="#订阅价值模拟">价值模拟</a> ·
   <a href="#安全边界">安全边界</a> ·
-  <a href="#开发">开发</a> ·
-  <a href="https://github.com/Mintimate/codex-auth-switch/issues">反馈问题</a>
+  <a href="#开发">开发</a>
 </p>
 
 [在线体验](https://codex-auth-switch.mintimate.cn)：无需安装即可浏览各页面、切换主题和模拟费用；账号与用量均为虚构数据，真实登录及账号操作需使用桌面版。
 
-<a href="./docs/images/dashboard-light.jpg">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
-    <img src="./docs/images/dashboard-light.jpg" alt="Codex Auth Switch：当前账号、登录入口与切换流程">
-  </picture>
-</a>
+<table>
+  <tr>
+    <th width="50%">账号与切换</th>
+    <th width="50%">订阅价值模拟</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="./docs/images/dashboard-light.jpg">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="./docs/images/dashboard-dark.jpg">
+          <img src="./docs/images/dashboard-light.jpg" width="100%" alt="当前账号、登录入口与切换流程">
+        </picture>
+      </a>
+      <a href="./docs/images/dashboard-light.jpg">亮色原图</a> · <a href="./docs/images/dashboard-dark.jpg">暗色原图</a>
+    </td>
+    <td align="center" valign="top">
+      <a href="./docs/images/value-light.jpg">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="./docs/images/value-dark.jpg">
+          <img src="./docs/images/value-light.jpg" width="100%" alt="订阅价值模拟：场景预设、输入与缓存比例、费用拆分">
+        </picture>
+      </a>
+      <a href="./docs/images/value-light.jpg">亮色原图</a> · <a href="./docs/images/value-dark.jpg">暗色原图</a>
+    </td>
+  </tr>
+</table>
 
-> 中英文 README 共用中文界面截图，均来自应用的内置演示数据，不包含真实账号、令牌或认证信息。
-> 静态截图按 2 倍清晰度渲染，原图宽 2880 像素；GIF 保留原尺寸。点击图片可查看原图。
+> 截图和动图均使用内置演示数据，不包含真实账号或可用凭据。点击图片可查看原图。
 
 Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT 登录，同时提供 Codex 配置编辑、本机 Token 用量、订阅额度、订阅价值模拟和环境体检。它不代理 Codex 请求，不收集遥测，也不管理 API Key、订阅账单或工作区席位。
 
@@ -57,30 +81,55 @@ Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT �
 
 ## 界面预览
 
-**订阅价值模拟：场景预设、输入与缓存比例、费用拆分**
-
-[![独立订阅价值模拟页：场景预设、输入与缓存比例、费用拆分](docs/images/value-light.jpg)](docs/images/value-light.jpg)
+可直接[在线体验](https://codex-auth-switch.mintimate.cn)，也可以按功能展开截图：
 
 <details>
-<summary>查看暗色价值模拟</summary>
+<summary><strong>用量与额度</strong> · Token 趋势、账号额度与活跃热力图</summary>
 
-[![暗色主题下的订阅价值模拟](docs/images/value-dark.jpg)](docs/images/value-dark.jpg)
+<table>
+  <tr>
+    <th width="50%">Token 用量</th>
+    <th width="50%">订阅额度</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="./docs/images/usage-light.jpg"><img src="./docs/images/usage-light.jpg" width="100%" alt="Token 用量：本机会话汇总、趋势与归属"></a></td>
+    <td valign="top"><a href="./docs/images/quota-light.jpg"><img src="./docs/images/quota-light.jpg" width="100%" alt="订阅额度：账号比较、搜索筛选与活跃热力图"></a></td>
+  </tr>
+</table>
 
 </details>
 
-| Codex 配置                                                                                        | Token 用量                                                                                          |
-| ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| [![Codex 配置：凭据存储与上下文窗口](docs/images/config-light.jpg)](docs/images/config-light.jpg) | [![Token 用量：本机会话汇总、趋势与归属](docs/images/usage-light.jpg)](docs/images/usage-light.jpg) |
+<details>
+<summary><strong>配置与设置</strong> · Codex 参数、外观与应用偏好</summary>
 
-| 订阅额度                                                                                                | 设置                                                                                                            |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| [![订阅额度：账号比较、搜索筛选与活跃热力图](docs/images/quota-light.jpg)](docs/images/quota-light.jpg) | [![应用设置：语言、隐私、外观、默认页面与代理](docs/images/settings-light.jpg)](docs/images/settings-light.jpg) |
+<table>
+  <tr>
+    <th width="50%">Codex 配置</th>
+    <th width="50%">设置</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="./docs/images/config-light.jpg"><img src="./docs/images/config-light.jpg" width="100%" alt="Codex 配置：凭据存储与上下文窗口"></a></td>
+    <td valign="top"><a href="./docs/images/settings-light.jpg"><img src="./docs/images/settings-light.jpg" width="100%" alt="应用设置：语言、隐私、外观、默认页面与代理"></a></td>
+  </tr>
+</table>
 
-| 环境体检                                                                                          | 一次性 Auth 迁移                                                                                               |
-| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [![只读环境体检与检查结果](docs/images/diagnostics-light.jpg)](docs/images/diagnostics-light.jpg) | [![Auth 迁移动图：准备与演示二维码状态](docs/images/auth-share-dialog.gif)](docs/images/auth-share-dialog.gif) |
+</details>
 
-Auth 迁移动图使用内置演示图案，不含可用凭据。
+<details>
+<summary><strong>环境体检与 Auth 迁移</strong> · 检查结果与迁移动图</summary>
+
+<table>
+  <tr>
+    <th width="50%">环境体检</th>
+    <th width="50%">一次性 Auth 迁移</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="./docs/images/diagnostics-light.jpg"><img src="./docs/images/diagnostics-light.jpg" width="100%" alt="只读环境体检与检查结果"></a></td>
+    <td valign="top"><a href="./docs/images/auth-share-dialog.gif"><img src="./docs/images/auth-share-dialog.gif" width="100%" alt="Auth 迁移动图：准备与演示二维码状态"></a></td>
+  </tr>
+</table>
+
+</details>
 
 ## 下载与安装
 
