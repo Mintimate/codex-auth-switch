@@ -109,6 +109,8 @@ export function SubscriptionValuePage({
             accounts={accounts}
             quotas={visibleQuotas}
             refreshErrors={refreshErrors}
+            usageLoading={loading}
+            onRefreshUsage={onRefresh}
             displayLabel={displayLabel}
             locale={locale}
             t={t}

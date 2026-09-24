@@ -2069,6 +2069,106 @@ button:disabled {
   color: var(--muted);
   font-size: var(--text-body);
 }
+.cost-main-controls {
+  margin-top: 0;
+}
+.cost-details summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.cost-guide-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 24px;
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--surface-hover);
+  color: var(--muted);
+}
+.cost-guide-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent-deep);
+}
+.cost-guide-note p {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: var(--leading-relaxed);
+}
+.cost-empty-state {
+  margin-top: 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  padding: 20px;
+  font-size: var(--text-body);
+}
+.cost-empty-state p {
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+}
+.cost-advanced {
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.cost-results {
+  margin-top: 24px;
+}
+.cost-results-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.cost-results-heading h3 {
+  margin: 0;
+  font-size: var(--text-heading);
+}
+.cost-results-heading .cost-note {
+  margin: 0;
+}
+.cost-estimate-label,
+.cost-estimate-model {
+  margin: 14px 0 8px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-normal);
+}
+.cost-estimate-amount {
+  display: block;
+  margin: 10px 0;
+  color: var(--accent-deep);
+  font-size: var(--text-display);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.cost-pricing-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.cost-pricing-status .cost-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: inherit;
+}
+@media (max-width: 700px) {
+  .quota-cost-panel {
+    padding: 18px;
+  }
+  .cost-comparison-guide {
+    flex-wrap: wrap;
+  }
+}
 .cost-controls select,
 .cost-percent-input input {
   width: 100%;
@@ -2132,7 +2232,7 @@ button:disabled {
 .cost-presets {
   grid-column: 1 / -1;
   min-width: 0;
-  margin: 0;
+  margin: 24px 0 0;
   padding: 0;
   border: 0;
 }
@@ -2281,7 +2381,7 @@ button:disabled {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-top: -8px;
+  margin-top: 12px;
 }
 .cost-comparison-guide .cost-note {
   flex: 1;

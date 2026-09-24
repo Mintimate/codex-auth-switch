@@ -94,16 +94,16 @@ export function QuotaCostPeriod({
     },
     { label: "costOutput", tokens: "outputTokens", cost: "outputCost" },
   ] as const;
-  // 即使 A 尚未选择，也可展示 B 的估算；差价必须等待两边都有有效数据。
   const tokenEstimate = estimate ?? result.comparison;
   return (
     <article className="cost-period">
-      <h3>
-        {title}
-        <small>{formatCount(usage.tokens, locale)} tokens</small>
-      </h3>
-      {comparisonPrice ? (
-        <>
+      <div className="cost-period-overview">
+        <h3>
+          {title}
+          <small>{formatCount(usage.tokens, locale)} tokens</small>
+        </h3>
+        <p className="cost-estimate-label">{t("costEstimatedApiCost")}</p>
+        {comparisonPrice ? (
           <table className="cost-comparison-table">
             <caption className="visually-hidden">
               {t("costComparisonCaption", { period: title })}
@@ -111,8 +111,7 @@ export function QuotaCostPeriod({
             <thead>
               <tr>
                 <th scope="col">{t("costModelColumn")}</th>
-                <th scope="col">{t("costNoCache")}</th>
-                <th scope="col">{cacheLabel}</th>
+                <th scope="col">{t("costCurrentEstimate")}</th>
               </tr>
             </thead>
             <tbody>
@@ -133,7 +132,6 @@ export function QuotaCostPeriod({
                     <span className="cost-model-badge">{key}</span>
                     {model}
                   </th>
-                  <td>{formatMoney(value?.noCache)}</td>
                   <td className="cost-comparison-current">
                     {formatMoney(value?.withCache)}
                   </td>
@@ -141,14 +139,6 @@ export function QuotaCostPeriod({
               ))}
               <tr className="cost-difference-row">
                 <th scope="row">{t("costComparisonDifference")}</th>
-                <td>
-                  <Difference
-                    difference={result.noCache}
-                    formatMoney={formatMoney}
-                    locale={locale}
-                    t={t}
-                  />
-                </td>
                 <td>
                   <Difference
                     difference={result.withCache}
@@ -160,12 +150,35 @@ export function QuotaCostPeriod({
               </tr>
             </tbody>
           </table>
-          {tokenEstimate && (
-            <details className="cost-details cost-comparison-breakdown">
-              <summary>{t("costBreakdownTitle")}</summary>
+        ) : (
+          <>
+            <strong className="cost-estimate-amount">
+              {formatMoney(estimate?.withCache)}
+            </strong>
+            <p className="cost-estimate-model">
+              {referencePrice?.model ?? t("costChooseModel")}
+            </p>
+          </>
+        )}
+        <p className="cost-note">{cacheLabel}</p>
+      </div>
+      <p className="cost-coverage">
+        {t("quotaUsageCoverage", { count: usage.count, total: accountCount })}
+      </p>
+      {usage.tokens === null ? (
+        <p className="cost-warning">{t("costNoQuotaUsage")}</p>
+      ) : usage.count < accountCount ? (
+        <p className="cost-warning">{t("costPartialAccounts")}</p>
+      ) : null}
+      {tokenEstimate && (
+        <details className="cost-details cost-comparison-breakdown">
+          <summary>{t("costResultDetails")}</summary>
+          {comparisonPrice ? (
+            <>
+              <p className="cost-note">{t("costNoCacheGuide")}</p>
               <table className="cost-comparison-table">
                 <caption className="visually-hidden">
-                  {t("costBreakdownTitle")} · {title}
+                  {t("costResultDetails")} · {title}
                 </caption>
                 <thead>
                   <tr>
@@ -175,6 +188,22 @@ export function QuotaCostPeriod({
                   </tr>
                 </thead>
                 <tbody>
+                  <tr>
+                    <th scope="row">{t("costNoCache")}</th>
+                    <td>{formatMoney(estimate?.noCache)}</td>
+                    <td>{formatMoney(result.comparison?.noCache)}</td>
+                  </tr>
+                  <tr className="cost-difference-row">
+                    <th scope="row">{t("costNoCacheDifference")}</th>
+                    <td colSpan={2}>
+                      <Difference
+                        difference={result.noCache}
+                        formatMoney={formatMoney}
+                        locale={locale}
+                        t={t}
+                      />
+                    </td>
+                  </tr>
                   {breakdown.map(({ label, tokens, cost }) => (
                     <tr key={label}>
                       <th scope="row">
@@ -189,58 +218,44 @@ export function QuotaCostPeriod({
                   ))}
                 </tbody>
               </table>
-            </details>
-          )}
-        </>
-      ) : (
-        <>
-          <dl>
-            <div>
-              <dt>{t("costNoCache")}</dt>
-              <dd>{formatMoney(estimate?.noCache)}</dd>
-            </div>
-            <div className="cost-cache-scenario">
-              <dt>{cacheLabel}</dt>
-              <dd>{formatMoney(estimate?.withCache)}</dd>
-            </div>
-          </dl>
-          {estimate && (
-            <div className="cost-breakdown">
-              <p>{t("costBreakdownTitle")}</p>
-              <dl>
-                {breakdown.map(({ label, tokens, cost }) => (
-                  <div key={label}>
-                    <dt>
-                      {t(label)}
-                      <small>
-                        {formatCount(estimate[tokens], locale)} tokens
-                      </small>
-                    </dt>
-                    <dd>{formatMoney(estimate[cost])}</dd>
+            </>
+          ) : (
+            estimate && (
+              <div className="cost-breakdown">
+                <dl>
+                  <div>
+                    <dt>{t("costNoCacheGuide")}</dt>
+                    <dd>{formatMoney(estimate.noCache)}</dd>
                   </div>
-                ))}
-              </dl>
-              {estimate.withCache !== null && estimate.withCache > 0 && (
-                <p className="cost-output-share">
-                  {t("costOutputShare", {
-                    share: percent.format(
-                      (100 * estimate.outputCost) / estimate.withCache,
-                    ),
-                  })}
-                </p>
-              )}
-            </div>
+                </dl>
+                <p>{t("costBreakdownTitle")}</p>
+                <dl>
+                  {breakdown.map(({ label, tokens, cost }) => (
+                    <div key={label}>
+                      <dt>
+                        {t(label)}
+                        <small>
+                          {formatCount(estimate[tokens], locale)} tokens
+                        </small>
+                      </dt>
+                      <dd>{formatMoney(estimate[cost])}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {estimate.withCache !== null && estimate.withCache > 0 && (
+                  <p className="cost-output-share">
+                    {t("costOutputShare", {
+                      share: percent.format(
+                        (100 * estimate.outputCost) / estimate.withCache,
+                      ),
+                    })}
+                  </p>
+                )}
+              </div>
+            )
           )}
-        </>
+        </details>
       )}
-      <p className="cost-coverage">
-        {t("quotaUsageCoverage", { count: usage.count, total: accountCount })}
-      </p>
-      {usage.tokens === null ? (
-        <p className="cost-warning">{t("costNoQuotaUsage")}</p>
-      ) : usage.count < accountCount ? (
-        <p className="cost-warning">{t("costPartialAccounts")}</p>
-      ) : null}
     </article>
   );
 }

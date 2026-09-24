@@ -1,6 +1,12 @@
 import { useEffect, useId, useState } from "react";
 import { isPublicDemo } from "./runtime";
-import { ArrowLeftRight, Check, ChevronDown, RefreshCw } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Check,
+  ChevronDown,
+  Info,
+  RefreshCw,
+} from "lucide-react";
 import { ExternalLink } from "./ExternalLink";
 import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
@@ -19,18 +25,21 @@ const taskPresets = [
   {
     label: "costPresetCoding",
     hint: "costPresetCodingHint",
+    description: "costPresetCodingDescription",
     input: 99,
     cache: 90,
   },
   {
     label: "costPresetGeneral",
     hint: "costPresetGeneralHint",
+    description: "costPresetGeneralDescription",
     input: 90,
     cache: 50,
   },
   {
     label: "costPresetFresh",
     hint: "costPresetFreshHint",
+    description: "costPresetFreshDescription",
     input: 80,
     cache: 0,
   },
@@ -95,6 +104,8 @@ export function QuotaCostPanel({
   accounts,
   quotas,
   refreshErrors,
+  usageLoading,
+  onRefreshUsage,
   displayLabel,
   locale,
   t,
@@ -102,6 +113,8 @@ export function QuotaCostPanel({
   accounts: AccountSummary[];
   quotas: AccountQuota[];
   refreshErrors: Record<string, string>;
+  usageLoading: boolean;
+  onRefreshUsage: () => void;
   displayLabel: (label: string) => string;
   locale: Locale;
   t: Translate;
@@ -130,6 +143,7 @@ export function QuotaCostPanel({
     ? quotas.filter((quota) => quota.profileId === selectedId)
     : quotas;
   const summary = summarizeQuotas(selectedQuotas);
+  const hasUsage = periods.some((period) => summary[period].tokens !== null);
   const accountCount = selectedId
     ? 1
     : new Set(accounts.map((account) => account.accountId)).size;
@@ -196,126 +210,128 @@ export function QuotaCostPanel({
 
   return (
     <section className="quota-cost-panel" aria-label={t("costTitle")}>
-      <div className="cost-body" aria-busy={loading}>
-        <div className="cost-toolbar">
-          <p className="cost-note">{t("costAssumptionsHint")}</p>
+      <div className="cost-controls cost-main-controls">
+        <div className="cost-selectors">
+          <div className="cost-field">
+            <label htmlFor={`${id}-account`}>{t("costAccountScope")}</label>
+            <div className="cost-select">
+              <select
+                id={`${id}-account`}
+                value={selectedId}
+                onChange={(event) => setProfileId(event.target.value)}
+              >
+                <option value="">{t("quotaActivityAllAccounts")}</option>
+                {accounts.map((account) => (
+                  <option value={account.id} key={account.id}>
+                    {displayLabel(account.label)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} aria-hidden="true" />
+            </div>
+          </div>
+          <div className="cost-field">
+            <label htmlFor={`${id}-model`}>{t("costReferenceModel")}</label>
+            <div className="cost-select">
+              <select
+                id={`${id}-model`}
+                value={selectedPrice?.model ?? ""}
+                disabled={!prices.length}
+                onChange={(event) => {
+                  setModel(event.target.value);
+                }}
+              >
+                <option value="">
+                  {t(
+                    loading && !prices.length
+                      ? "costLoading"
+                      : "costChooseModel",
+                  )}
+                </option>
+                {sortedPrices.map((price) => (
+                  <option value={price.model} key={price.model}>
+                    {price.model}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} aria-hidden="true" />
+            </div>
+          </div>
+
+          <div className="cost-field">
+            <label htmlFor={`${id}-comparison`}>
+              {t("costComparisonModel")}
+            </label>
+            <div className="cost-select">
+              <select
+                id={`${id}-comparison`}
+                value={comparisonPrice?.model ?? ""}
+                disabled={!prices.length}
+                onChange={(event) => setComparisonModel(event.target.value)}
+              >
+                <option value="">{t("costChooseComparison")}</option>
+                {sortedPrices.map((price) => (
+                  <option value={price.model} key={price.model}>
+                    {price.model}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} aria-hidden="true" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="cost-comparison-guide">
+        <p className="cost-note">{t("costModelGuide")}</p>
+        {comparisonPrice && (
           <button
             type="button"
-            className="text-button cost-refresh"
-            disabled={isPublicDemo || loading}
-            title={isPublicDemo ? t("demoDesktopOnly") : undefined}
-            onClick={() => void refresh()}
+            className="text-button cost-swap"
+            disabled={!selectedPrice}
+            onClick={() => {
+              setModel(comparisonModel);
+              setComparisonModel(model);
+            }}
           >
-            <RefreshCw size={14} aria-hidden="true" />
-            {loading ? t("costLoading") : t("costRefresh")}
+            <ArrowLeftRight size={14} aria-hidden="true" />
+            {t("costSwapModels")}
           </button>
-        </div>
-        <div className="cost-controls">
-          <div className="cost-selectors">
-            <div className="cost-field">
-              <label htmlFor={`${id}-account`}>{t("costAccountScope")}</label>
-              <div className="cost-select">
-                <select
-                  id={`${id}-account`}
-                  value={selectedId}
-                  onChange={(event) => setProfileId(event.target.value)}
-                >
-                  <option value="">{t("quotaActivityAllAccounts")}</option>
-                  {accounts.map((account) => (
-                    <option value={account.id} key={account.id}>
-                      {displayLabel(account.label)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} aria-hidden="true" />
-              </div>
-            </div>
-            {(
-              [
-                {
-                  key: "model",
-                  label: "costReferenceModel",
-                  value: selectedPrice?.model ?? "",
-                  empty: "costChooseModel",
-                  onChange: setModel,
-                },
-                {
-                  key: "comparison",
-                  label: "costComparisonModel",
-                  value: comparisonPrice?.model ?? "",
-                  empty: "costNoComparison",
-                  onChange: setComparisonModel,
-                },
-              ] as const
-            ).map((field) => (
-              <div className="cost-field" key={field.key}>
-                <label htmlFor={`${id}-${field.key}`}>{t(field.label)}</label>
-                <div className="cost-select">
-                  <select
-                    id={`${id}-${field.key}`}
-                    value={field.value}
-                    disabled={!prices.length}
-                    onChange={(event) => field.onChange(event.target.value)}
-                  >
-                    <option value="">{t(field.empty)}</option>
-                    {sortedPrices.map((price) => (
-                      <option value={price.model} key={price.model}>
-                        {price.model}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} aria-hidden="true" />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="cost-comparison-guide">
-            <p className="cost-note">{t("costComparisonHint")}</p>
+        )}
+      </div>
+      <fieldset className="cost-presets">
+        <legend>{t("costTaskPresets")}</legend>
+        <div className="cost-preset-options">
+          {taskPresets.map((preset) => (
             <button
               type="button"
-              className="text-button cost-swap"
-              disabled={!selectedPrice || !comparisonPrice}
+              className="cost-preset"
+              key={preset.label}
+              aria-pressed={selectedPreset === preset}
               onClick={() => {
-                setModel(comparisonModel);
-                setComparisonModel(model);
+                setInputPercent(preset.input);
+                setCachePercent(preset.cache);
               }}
             >
-              <ArrowLeftRight size={14} aria-hidden="true" />
-              {t("costSwapModels")}
+              <span className="cost-preset-title">
+                <strong>{t(preset.label)}</strong>
+                <Check size={16} aria-hidden="true" />
+              </span>
+              <span>{t(preset.description)}</span>
             </button>
-          </div>
-          <fieldset className="cost-presets">
-            <legend>{t("costTaskPresets")}</legend>
-            <div className="cost-preset-options">
-              {taskPresets.map((preset) => (
-                <button
-                  type="button"
-                  className="cost-preset"
-                  key={preset.label}
-                  aria-pressed={selectedPreset === preset}
-                  onClick={() => {
-                    setInputPercent(preset.input);
-                    setCachePercent(preset.cache);
-                  }}
-                >
-                  <span className="cost-preset-title">
-                    <strong>{t(preset.label)}</strong>
-                    <Check size={16} aria-hidden="true" />
-                  </span>
-                  <span>
-                    {t("costPresetRatios", {
-                      input: preset.input,
-                      cache: preset.cache,
-                    })}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <p className="cost-note">{t("costPresetDisclaimer")}</p>
-            <p className="cost-preset-hint" aria-live="polite">
-              {t(selectedPreset?.hint ?? "costPresetCustomHint")}
-            </p>
-          </fieldset>
+          ))}
+        </div>
+        <p className="cost-note">{t("costPresetGuide")}</p>
+        {!selectedPreset && (
+          <p className="cost-note" role="status">
+            {t("costPresetCustomHint")}
+          </p>
+        )}
+      </fieldset>
+
+      <details className="cost-details cost-advanced">
+        <summary>{t("costAdvancedSettings")}</summary>
+        <p className="cost-note">{t("costAdvancedGuide")}</p>
+        <div className="cost-controls">
           <RatioControl
             id={`${id}-input`}
             label={t("costInputRatio", {
@@ -327,84 +343,162 @@ export function QuotaCostPanel({
           />
           <RatioControl
             id={`${id}-cache`}
-            label={t("costCacheRatio", { cache: percent.format(cachePercent) })}
+            label={t("costCacheRatio", {
+              cache: percent.format(cachePercent),
+            })}
             value={cachePercent}
             onChange={setCachePercent}
           />
         </div>
         <p className="cost-note">{t("costCacheRatioHint")}</p>
-
-        {(failed || pricing?.warning) && (
-          <p className="cost-warning" role="status">
-            {t(
-              failed
-                ? "costLoadFailed"
-                : pricing?.warning === "cacheWriteFailed"
-                  ? "costCacheWriteFailed"
-                  : "costRefreshFailed",
-            )}
-          </p>
-        )}
-        {stale && (
-          <p className="cost-warning" role="status">
-            {t("costStaleUsage")}
-          </p>
-        )}
-        {!selectedPrice && (
-          <p className="cost-note" role="status">
-            {t("costChooseModelHint")}
-          </p>
-        )}
-        {activePrices
-          .filter((price) => price.cachedInput === null)
-          .map((price) =>
-            cachePercent > 0 &&
-            inputPercent > 0 &&
-            periods.some((period) => (summary[period].tokens ?? 0) > 0) ? (
-              <p className="cost-warning" key={price.model}>
+        <p className="cost-preset-hint">
+          {t(selectedPreset?.hint ?? "costPresetCustomHint")}
+        </p>
+        <p className="cost-note">{t("costPresetDisclaimer")}</p>
+      </details>
+      {stale && (
+        <p className="cost-warning" role="status">
+          {t("costStaleUsage")}
+        </p>
+      )}
+      {(failed || pricing?.warning) && (
+        <p className="cost-warning" role="status">
+          {t(
+            failed
+              ? "costLoadFailed"
+              : pricing?.warning === "cacheWriteFailed"
+                ? "costCacheWriteFailed"
+                : "costRefreshFailed",
+          )}
+        </p>
+      )}
+      {activePrices
+        .filter((price) => price.cachedInput === null)
+        .map((price) =>
+          cachePercent > 0 &&
+          inputPercent > 0 &&
+          periods.some((period) => (summary[period].tokens ?? 0) > 0) ? (
+            <div className="cost-warning" key={price.model} role="status">
+              <p>
                 {price.model} · {t("costNoCacheRate")}
               </p>
-            ) : null,
-          )}
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setCachePercent(0)}
+              >
+                {t("costUseNoCache")}
+              </button>
+            </div>
+          ) : null,
+        )}
 
-        <div className="cost-periods" aria-live="polite">
-          {periods.map((period) => (
-            <QuotaCostPeriod
-              key={period}
-              title={t(periodKeys[period])}
-              usage={summary[period]}
-              accountCount={accountCount}
-              referencePrice={selectedPrice}
-              comparisonPrice={comparisonPrice}
-              inputPercent={inputPercent}
-              cachePercent={cachePercent}
-              formatMoney={formatMoney}
-              locale={locale}
-              t={t}
-            />
-          ))}
+      <div className="cost-results" aria-busy={usageLoading}>
+        <div className="cost-results-heading">
+          <h3>{t("costResultsTitle")}</h3>
+          <p className="cost-note">
+            {t("costPresetRatios", {
+              input: percent.format(inputPercent),
+              cache: percent.format(cachePercent),
+            })}
+          </p>
         </div>
+        {!hasUsage ? (
+          <div className="cost-empty-state" role="status">
+            <strong>
+              {t(usageLoading ? "costLoadingUsage" : "costUsageMissingTitle")}
+            </strong>
+            <p>{t("costNoQuotaUsage")}</p>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={usageLoading}
+              onClick={onRefreshUsage}
+            >
+              <RefreshCw size={15} aria-hidden="true" />
+              {t(usageLoading ? "costLoadingUsage" : "costRefreshUsage")}
+            </button>
+          </div>
+        ) : !selectedPrice ? (
+          <div className="cost-empty-state" role="status">
+            <strong>{t("costModelRequired")}</strong>
+            <p>{t("costLiveEstimateHint")}</p>
+          </div>
+        ) : (
+          <div className="cost-periods">
+            {periods.map((period) => (
+              <QuotaCostPeriod
+                key={period}
+                title={t(periodKeys[period])}
+                usage={summary[period]}
+                accountCount={accountCount}
+                referencePrice={selectedPrice}
+                comparisonPrice={comparisonPrice}
+                inputPercent={inputPercent}
+                cachePercent={cachePercent}
+                formatMoney={formatMoney}
+                locale={locale}
+                t={t}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="cost-guide-note">
+        <Info size={18} aria-hidden="true" />
+        <p>{t("costResultGuide")}</p>
+      </div>
+      {comparisonPrice && (
+        <p className="cost-note">{t("costComparisonHint")}</p>
+      )}
+      <details className="cost-details">
+        <summary>{t("costDetails")}</summary>
+        <p className="cost-note">{t("costUsagePeriodHint")}</p>
+        <p className="cost-note">{t("costAssumptionsHint")}</p>
+        <p className="cost-note">{t("costScenariosHint")}</p>
+        {activePrices.map((price) => (
+          <p className="cost-note" key={price.model}>
+            {t("costSelectedRates", {
+              model: price.model,
+              input: rate.format(price.input),
+              cached:
+                price.cachedInput === null
+                  ? "—"
+                  : rate.format(price.cachedInput),
+              output: rate.format(price.output),
+            })}
+          </p>
+        ))}
         <p className="cost-note">{t("costDisclaimer")}</p>
-        {pricing && (
-          <div className="cost-source">
-            <ExternalLink
-              className="text-button"
-              href="https://developers.openai.com/api/docs/pricing"
-              onOpen={() => setLinkFailed(false)}
-              onOpenError={() => setLinkFailed(true)}
-            >
-              {t("costSource")}
-            </ExternalLink>
-            <ExternalLink
-              className="text-button"
-              href="https://developers.openai.com/api/docs/guides/prompt-caching#multi-turn-agent"
-              onOpen={() => setLinkFailed(false)}
-              onOpenError={() => setLinkFailed(true)}
-            >
-              {t("costCacheSource")}
-            </ExternalLink>
-            <span>
-              {t(
+        <p className="cost-note">{t("costRatesHint")}</p>
+        <div className="cost-source">
+          <ExternalLink
+            className="text-button"
+            href="https://developers.openai.com/api/docs/pricing"
+            onOpen={() => setLinkFailed(false)}
+            onOpenError={() => setLinkFailed(true)}
+          >
+            {t("costSource")}
+          </ExternalLink>
+          <ExternalLink
+            className="text-button"
+            href="https://developers.openai.com/api/docs/guides/prompt-caching#multi-turn-agent"
+            onOpen={() => setLinkFailed(false)}
+            onOpenError={() => setLinkFailed(true)}
+          >
+            {t("costCacheSource")}
+          </ExternalLink>
+        </div>
+        {linkFailed && (
+          <p className="cost-warning" role="status">
+            {t("costLinkFailed")}
+          </p>
+        )}
+      </details>
+      <div className="cost-pricing-status">
+        <span>
+          {pricing
+            ? t(
                 pricing.source === "bundled"
                   ? "costBundledDate"
                   : "costUpdatedDate",
@@ -413,33 +507,19 @@ export function QuotaCostPanel({
                     locale,
                   ),
                 },
-              )}
-            </span>
-          </div>
-        )}
-        {linkFailed && (
-          <p className="cost-warning" role="status">
-            {t("costLinkFailed")}
-          </p>
-        )}
-        <details className="cost-details">
-          <summary>{t("costDetails")}</summary>
-          <p className="cost-note">{t("costScenariosHint")}</p>
-          {activePrices.map((price) => (
-            <p className="cost-note" key={price.model}>
-              {t("costSelectedRates", {
-                model: price.model,
-                input: rate.format(price.input),
-                cached:
-                  price.cachedInput === null
-                    ? "—"
-                    : rate.format(price.cachedInput),
-                output: rate.format(price.output),
-              })}
-            </p>
-          ))}
-          <p className="cost-note">{t("costRatesHint")}</p>
-        </details>
+              )
+            : t(loading ? "costLoading" : "costPricesUnavailable")}
+        </span>
+        <button
+          type="button"
+          className="text-button cost-refresh"
+          disabled={isPublicDemo || loading}
+          title={isPublicDemo ? t("demoDesktopOnly") : undefined}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+          {t(loading ? "costLoading" : "costRefresh")}
+        </button>
       </div>
     </section>
   );
