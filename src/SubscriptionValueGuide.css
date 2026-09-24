@@ -1,0 +1,114 @@
+.subscription-value-page .section-heading > .cost-page-actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.cost-page-actions .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.cost-tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+.cost-tour-shade {
+  position: absolute;
+  background: var(--overlay);
+  pointer-events: auto;
+}
+.cost-tour-spotlight {
+  position: absolute;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  pointer-events: none;
+}
+.cost-tour-pointer {
+  position: absolute;
+  right: -12px;
+  bottom: -20px;
+  fill: var(--accent);
+  color: var(--card-solid);
+  filter: drop-shadow(0 2px 3px var(--overlay));
+  animation: cost-tour-point 1.4s ease-in-out infinite;
+}
+@keyframes cost-tour-point {
+  50% {
+    transform: translate(3px, 3px);
+  }
+}
+.cost-tour-card {
+  position: absolute;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--card-solid);
+  color: var(--foreground);
+  box-shadow: var(--shadow-strong);
+  pointer-events: auto;
+  overflow-y: auto;
+}
+.cost-tour-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--card-solid);
+  border: 1px solid var(--border-strong);
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+}
+.cost-tour-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--accent-deep);
+  font-size: var(--text-caption);
+}
+.cost-tour-card h2 {
+  margin: 0 0 8px;
+  font-size: var(--text-heading);
+  line-height: var(--leading-normal);
+}
+.cost-tour-card h2:focus {
+  outline: none;
+}
+.cost-tour-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: var(--leading-relaxed);
+}
+.cost-tour-card .cost-tour-hint {
+  margin-top: 10px;
+  color: var(--accent-deep);
+  font-size: var(--text-caption);
+}
+.cost-tour-retry {
+  margin-top: 8px;
+}
+.cost-tour-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.cost-tour-skip {
+  margin-inline-end: auto;
+}
+.cost-tour-actions .button {
+  padding: 9px 11px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cost-tour-pointer {
+    animation: none;
+  }
+}

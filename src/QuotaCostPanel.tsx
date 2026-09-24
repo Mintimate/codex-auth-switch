@@ -12,6 +12,7 @@ import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
 import type { Locale, Translate } from "./i18n";
 import { QuotaCostPeriod } from "./QuotaCostPeriod";
+import { SubscriptionValueGuide } from "./SubscriptionValueGuide";
 import { summarizeQuotas } from "./quotaView";
 
 const periods = ["sevenDays", "thirtyDays"] as const;
@@ -19,6 +20,29 @@ const periodKeys = {
   sevenDays: "last7Days",
   thirtyDays: "last30Days",
 } as const;
+
+const tourSteps = [
+  {
+    target: '[data-cost-tour="account"]',
+    title: "costTourAccountTitle",
+    description: "costTourAccountBody",
+  },
+  {
+    target: '[data-cost-tour="model"]',
+    title: "costTourModelTitle",
+    description: "costTourModelBody",
+  },
+  {
+    target: '[data-cost-tour="presets"]',
+    title: "costTourPresetTitle",
+    description: "costTourPresetBody",
+  },
+  {
+    target: '[data-cost-tour="result"] > :first-child .cost-period-overview',
+    title: "costTourResultTitle",
+    description: "costTourResultBody",
+  },
+] as const;
 
 // 便于比较费用的假设起点，不是任务类型的实测平均值。
 const taskPresets = [
@@ -106,6 +130,8 @@ export function QuotaCostPanel({
   refreshErrors,
   usageLoading,
   onRefreshUsage,
+  guideOpen,
+  onCloseGuide,
   displayLabel,
   locale,
   t,
@@ -115,11 +141,14 @@ export function QuotaCostPanel({
   refreshErrors: Record<string, string>;
   usageLoading: boolean;
   onRefreshUsage: () => void;
+  guideOpen: boolean;
+  onCloseGuide: () => void;
   displayLabel: (label: string) => string;
   locale: Locale;
   t: Translate;
 }) {
   const id = useId();
+  const [tourStep, setTourStep] = useState(0);
   const [pricing, setPricing] = useState<ModelPrices | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -161,6 +190,9 @@ export function QuotaCostPanel({
   const activePrices = prices.filter(
     (price) => price === selectedPrice || price === comparisonPrice,
   );
+  useEffect(() => {
+    if (guideOpen) setTourStep(0);
+  }, [guideOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,7 +244,7 @@ export function QuotaCostPanel({
     <section className="quota-cost-panel" aria-label={t("costTitle")}>
       <div className="cost-controls cost-main-controls">
         <div className="cost-selectors">
-          <div className="cost-field">
+          <div className="cost-field" data-cost-tour="account">
             <label htmlFor={`${id}-account`}>{t("costAccountScope")}</label>
             <div className="cost-select">
               <select
@@ -230,7 +262,7 @@ export function QuotaCostPanel({
               <ChevronDown size={16} aria-hidden="true" />
             </div>
           </div>
-          <div className="cost-field">
+          <div className="cost-field" data-cost-tour="model">
             <label htmlFor={`${id}-model`}>{t("costReferenceModel")}</label>
             <div className="cost-select">
               <select
@@ -239,6 +271,8 @@ export function QuotaCostPanel({
                 disabled={!prices.length}
                 onChange={(event) => {
                   setModel(event.target.value);
+                  if (guideOpen && tourStep === 1 && event.target.value)
+                    setTourStep(2);
                 }}
               >
                 <option value="">
@@ -258,7 +292,7 @@ export function QuotaCostPanel({
             </div>
           </div>
 
-          <div className="cost-field">
+          <div className="cost-field" data-cost-tour="comparison">
             <label htmlFor={`${id}-comparison`}>
               {t("costComparisonModel")}
             </label>
@@ -300,7 +334,7 @@ export function QuotaCostPanel({
       </div>
       <fieldset className="cost-presets">
         <legend>{t("costTaskPresets")}</legend>
-        <div className="cost-preset-options">
+        <div className="cost-preset-options" data-cost-tour="presets">
           {taskPresets.map((preset) => (
             <button
               type="button"
@@ -310,6 +344,7 @@ export function QuotaCostPanel({
               onClick={() => {
                 setInputPercent(preset.input);
                 setCachePercent(preset.cache);
+                if (guideOpen && tourStep === 2) setTourStep(3);
               }}
             >
               <span className="cost-preset-title">
@@ -404,7 +439,11 @@ export function QuotaCostPanel({
           </p>
         </div>
         {!hasUsage ? (
-          <div className="cost-empty-state" role="status">
+          <div
+            className="cost-empty-state"
+            data-cost-tour="result"
+            role="status"
+          >
             <strong>
               {t(usageLoading ? "costLoadingUsage" : "costUsageMissingTitle")}
             </strong>
@@ -420,12 +459,16 @@ export function QuotaCostPanel({
             </button>
           </div>
         ) : !selectedPrice ? (
-          <div className="cost-empty-state" role="status">
+          <div
+            className="cost-empty-state"
+            data-cost-tour="result"
+            role="status"
+          >
             <strong>{t("costModelRequired")}</strong>
             <p>{t("costLiveEstimateHint")}</p>
           </div>
         ) : (
-          <div className="cost-periods">
+          <div className="cost-periods" data-cost-tour="result">
             {periods.map((period) => (
               <QuotaCostPeriod
                 key={period}
@@ -521,6 +564,54 @@ export function QuotaCostPanel({
           {t(loading ? "costLoading" : "costRefresh")}
         </button>
       </div>
+      {guideOpen && (
+        <SubscriptionValueGuide
+          targetSelector={
+            tourStep === 3 && (!hasUsage || !selectedPrice)
+              ? '[data-cost-tour="result"]'
+              : tourSteps[tourStep].target
+          }
+          step={tourStep}
+          total={tourSteps.length}
+          title={t(tourSteps[tourStep].title)}
+          description={t(tourSteps[tourStep].description)}
+          hint={
+            (tourStep === 0 || tourStep === 3) && !hasUsage
+              ? t("costUsageRequired")
+              : tourStep === 1 && !selectedPrice
+                ? t("costModelRequired")
+                : undefined
+          }
+          nextDisabled={tourStep === 1 && !selectedPrice}
+          action={
+            (tourStep === 0 || tourStep === 3) && !hasUsage
+              ? {
+                  label: t(
+                    usageLoading ? "costLoadingUsage" : "costRefreshUsage",
+                  ),
+                  onClick: onRefreshUsage,
+                  disabled: usageLoading,
+                }
+              : tourStep === 1 && !prices.length
+                ? {
+                    label: t(loading ? "costLoading" : "costRefresh"),
+                    onClick: () => void refresh(),
+                    disabled: isPublicDemo || loading,
+                  }
+                : undefined
+          }
+          onNext={() =>
+            tourStep === tourSteps.length - 1
+              ? onCloseGuide()
+              : setTourStep(tourStep + 1)
+          }
+          onPrevious={
+            tourStep > 0 ? () => setTourStep(tourStep - 1) : undefined
+          }
+          onClose={onCloseGuide}
+          t={t}
+        />
+      )}
     </section>
   );
 }
