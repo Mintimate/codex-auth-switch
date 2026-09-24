@@ -3,6 +3,7 @@
 //! 认证材料只在后端和本次临时 Home 中流转，不透传 RPC 错误或子进程输出。
 use crate::{
     codex_app_server,
+    diagnostic_log::{Operation, Outcome, Trace},
     manager::{validate_chatgpt_auth, AccountManager},
     proxy,
     query_gate::QueryGate,
@@ -466,15 +467,29 @@ impl Rpc {
     }
 
     async fn request(&mut self, id: u64, method: &str, params: Value) -> Result<Value, LoginError> {
-        timeout(RPC_TIMEOUT, async {
+        let mut trace = Trace::start(match method {
+            "initialize" => Operation::HostedInitialize,
+            "account/login/start" => Operation::HostedLogin,
+            _ => Operation::HostedAccount,
+        });
+        let result = timeout(RPC_TIMEOUT, async {
             self.write(json!({"id":id,"method":method,"params":params}))
                 .await?;
             loop {
                 let message = self.read().await?;
                 if message.get("id").and_then(Value::as_u64) == Some(id) {
                     if let Some(error) = message.get("error") {
+                        trace.finish(Outcome::RpcError, Some(&json!({"error":error})));
                         return Err(classify_error(error));
                     }
+                    trace.finish(
+                        if message.get("result").is_some() {
+                            Outcome::Success
+                        } else {
+                            Outcome::InvalidResponse
+                        },
+                        message.get("result"),
+                    );
                     return message
                         .get("result")
                         .cloned()
@@ -490,7 +505,17 @@ impl Rpc {
             }
         })
         .await
-        .map_err(|_| LoginError::Network)?
+        .map_err(|_| LoginError::Network);
+        trace.finish(
+            match &result {
+                Err(_) => Outcome::Timeout,
+                Ok(Err(LoginError::InvalidResponse)) => Outcome::InvalidResponse,
+                Ok(Err(_)) => Outcome::RpcError,
+                Ok(Ok(_)) => Outcome::Success,
+            },
+            None,
+        );
+        result?
     }
 
     async fn authorize(
@@ -597,6 +622,39 @@ fn validate_url(value: &str) -> Result<(), LoginError> {
 }
 
 async fn run_login(
+    state: &HostedLoginState,
+    id: &str,
+    home: &tempfile::TempDir,
+    cancelled: watch::Receiver<bool>,
+    spawn_process: impl FnOnce(&Path) -> Result<Child, LoginError>,
+) -> Result<Value, LoginError> {
+    crate::diagnostic_log::scope(async {
+        let mut trace = Trace::start(Operation::HostedResult);
+        let result = run_login_inner(state, id, home, cancelled, spawn_process).await;
+        trace.finish(
+            match &result {
+                Ok(_) => Outcome::Success,
+                Err(LoginError::Unavailable) => Outcome::Unavailable,
+                Err(LoginError::Unsupported) => Outcome::Unsupported,
+                Err(LoginError::PortInUse) => Outcome::PortInUse,
+                Err(LoginError::Network) => Outcome::Network,
+                Err(LoginError::RateLimited) => Outcome::RateLimited,
+                Err(LoginError::Rejected) => Outcome::Rejected,
+                Err(LoginError::InvalidResponse) => Outcome::InvalidResponse,
+                Err(LoginError::Storage) => Outcome::Storage,
+                Err(LoginError::Expired) => Outcome::Expired,
+                Err(LoginError::Cancelled) => Outcome::Cancelled,
+                Err(LoginError::Cleanup) => Outcome::Cleanup,
+                Err(_) => Outcome::RpcError,
+            },
+            None,
+        );
+        result
+    })
+    .await
+}
+
+async fn run_login_inner(
     state: &HostedLoginState,
     id: &str,
     home: &tempfile::TempDir,

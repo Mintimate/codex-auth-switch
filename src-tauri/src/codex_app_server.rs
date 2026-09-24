@@ -1,3 +1,4 @@
+use crate::diagnostic_log::{Operation, Outcome, Trace};
 use crate::proxy;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -24,6 +25,7 @@ pub enum AppServerError {
     Unavailable,
     QueryFailed,
     RateLimited,
+    Timeout,
 }
 
 #[derive(Debug)]
@@ -129,6 +131,22 @@ enum Account {
 }
 
 pub async fn query_account(auth: &Value) -> AccountQueryOutcome {
+    let mut trace = Trace::start(Operation::AppServerQuery);
+    let outcome = query_account_inner(auth).await;
+    trace.finish(
+        match &outcome.result {
+            Ok(_) => Outcome::Success,
+            Err(AppServerError::Unavailable) => Outcome::Unavailable,
+            Err(AppServerError::RateLimited) => Outcome::RateLimited,
+            Err(AppServerError::Timeout) => Outcome::Timeout,
+            Err(AppServerError::QueryFailed) => Outcome::RpcError,
+        },
+        None,
+    );
+    outcome
+}
+
+async fn query_account_inner(auth: &Value) -> AccountQueryOutcome {
     let temp_home = match tempfile::Builder::new()
         .prefix("codex-auth-switch-")
         .tempdir()
@@ -223,7 +241,7 @@ async fn query_account_in_home(home: &Path) -> Result<AccountSnapshot, AppServer
     drop(stdin);
     let _ = child.start_kill();
     let _ = child.wait().await;
-    let responses = responses.map_err(|_| AppServerError::QueryFailed)??;
+    let responses = responses.map_err(|_| AppServerError::Timeout)??;
 
     let account: AccountResponse = parse_result(responses.account)?;
     let rate_limits: RateLimitsResponse = parse_result(responses.rate_limits)?;
@@ -257,6 +275,7 @@ async fn read_rpc_result(
     lines: &mut Lines<BufReader<ChildStdout>>,
     expected_id: u64,
     optional: bool,
+    trace: &mut Trace,
 ) -> Result<Option<Value>, AppServerError> {
     while let Some(line) = lines
         .next_line()
@@ -273,17 +292,34 @@ async fn read_rpc_result(
             continue;
         }
         if let Some(error) = message.get("error") {
+            trace.finish(
+                if matches!(classify_rpc_error(error), AppServerError::RateLimited) {
+                    Outcome::RateLimited
+                } else {
+                    Outcome::RpcError
+                },
+                Some(&json!({"error": error})),
+            );
             return if optional {
                 Ok(None)
             } else {
                 Err(classify_rpc_error(error))
             };
         }
-        return message
+        let result = message
             .get("result")
             .cloned()
             .map(Some)
             .ok_or(AppServerError::QueryFailed);
+        trace.finish(
+            if result.is_ok() {
+                Outcome::Success
+            } else {
+                Outcome::InvalidResponse
+            },
+            message.get("result"),
+        );
+        return result;
     }
     Err(AppServerError::QueryFailed)
 }
@@ -321,12 +357,25 @@ async fn request_rpc(
     expected_id: u64,
     optional: bool,
 ) -> Result<Option<Value>, AppServerError> {
-    write_rpc(stdin, &message).await?;
-    stdin
-        .flush()
-        .await
-        .map_err(|_| AppServerError::QueryFailed)?;
-    read_rpc_result(lines, expected_id, optional).await
+    let mut trace = Trace::start(match expected_id {
+        0 => Operation::RpcInitialize,
+        1 => Operation::RpcAccount,
+        2 => Operation::RpcLimits,
+        _ => Operation::RpcUsage,
+    });
+    let result = async {
+        write_rpc(stdin, &message).await?;
+        stdin
+            .flush()
+            .await
+            .map_err(|_| AppServerError::QueryFailed)?;
+        read_rpc_result(lines, expected_id, optional, &mut trace).await
+    }
+    .await;
+    if result.is_err() {
+        trace.finish(Outcome::RpcError, None);
+    }
+    result
 }
 
 fn parse_result<T: for<'de> Deserialize<'de>>(value: Option<Value>) -> Result<T, AppServerError> {

@@ -3,6 +3,7 @@ mod auth_share;
 mod codex_app_server;
 mod desktop_client;
 mod device_login;
+mod diagnostic_log;
 mod diagnostics;
 mod hosted_login;
 mod manager;
@@ -88,6 +89,37 @@ fn get_local_diagnostics(app: AppHandle) -> Result<LocalDiagnostics, String> {
         manager.codex_home_path(),
         manager.vault_path(),
     ))
+}
+
+#[tauri::command]
+async fn get_diagnostic_logs() -> Result<diagnostic_log::Snapshot, String> {
+    tauri::async_runtime::spawn_blocking(diagnostic_log::snapshot)
+        .await
+        .map_err(|_| "无法访问诊断日志".to_string())?
+}
+
+#[tauri::command]
+async fn set_diagnostic_logging(enabled: bool) -> Result<diagnostic_log::Snapshot, String> {
+    tauri::async_runtime::spawn_blocking(move || diagnostic_log::set_enabled(enabled))
+        .await
+        .map_err(|_| "无法访问诊断日志".to_string())?
+}
+
+#[tauri::command]
+async fn clear_diagnostic_logs() -> Result<diagnostic_log::Snapshot, String> {
+    tauri::async_runtime::spawn_blocking(diagnostic_log::clear)
+        .await
+        .map_err(|_| "清空诊断日志失败".to_string())?
+}
+
+#[tauri::command]
+async fn export_diagnostic_logs(app: AppHandle) -> Result<String, String> {
+    let path = tauri::async_runtime::spawn_blocking(diagnostic_log::export)
+        .await
+        .map_err(|_| "导出诊断日志失败".to_string())??;
+    // A fixed application-owned path; the frontend cannot select arbitrary files.
+    let _ = app.opener().reveal_item_in_dir(&path);
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -619,6 +651,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(quota_refresh::QuotaRefresh::new(app.path().app_data_dir()?));
             if let Ok(app_data_dir) = app.path().app_data_dir() {
+                diagnostic_log::init(app_data_dir.clone());
                 proxy::init(app_data_dir);
             }
             start_quota_worker(app.handle().clone());
@@ -637,6 +670,10 @@ pub fn run() {
             app_update::install_app_update,
             get_status,
             get_local_diagnostics,
+            get_diagnostic_logs,
+            set_diagnostic_logging,
+            clear_diagnostic_logs,
+            export_diagnostic_logs,
             get_network_proxy,
             set_network_proxy,
             get_codex_managed_config,

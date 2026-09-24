@@ -4,7 +4,9 @@ pub use crate::quota::{
 };
 use crate::{
     auth_share::{self, ImportedAuth},
-    codex_app_server, proxy,
+    codex_app_server,
+    diagnostic_log::{self, LoggedResponse, Operation},
+    proxy,
     query_gate::{QueryGate, QueryPermit},
     quota_history,
     usage::{
@@ -15,7 +17,7 @@ use crate::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use futures_util::{stream, Stream, StreamExt};
-use reqwest::{header::RETRY_AFTER, Client, Response, StatusCode};
+use reqwest::{header::RETRY_AFTER, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -745,17 +747,21 @@ impl AccountManager {
         self.ensure_file_storage()?;
         validate_label(label)?;
 
-        let response = oauth_client()?
-            .post(DEVICE_AUTH_USERCODE_URL)
-            .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID }))
-            .send()
-            .await
-            .map_err(|error| network_error("申请登录验证码", error))?;
+        let response = diagnostic_log::send(
+            oauth_client()?
+                .post(DEVICE_AUTH_USERCODE_URL)
+                .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID })),
+            Operation::DeviceCode,
+            1,
+        )
+        .await
+        .map_err(|error| network_error("申请登录验证码", error))?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            response.discard().await;
             return Err(ManagerError::Network(format!(
-                "申请登录验证码失败（HTTP {}），请稍后重试",
-                response.status()
+                "申请登录验证码失败（HTTP {status}），请稍后重试"
             )));
         }
 
@@ -791,23 +797,33 @@ impl AccountManager {
             ));
         }
 
-        let response = oauth_client()?
-            .post(DEVICE_AUTH_TOKEN_URL)
-            .json(&serde_json::json!({
-                "device_auth_id": device_code,
-                "user_code": user_code,
-            }))
-            .send()
-            .await
-            .map_err(|error| network_error("检查登录状态", error))?;
+        let response = diagnostic_log::send(
+            oauth_client()?
+                .post(DEVICE_AUTH_TOKEN_URL)
+                .json(&serde_json::json!({
+                    "device_auth_id": device_code,
+                    "user_code": user_code,
+                })),
+            Operation::DevicePoll,
+            1,
+        )
+        .await
+        .map_err(|error| network_error("检查登录状态", error))?;
 
         match response.status() {
-            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND => return Ok(None),
-            StatusCode::GONE => return Err(ManagerError::DeviceCodeExpired),
+            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND => {
+                response.discard().await;
+                return Ok(None);
+            }
+            StatusCode::GONE => {
+                response.discard().await;
+                return Err(ManagerError::DeviceCodeExpired);
+            }
             status if !status.is_success() => {
+                response.discard().await;
                 return Err(ManagerError::Network(format!(
                     "检查登录状态失败（HTTP {status}），请稍后重试"
-                )))
+                )));
             }
             _ => {}
         }
@@ -1718,6 +1734,13 @@ async fn query_account_details(
     auth: &Value,
     account_id: &str,
 ) -> (QuotaQueryResult, Option<Value>) {
+    diagnostic_log::scope(query_account_details_inner(auth, account_id)).await
+}
+
+async fn query_account_details_inner(
+    auth: &Value,
+    account_id: &str,
+) -> (QuotaQueryResult, Option<Value>) {
     let outcome = codex_app_server::query_account(auth).await;
     let mut refreshed_auth = match outcome.refreshed_auth {
         Some(auth) => match checked_refreshed_auth(&auth, account_id) {
@@ -1900,7 +1923,7 @@ async fn query_account_quota_compatibility(auth: &Value, account_id: &str) -> Qu
     })
 }
 
-fn quota_retry_delay(response: Option<&Response>, account_id: &str) -> Option<Duration> {
+fn quota_retry_delay(response: Option<&LoggedResponse>, account_id: &str) -> Option<Duration> {
     let retry_after = response
         .and_then(|response| response.headers().get(RETRY_AFTER))
         .and_then(|value| value.to_str().ok());
@@ -1948,15 +1971,22 @@ async fn send_quota_request(
     access_token: &str,
     account_id: &str,
     service_name: &str,
-) -> Result<Response, QuotaQueryError> {
+) -> Result<LoggedResponse, QuotaQueryError> {
     for attempt in 0..2 {
-        let response = client
-            .get(url)
-            .bearer_auth(access_token)
-            .header("Accept", "application/json")
-            .header("ChatGPT-Account-Id", account_id)
-            .send()
-            .await;
+        let response = diagnostic_log::send(
+            client
+                .get(url)
+                .bearer_auth(access_token)
+                .header("Accept", "application/json")
+                .header("ChatGPT-Account-Id", account_id),
+            if url == CODEX_USAGE_URL {
+                Operation::QuotaUsage
+            } else {
+                Operation::QuotaCredits
+            },
+            attempt + 1,
+        )
+        .await;
         match response {
             Ok(response)
                 if attempt == 0
@@ -1966,6 +1996,7 @@ async fn send_quota_request(
                 let Some(delay) = quota_retry_delay(Some(&response), account_id) else {
                     return Ok(response);
                 };
+                response.discard().await;
                 sleep(delay).await;
             }
             Ok(response) => return Ok(response),
@@ -2001,12 +2032,14 @@ async fn query_usage_windows(
         response.status(),
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
     ) {
+        response.discard().await;
         return Err(QuotaQueryError::Unauthorized);
     }
     if !response.status().is_success() {
+        let status = response.status();
+        response.discard().await;
         return Err(QuotaQueryError::Message(format!(
-            "额度服务暂不可用（HTTP {}）",
-            response.status()
+            "额度服务暂不可用（HTTP {status}）"
         )));
     }
 
@@ -2045,12 +2078,14 @@ async fn query_reset_credits(
         response.status(),
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
     ) {
+        response.discard().await;
         return Err(QuotaQueryError::Unauthorized);
     }
     if !response.status().is_success() {
+        let status = response.status();
+        response.discard().await;
         return Err(QuotaQueryError::Message(format!(
-            "重置额度服务暂不可用（HTTP {}）",
-            response.status()
+            "重置额度服务暂不可用（HTTP {status}）"
         )));
     }
 
@@ -2141,20 +2176,22 @@ async fn exchange_refresh_token(
     refresh_token: &str,
     failure_hint: &str,
 ) -> Result<OAuthTokenResponse, ManagerError> {
-    let response = oauth_client()?
-        .post(OAUTH_TOKEN_URL)
-        .form(&[
+    let response = diagnostic_log::send(
+        oauth_client()?.post(OAUTH_TOKEN_URL).form(&[
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
             ("client_id", CODEX_CLIENT_ID),
-        ])
-        .send()
-        .await
-        .map_err(|error| network_error("刷新订阅凭据", error))?;
+        ]),
+        Operation::OAuthRefresh,
+        1,
+    )
+    .await
+    .map_err(|error| network_error("刷新订阅凭据", error))?;
     if !response.status().is_success() {
+        let status = response.status();
+        response.discard().await;
         return Err(ManagerError::TokenExchange(format!(
-            "刷新订阅凭据失败（HTTP {}），{failure_hint}",
-            response.status(),
+            "刷新订阅凭据失败（HTTP {status}），{failure_hint}",
         )));
     }
     let refreshed: OAuthTokenResponse = response
@@ -2211,23 +2248,25 @@ async fn exchange_code_for_tokens(
     authorization_code: &str,
     code_verifier: &str,
 ) -> Result<OAuthTokenResponse, ManagerError> {
-    let response = oauth_client()?
-        .post(OAUTH_TOKEN_URL)
-        .form(&[
+    let response = diagnostic_log::send(
+        oauth_client()?.post(OAUTH_TOKEN_URL).form(&[
             ("grant_type", "authorization_code"),
             ("code", authorization_code),
             ("redirect_uri", DEVICE_REDIRECT_URI),
             ("client_id", CODEX_CLIENT_ID),
             ("code_verifier", code_verifier),
-        ])
-        .send()
-        .await
-        .map_err(|error| network_error("交换登录凭据", error))?;
+        ]),
+        Operation::OAuthExchange,
+        1,
+    )
+    .await
+    .map_err(|error| network_error("交换登录凭据", error))?;
 
     if !response.status().is_success() {
+        let status = response.status();
+        response.discard().await;
         return Err(ManagerError::TokenExchange(format!(
-            "交换登录凭据失败（HTTP {}），请重新登录",
-            response.status()
+            "交换登录凭据失败（HTTP {status}），请重新登录"
         )));
     }
 
