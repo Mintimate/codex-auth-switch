@@ -3,6 +3,7 @@ import { FlaskConical } from "lucide-react";
 import type { Translate } from "./i18n";
 import type { ThemePreferences } from "./themePreferences";
 import { ThemePicker } from "./ThemePicker";
+import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
 
 export function LabsPanel({
   hostedLoginEnabled,
@@ -83,6 +84,7 @@ export function LabsPanel({
           </div>
         </div>
       </section>
+      <DiagnosticLogPanel t={t} />
       <ThemePicker value={theme} onChange={onThemeChange} t={t} />
     </div>
   );

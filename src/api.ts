@@ -287,6 +287,84 @@ export type NetworkProxySettings = {
   noProxy: string;
 };
 
+export type DiagnosticLogEntry = {
+  id: number;
+  group: number;
+  time: number;
+  operation: string;
+  request: { method: string; target: string };
+  attempt: number;
+  durationMs: number;
+  proxyMode: ProxyMode | null;
+  status: number | null;
+  outcome: string;
+  bodyKind: string;
+  response: unknown;
+};
+
+export type DiagnosticLogs = {
+  enabled: boolean;
+  entries: DiagnosticLogEntry[];
+  warning: "read" | "write" | null;
+  maxEntries: number;
+  maxBytes: number;
+  retentionDays: number;
+  appVersion: string;
+  platform: string;
+};
+
+const emptyDiagnosticLogs = (): DiagnosticLogs => ({
+  enabled: false,
+  entries: [],
+  warning: null,
+  maxEntries: 500,
+  maxBytes: 1024 * 1024,
+  retentionDays: 7,
+  appVersion: packageMetadata.version,
+  platform: "preview",
+});
+let previewDiagnosticLogs: DiagnosticLogs = {
+  ...emptyDiagnosticLogs(),
+  entries: [
+    {
+      id: 2,
+      group: 1,
+      time: Math.floor(Date.now() / 1000) - 60,
+      operation: "rpcLimits",
+      request: { method: "RPC", target: "account/rateLimits/read" },
+      attempt: 1,
+      durationMs: 340,
+      proxyMode: "system",
+      status: null,
+      outcome: "success",
+      bodyKind: "json",
+      response: {
+        rateLimits: {
+          planType: "pro",
+          primary: { usedPercent: 24, windowDurationMins: 300 },
+        },
+      },
+    },
+    {
+      id: 4,
+      group: 3,
+      time: Math.floor(Date.now() / 1000) - 30,
+      operation: "quotaUsage",
+      request: {
+        method: "GET",
+        target: "https://chatgpt.com/backend-api/wham/usage",
+      },
+      attempt: 1,
+      durationMs: 520,
+      proxyMode: "system",
+      status: 403,
+      outcome: "httpError",
+      bodyKind: "html",
+      response: null,
+    },
+  ],
+};
+
 export const defaultNetworkProxySettings = (): NetworkProxySettings => ({
   mode: "system",
   proxyUrl: "",
@@ -589,6 +667,7 @@ const demoCommands = new Set([
   "get_account_quotas",
   "get_usage_overview",
   "get_local_diagnostics",
+  "get_diagnostic_logs",
   "get_network_proxy",
   "get_codex_managed_config",
   "get_app_version",
@@ -598,6 +677,18 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (isPublicDemo && !demoCommands.has(command))
     return Promise.reject(demoReadOnlyError());
   if (isBrowserPreview()) {
+    if (command === "get_diagnostic_logs")
+      return Promise.resolve(structuredClone(previewDiagnosticLogs) as T);
+    if (command === "set_diagnostic_logging") {
+      previewDiagnosticLogs.enabled = args?.enabled === true;
+      return Promise.resolve(structuredClone(previewDiagnosticLogs) as T);
+    }
+    if (command === "clear_diagnostic_logs") {
+      previewDiagnosticLogs.entries = [];
+      return Promise.resolve(structuredClone(previewDiagnosticLogs) as T);
+    }
+    if (command === "export_diagnostic_logs")
+      return Promise.reject(new Error("请在桌面版导出诊断日志"));
     if (command === "get_quota_history")
       return Promise.resolve(
         structuredClone({
@@ -811,6 +902,15 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
 };
 
 export const getStatus = () => call<AppStatus>("get_status");
+
+export const getDiagnosticLogs = () =>
+  call<DiagnosticLogs>("get_diagnostic_logs");
+export const setDiagnosticLogging = (enabled: boolean) =>
+  call<DiagnosticLogs>("set_diagnostic_logging", { enabled });
+export const clearDiagnosticLogs = () =>
+  call<DiagnosticLogs>("clear_diagnostic_logs");
+export const exportDiagnosticLogs = () =>
+  call<string>("export_diagnostic_logs");
 
 export const getLocalDiagnostics = () =>
   call<LocalDiagnostics>("get_local_diagnostics");
