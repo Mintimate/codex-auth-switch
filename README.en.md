@@ -182,6 +182,16 @@ One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions 
 
 Labs groups experimental features in the sidebar. Local Codex sign-in is off by default, and its toggle is saved only on this device. Enable it to choose local Codex or OAuth in the sign-in dialog. Turning it off restores OAuth as the available method and keeps saved accounts.
 
+### Diagnostic logs
+
+For sign-in or quota failures, enable **Labs → Diagnostic logs**, reproduce the problem, then refresh the log list. Filter failures, expand filtered responses, or export JSON. Group IDs connect one quota query or local sign-in across App Server calls, compatibility requests, retries and credential refreshes.
+
+Logging is off by default and resets to off when the app restarts. Entries contain request methods and fixed service addresses/RPC methods, timings, proxy modes, status codes and allowlisted response fields. Request bodies, authentication headers, cookies, tokens, verification codes, account IDs, emails, authorization URLs and raw error messages are excluded. Server messages may produce predefined coarse hints, which do not establish a root cause. Unknown fields and arbitrary strings are omitted; quota percentages and usage counts may remain. HTML is recorded only by content type; successful sign-in credentials never enter the logs.
+
+Logs stay in `diagnostic-logs.v1.json` in the local app data directory, capped at 7 days, 500 entries and 1 MiB. Pruning runs on startup, reads and writes. Disabling collection keeps history; clearing invalidates in-flight entries. Corrupt logs disable collection until cleared. Write failures show a warning without failing sign-in or quota requests.
+
+Export writes `diagnostics/diagnostic-log-export.json` locally and attempts to reveal its directory, replacing the previous export. It includes all retained entries, app version and OS, regardless of the failure filter. Clearing also removes this export; copies saved or shared elsewhere remain under your control. No logs are uploaded. The public demo cannot enable collection or export logs.
+
 ## Codex Configuration
 
 The configuration page edits the local `config.toml`. Each selection updates only the corresponding supported fields, preserves other settings and comments, and displays the resulting values inline.
