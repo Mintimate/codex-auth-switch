@@ -22,6 +22,12 @@ import type { AccountQuota, AccountSummary, AppStatus } from "./api";
 import { localizeBackendError } from "./i18n";
 import type { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
+import {
+  GuideButton,
+  GuideInvitation,
+  PageGuide,
+  usePageGuide,
+} from "./PageGuide";
 
 const shortId = (value: string) =>
   value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
@@ -37,6 +43,7 @@ type AccountsPageProps = {
   onRefreshQuota: (profileId: string) => void;
   switchingId: string | null;
   onImport: () => void;
+  onOpenConfig: () => void;
   onLogin: (label: string) => void;
   onRefresh: () => void;
   onRemove: (account: AccountSummary, displayLabel: string) => void;
@@ -88,6 +95,7 @@ export function AccountsPage({
   onRefreshQuota,
   switchingId,
   onImport,
+  onOpenConfig,
   onLogin,
   onRefresh,
   onRemove,
@@ -105,6 +113,89 @@ export function AccountsPage({
   );
   const accounts = status?.accounts ?? [];
   const active = accounts.find((account) => account.active) ?? null;
+  const guideReady = !loading && Boolean(status) && !busy;
+  const guide = usePageGuide({
+    page: "accounts",
+    variant: !status?.supported
+      ? "setup"
+      : accounts.length
+        ? "overview"
+        : "empty",
+    ready: guideReady,
+    automatic: accounts.length === 0,
+  });
+  const guideSteps = !status?.supported
+    ? [
+        {
+          target: '[data-guide="accounts-current"]',
+          title: t("accountsGuideCurrentTitle"),
+          description: t("accountsGuideCurrentDescription"),
+        },
+        {
+          target: '[data-guide="accounts-setup"]',
+          title: t("accountsGuideStorageTitle"),
+          description: t("accountsGuideStorageDescription"),
+        },
+      ]
+    : accounts.length
+      ? [
+          {
+            target: '[data-guide="accounts-current"]',
+            title: t("accountsGuideCurrentTitle"),
+            description: t("accountsGuideCurrentDescription"),
+          },
+          {
+            target: '[data-guide="accounts-add-actions"]',
+            title: t("accountsGuideAddTitle"),
+            description: t(
+              hostedLoginEnabled
+                ? "accountsGuideAddHostedDescription"
+                : "accountsGuideAddDescription",
+            ),
+          },
+          {
+            target: '[data-guide="accounts-list"] .account-quota-summary',
+            title: t("accountsGuideQuotaTitle"),
+            interactive: true,
+            description: t("accountsGuideQuotaDescription"),
+          },
+          {
+            target: '[data-guide="accounts-switch-actions"]',
+            title: t("accountsGuideSwitchTitle"),
+            description: t(
+              autoRestart
+                ? "accountsGuideSwitchRestartDescription"
+                : "accountsGuideSwitchDescription",
+            ),
+          },
+        ]
+      : [
+          {
+            target: '[data-guide="accounts-current"]',
+            title: t("accountsGuideCurrentTitle"),
+            description: t("accountsGuideCurrentDescription"),
+          },
+          {
+            target: status.activeAccountId
+              ? '[data-guide="accounts-save"]'
+              : '[data-guide="accounts-add"]',
+            title: t(
+              status.activeAccountId
+                ? "accountsGuideSaveTitle"
+                : "accountsGuideFirstLoginTitle",
+            ),
+            description: t(
+              status.activeAccountId
+                ? "accountsGuideSaveDescription"
+                : hostedLoginEnabled
+                  ? "accountsGuideFirstLoginHostedDescription"
+                  : "accountsGuideFirstLoginDescription",
+            ),
+          },
+        ];
+  const switchGuideAccount =
+    accounts.find((account) => !account.active || account.pendingLogin) ??
+    accounts[0];
   const allQuotasExpanded =
     accounts.length > 0 &&
     accounts.every((account) => expandedQuotaIds.has(account.id));
@@ -127,8 +218,12 @@ export function AccountsPage({
       aria-label={t("accountsTab")}
       aria-busy={switchingId !== null}
     >
+      <div className="page-guide-toolbar">
+        <GuideButton onClick={guide.start} disabled={!guideReady} t={t} />
+      </div>
+      <GuideInvitation guide={guide} t={t} />
       <section className="hero-card">
-        <div className="hero-copy">
+        <div className="hero-copy" data-guide="accounts-current">
           <div className="hero-login-status">
             <span className="eyebrow">{t("currentLogin")}</span>
             <span
@@ -154,8 +249,9 @@ export function AccountsPage({
                 : t("noChatGptLogin")}
           </p>
         </div>
-        <div className="hero-actions">
+        <div className="hero-actions" data-guide="accounts-add-actions">
           <button
+            data-guide="accounts-save"
             className="button secondary hero-action"
             title={t("saveCurrentLoginHint")}
             aria-label={t("saveCurrentLogin")}
@@ -171,6 +267,7 @@ export function AccountsPage({
             {t("saveCurrentLoginCompact")}
           </button>
           <button
+            data-guide="accounts-add"
             className="button primary hero-action"
             aria-describedby="add-account-guide"
             title={t(
@@ -211,6 +308,23 @@ export function AccountsPage({
           </p>
         </details>
       </section>
+
+      {status && !status.supported && accounts.length > 0 && (
+        <section className="empty-state" data-guide="accounts-setup">
+          <h3>{t("accountsGuideStorageTitle")}</h3>
+          <p>{t("accountsGuideStorageDescription")}</p>
+          <div className="empty-state-actions">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={onOpenConfig}
+            >
+              {t("accountsOpenConfig")}
+            </button>
+          </div>
+        </section>
+      )}
 
       <AccountFlow
         activeLabel={active ? displayLabel(active.label) : null}
@@ -272,6 +386,7 @@ export function AccountsPage({
         ) : status?.accounts.length ? (
           <div
             className={`account-list ${allQuotasExpanded ? "all-expanded" : ""}`}
+            data-guide="accounts-list"
           >
             {status.accounts.map((account) => {
               const accountLabel = displayLabel(account.label);
@@ -331,7 +446,14 @@ export function AccountsPage({
                     supported={status.supported}
                     t={t}
                   />
-                  <div className="account-actions">
+                  <div
+                    className="account-actions"
+                    data-guide={
+                      account.id === switchGuideAccount?.id
+                        ? "accounts-switch-actions"
+                        : undefined
+                    }
+                  >
                     {(!account.active || account.pendingLogin) && (
                       <SwitchAccountButton
                         disabled={isPublicDemo || busy || !status.supported}
@@ -387,13 +509,79 @@ export function AccountsPage({
             })}
           </div>
         ) : (
-          <div className="empty-state">
+          <div
+            className="empty-state"
+            data-guide={
+              status && !status.supported ? "accounts-setup" : undefined
+            }
+          >
             <div className="empty-icon">+</div>
-            <h3>{t("noSavedAccounts")}</h3>
-            <p>{t("noSavedAccountsHint")}</p>
+            <h3>
+              {t(
+                !status
+                  ? "accountsStatusUnavailable"
+                  : !status.supported
+                    ? "accountsGuideStorageTitle"
+                    : "noSavedAccounts",
+              )}
+            </h3>
+            <p>
+              {t(
+                !status
+                  ? "accountsStatusUnavailableHint"
+                  : !status.supported
+                    ? "accountsGuideStorageDescription"
+                    : status.activeAccountId
+                      ? "accountsEmptySaveHint"
+                      : "accountsEmptyLoginHint",
+              )}
+            </p>
+            <div className="empty-state-actions">
+              {!status ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={onRefresh}
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  {t("refresh")}
+                </button>
+              ) : !status.supported ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={onOpenConfig}
+                >
+                  {t("accountsOpenConfig")}
+                </button>
+              ) : status.activeAccountId ? (
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={isPublicDemo || busy}
+                  onClick={() => onSave(t("workAccount"))}
+                >
+                  <Save size={16} aria-hidden="true" />
+                  {t("saveCurrentLogin")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={isPublicDemo || busy}
+                  onClick={() => onLogin(t("numberedAccount", { number: 1 }))}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  {t("loginNewAccount")}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </section>
+      <PageGuide guide={guide} steps={guideSteps} t={t} />
     </div>
   );
 }

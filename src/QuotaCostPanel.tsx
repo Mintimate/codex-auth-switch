@@ -12,7 +12,7 @@ import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
 import type { Locale, Translate } from "./i18n";
 import { QuotaCostPeriod } from "./QuotaCostPeriod";
-import { SubscriptionValueGuide } from "./SubscriptionValueGuide";
+import { GuideSpotlight } from "./PageGuide";
 import { summarizeQuotas } from "./quotaView";
 
 const periods = ["sevenDays", "thirtyDays"] as const;
@@ -565,7 +565,7 @@ export function QuotaCostPanel({
         </button>
       </div>
       {guideOpen && (
-        <SubscriptionValueGuide
+        <GuideSpotlight
           targetSelector={
             tourStep === 3 && (!hasUsage || !selectedPrice)
               ? '[data-cost-tour="result"]'

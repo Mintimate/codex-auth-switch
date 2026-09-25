@@ -49,6 +49,7 @@ export function QuotaActivityOverview({
   return (
     <section
       className="quota-activity-overview"
+      data-guide="quota-activity"
       aria-label={t("dailyTokenActivity")}
     >
       {buckets.length ? (

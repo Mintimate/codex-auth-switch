@@ -10,6 +10,12 @@ import {
   setCodexContextMode,
 } from "./api";
 import { localizeBackendError, Locale, Translate } from "./i18n";
+import {
+  GuideButton,
+  GuideInvitation,
+  PageGuide,
+  usePageGuide,
+} from "./PageGuide";
 
 type Option = { label: string; value: string };
 
@@ -85,6 +91,44 @@ export function CodexConfigPanel({
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const guideReady = !loading && savingKey === null && Boolean(config || error);
+  const guide = usePageGuide({
+    page: "config",
+    variant: error ? "error" : "overview",
+    ready: guideReady,
+  });
+  const guideSteps = error
+    ? [
+        {
+          target: '[data-guide="config-error"]',
+          title: t("configGuideErrorTitle"),
+          description: t("configGuideErrorDescription"),
+          interactive: true,
+        },
+      ]
+    : [
+        {
+          target: '[data-guide="config-credentialStorage"]',
+          title: t("configGuideStorageTitle"),
+          description: t("configGuideStorageDescription"),
+        },
+        {
+          target: '[data-guide="config-context"]',
+          title: t("configGuideContextTitle"),
+          description: t("configGuideContextDescription"),
+        },
+        {
+          target: '[data-guide="config-reasoningEffort"]',
+          title: t("configGuideOutputTitle"),
+          description: t("configGuideOutputDescription"),
+        },
+        {
+          target: '[data-guide="config-webSearch"]',
+          title: t("configGuideSearchTitle"),
+          description: t("configGuideSearchDescription"),
+        },
+      ];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,7 +216,7 @@ export function CodexConfigPanel({
     hint: string,
     options: Option[],
   ) => (
-    <div className="settings-row">
+    <div className="settings-row" data-guide={`config-${key}`}>
       <div>
         <strong>{title}</strong>
         <span>{hint}</span>
@@ -197,16 +241,33 @@ export function CodexConfigPanel({
 
   return (
     <div className="settings-page config-page">
-      <header className="page-heading">
-        <span className="eyebrow">config.toml</span>
-        <h2>{t("codexConfigPageTitle")}</h2>
-        <p>{t("codexConfigPageDescription")}</p>
+      <header className="page-heading page-heading-with-guide">
+        <div>
+          <span className="eyebrow">config.toml</span>
+          <h2>{t("codexConfigPageTitle")}</h2>
+          <p>{t("codexConfigPageDescription")}</p>
+          <p>{t("configGuideSaveHint")}</p>
+        </div>
+        <GuideButton onClick={guide.start} disabled={!guideReady} t={t} />
       </header>
+      {!error && <GuideInvitation guide={guide} t={t} />}
 
       {error && (
-        <section className="alert error">
+        <section
+          className="alert error"
+          data-guide="config-error"
+          role="status"
+        >
           <strong>{t("operationFailed")}</strong>
           <span>{error}</span>
+          <button
+            type="button"
+            className="text-button"
+            disabled={loading || savingKey !== null}
+            onClick={() => void load()}
+          >
+            {t("configGuideReload")}
+          </button>
         </section>
       )}
 
@@ -230,7 +291,7 @@ export function CodexConfigPanel({
               { label: t("credentialStorageKeyring"), value: "keyring" },
             ],
           )}
-          <div className="settings-row">
+          <div className="settings-row" data-guide="config-context">
             <div>
               <strong>{t("contextWindow")}</strong>
               <span>{t("contextConfigPageHint")}</span>
@@ -303,6 +364,7 @@ export function CodexConfigPanel({
           ])}
         </section>
       </div>
+      <PageGuide guide={guide} steps={guideSteps} t={t} />
     </div>
   );
 }

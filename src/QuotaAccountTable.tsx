@@ -122,83 +122,86 @@ export function QuotaAccountTable({
 
   return (
     <section className="quota-comparison" aria-label={t("accountQuotaStatus")}>
-      <div className="quota-table-toolbar">
-        <h3>{t("accountQuotaStatus")}</h3>
-        <div className="quota-table-tools">
-          <div className="quota-search">
-            <Search size={15} aria-hidden="true" />
-            <input
-              type="search"
-              aria-label={t("quotaSearchAccounts")}
-              placeholder={t("quotaSearchAccounts")}
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(0);
-              }}
-            />
-            {search && (
-              <button
-                type="button"
-                className="quota-icon-button"
-                title={t("quotaClearSearch")}
-                aria-label={t("quotaClearSearch")}
-                onClick={() => {
-                  setSearch("");
+      <div data-guide="quota-filters">
+        <div className="quota-table-toolbar">
+          <h3>{t("accountQuotaStatus")}</h3>
+          <div className="quota-table-tools">
+            <div className="quota-search">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label={t("quotaSearchAccounts")}
+                placeholder={t("quotaSearchAccounts")}
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
                   setPage(0);
                 }}
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            )}
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="quota-icon-button"
+                  title={t("quotaClearSearch")}
+                  aria-label={t("quotaClearSearch")}
+                  onClick={() => {
+                    setSearch("");
+                    setPage(0);
+                  }}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            <select
+              aria-label={t("quotaSortAccounts")}
+              value={sort}
+              onChange={(event) => {
+                setSort(event.target.value as Sort);
+                setPage(0);
+              }}
+            >
+              <option value="default">{t("quotaSortDefault")}</option>
+              <option value="available">{t("quotaSortAvailable")}</option>
+              <option value="recovery">{t("quotaSortRecovery")}</option>
+              <option value="sevenDays">{t("quotaSortSevenDays")}</option>
+              <option value="thirtyDays">{t("quotaSortThirtyDays")}</option>
+              <option value="credits">{t("quotaSortCredits")}</option>
+            </select>
           </div>
-          <select
-            aria-label={t("quotaSortAccounts")}
-            value={sort}
-            onChange={(event) => {
-              setSort(event.target.value as Sort);
-              setPage(0);
-            }}
-          >
-            <option value="default">{t("quotaSortDefault")}</option>
-            <option value="available">{t("quotaSortAvailable")}</option>
-            <option value="recovery">{t("quotaSortRecovery")}</option>
-            <option value="sevenDays">{t("quotaSortSevenDays")}</option>
-            <option value="thirtyDays">{t("quotaSortThirtyDays")}</option>
-            <option value="credits">{t("quotaSortCredits")}</option>
-          </select>
+        </div>
+        <div
+          className="quota-filter-bar"
+          role="group"
+          aria-label={t("quotaFilterAccounts")}
+        >
+          {filters.map((item) => (
+            <button
+              type="button"
+              key={item.value}
+              aria-pressed={filter === item.value}
+              onClick={() => {
+                setFilter(item.value);
+                setPage(0);
+              }}
+            >
+              {t(item.label)}{" "}
+              <span>
+                {rows.filter((row) => matchesFilter(row, item.value)).length}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
       <div
-        className="quota-filter-bar"
-        role="group"
-        aria-label={t("quotaFilterAccounts")}
-      >
-        {filters.map((item) => (
-          <button
-            type="button"
-            key={item.value}
-            aria-pressed={filter === item.value}
-            onClick={() => {
-              setFilter(item.value);
-              setPage(0);
-            }}
-          >
-            {t(item.label)}{" "}
-            <span>
-              {rows.filter((row) => matchesFilter(row, item.value)).length}
-            </span>
-          </button>
-        ))}
-      </div>
-      <div
         className="quota-table-scroll"
+        data-guide="quota-table"
         tabIndex={0}
         role="region"
         aria-label={t("accountQuotaStatus")}
       >
         <table className="quota-comparison-table">
-          <thead>
+          <thead data-guide="quota-metrics">
             <tr>
               <th scope="col">{t("quotaAccountColumn")}</th>
               <th scope="col">{t("quotaHighestUsage")}</th>

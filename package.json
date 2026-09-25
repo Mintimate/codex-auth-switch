@@ -13,6 +13,7 @@
     "test:quota": "node --experimental-strip-types --test scripts/quota-view.test.mjs scripts/quota-history.test.mjs scripts/quota-refresh-state.test.mjs",
     "test:cost": "node --experimental-strip-types --test scripts/quota-cost.test.mjs",
     "test:theme": "node --experimental-strip-types --test scripts/theme-preferences.test.mjs",
+    "test:guide": "node --test scripts/page-guide.test.mjs",
     "bump": "node scripts/bump-version.mjs",
     "release": "node scripts/bump-version.mjs --release",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",

@@ -1,6 +1,12 @@
 import { LocalUsageStats, ModelProviderState, TokenBreakdown } from "./api";
 import { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
+import {
+  GuideButton,
+  GuideInvitation,
+  PageGuide,
+  usePageGuide,
+} from "./PageGuide";
 
 type UsagePanelProps = {
   usage: LocalUsageStats | null;
@@ -124,24 +130,96 @@ export function UsagePanel({
     ...(usage?.daily.map((day) => day.tokens.totalTokens) ?? []),
   );
   const breakdown = usage?.thirtyDays;
+  const guideVariant = error
+    ? "error"
+    : !usage
+      ? "unread"
+      : usage.eventsCount === 0
+        ? "empty"
+        : "loaded";
+  const guideReady = !loading;
+  const guide = usePageGuide({
+    page: "usage",
+    variant: guideVariant,
+    ready: guideReady,
+    automatic: false,
+  });
+  const guideSteps =
+    guideVariant === "loaded"
+      ? [
+          {
+            target: '[data-guide="usage-source"]',
+            title: t("usageGuideSourceTitle"),
+            description: t("usageGuideSourceDescription"),
+          },
+          {
+            target: '[data-guide="usage-insights"]',
+            title: t("usageGuideInsightsTitle"),
+            description: t("usageGuideInsightsDescription"),
+          },
+          {
+            target: '[data-guide="usage-attribution"]',
+            title: t("usageGuideAttributionTitle"),
+            description: t("usageGuideAttributionDescription"),
+          },
+        ]
+      : [
+          {
+            target:
+              guideVariant === "error"
+                ? '[data-guide="usage-error"]'
+                : '[data-guide="usage-setup"]',
+            title: t(
+              guideVariant === "error"
+                ? "usageGuideErrorTitle"
+                : guideVariant === "empty"
+                  ? "usageGuideEmptyTitle"
+                  : "usageGuideUnreadTitle",
+            ),
+            description: t(
+              guideVariant === "error"
+                ? "usageGuideErrorDescription"
+                : guideVariant === "empty"
+                  ? "usageGuideEmptyDescription"
+                  : "usageGuideUnreadDescription",
+            ),
+            interactive: true,
+          },
+        ];
 
   return (
     <section className="usage-section">
       <div className="section-heading usage-heading">
-        <div>
+        <div data-guide="usage-source">
           <span className="eyebrow">{t("usageInsight")}</span>
           <h2>{t("usageTitle")}</h2>
           <p>{t("usageDescription")}</p>
         </div>
-        <button className="text-button" disabled={loading} onClick={onRefresh}>
-          {loading ? t("calculating") : t("refreshUsage")}
-        </button>
+        <div className="page-guide-actions">
+          <GuideButton onClick={guide.start} disabled={!guideReady} t={t} />
+          <button
+            className="text-button"
+            disabled={loading}
+            onClick={onRefresh}
+          >
+            {loading ? t("calculating") : t("refreshUsage")}
+          </button>
+        </div>
       </div>
 
+      {guideReady && !error && <GuideInvitation guide={guide} t={t} />}
+
       {error && (
-        <div className="usage-inline-error">
-          <span>{error}</span>
-          <button type="button" onClick={onRefresh}>
+        <div
+          className="usage-inline-error"
+          data-guide="usage-error"
+          role="status"
+        >
+          <span>
+            {usage && usage.eventsCount > 0 && <>{t("usageCachedDataHint")} </>}
+            {error}
+          </span>
+          <button type="button" disabled={loading} onClick={onRefresh}>
             {t("retry")}
           </button>
         </div>
@@ -149,15 +227,33 @@ export function UsagePanel({
 
       {loading && !usage ? (
         <UsageSkeleton label={t("usageLoading")} />
-      ) : !usage ? (
+      ) : error && (!usage || usage.eventsCount === 0) ? (
         <div className="usage-empty-state">
+          <strong>{t("usageReadFailed")}</strong>
+          <p>{t("usageReadFailedHint")}</p>
+        </div>
+      ) : !usage ? (
+        <div className="usage-empty-state" data-guide="usage-setup">
           <strong>{t("usageNotLoaded")}</strong>
           <p>{t("usageNotLoadedHint")}</p>
           <button type="button" className="button primary" onClick={onRefresh}>
             {t("loadUsage")}
           </button>
         </div>
-      ) : usage ? (
+      ) : usage.eventsCount === 0 ? (
+        <div className="usage-empty-state" data-guide="usage-setup">
+          <strong>{t("usageNoEvents")}</strong>
+          <p>{t("usageNoEventsHint")}</p>
+          <button
+            type="button"
+            className="button primary"
+            disabled={loading}
+            onClick={onRefresh}
+          >
+            {loading ? t("calculating") : t("refreshUsage")}
+          </button>
+        </div>
+      ) : (
         <div className="usage-loaded-content">
           <div className="usage-metrics">
             <MetricCard
@@ -208,7 +304,7 @@ export function UsagePanel({
             </article>
 
             {breakdown && (
-              <article className="breakdown-card">
+              <article className="breakdown-card" data-guide="usage-insights">
                 <div className="usage-card-title">
                   <div>
                     <strong>{t("breakdown30Days")}</strong>
@@ -239,7 +335,10 @@ export function UsagePanel({
             )}
           </div>
 
-          <div className="local-attribution-heading">
+          <div
+            className="local-attribution-heading"
+            data-guide="usage-attribution"
+          >
             <div>
               <strong>{t("modelProviderAttribution")}</strong>
               <span>{t("modelProviderAttributionHint")}</span>
@@ -382,7 +481,8 @@ export function UsagePanel({
 
           <p className="usage-privacy-note">{t("usagePrivacy")}</p>
         </div>
-      ) : null}
+      )}
+      <PageGuide guide={guide} steps={guideSteps} t={t} />
     </section>
   );
 }

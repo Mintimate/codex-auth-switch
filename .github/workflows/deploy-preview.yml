@@ -59,6 +59,7 @@ jobs:
         run: |
           npm run format:check
           npm run test:demo
+          npm run test:guide
 
       - name: 构建在线预览
         run: npm run build:demo

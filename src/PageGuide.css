@@ -1,0 +1,198 @@
+.subscription-value-page .section-heading > .cost-page-actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.cost-page-actions .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.page-tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+.page-tour-shade,
+.page-tour-shield {
+  position: absolute;
+  pointer-events: auto;
+}
+.page-tour-shade {
+  background: var(--overlay);
+}
+.page-tour-mask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.page-tour-spotlight {
+  position: absolute;
+  pointer-events: none;
+}
+.page-tour-pointer {
+  position: absolute;
+  right: -12px;
+  bottom: -20px;
+  fill: var(--accent);
+  color: var(--card-solid);
+  filter: drop-shadow(0 2px 3px var(--overlay));
+  animation: page-tour-point 1.4s ease-in-out infinite;
+}
+@keyframes page-tour-point {
+  50% {
+    transform: translate(3px, 3px);
+  }
+}
+.page-tour-card {
+  position: absolute;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--card-solid);
+  color: var(--foreground);
+  box-shadow: var(--shadow-strong);
+  pointer-events: auto;
+  overflow-y: auto;
+}
+.page-tour-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--card-solid);
+  border: 1px solid var(--border-strong);
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+}
+.page-tour-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--accent-deep);
+  font-size: var(--text-caption);
+}
+.page-tour-card h2 {
+  margin: 0 0 8px;
+  font-size: var(--text-heading);
+  line-height: var(--leading-normal);
+}
+.page-tour-card h2:focus {
+  outline: none;
+}
+.page-tour-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: var(--leading-relaxed);
+}
+.page-tour-card .page-tour-hint {
+  margin-top: 10px;
+  color: var(--accent-deep);
+  font-size: var(--text-caption);
+}
+.page-tour-retry {
+  margin-top: 8px;
+}
+.page-tour-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.page-tour-skip {
+  margin-inline-end: auto;
+}
+.page-tour-actions .button {
+  padding: 9px 11px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-tour-pointer {
+    animation: none;
+  }
+}
+
+.page-tour-blocker {
+  position: absolute;
+  pointer-events: auto;
+}
+[data-guide],
+[data-cost-tour],
+.cost-period-overview {
+  scroll-margin-block: 24px;
+}
+.page-guide-actions,
+.page-guide-toolbar,
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.page-guide-toolbar {
+  justify-content: flex-end;
+}
+.page-guide-actions {
+  flex: 0 1 auto;
+}
+.section-heading > .page-guide-actions {
+  flex: 0 1 auto;
+}
+.page-guide-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.empty-state-actions {
+  justify-content: center;
+  margin-top: 16px;
+}
+.page-guide-invitation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  padding: 14px 16px;
+  margin: 0 0 18px;
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+}
+.page-guide-invitation > div:first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.page-guide-invitation strong {
+  color: var(--foreground);
+  font-weight: var(--weight-semibold);
+}
+.page-guide-invitation p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.page-heading-with-guide {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.page-heading-with-guide > div {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.page-heading-with-guide > .page-guide-button {
+  margin-top: 4px;
+}

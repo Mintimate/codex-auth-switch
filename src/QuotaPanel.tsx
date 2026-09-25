@@ -7,6 +7,12 @@ import { QuotaAccountTable } from "./QuotaAccountTable";
 import { QuotaActivityOverview } from "./QuotaActivityOverview";
 import { QuotaDetailDialog } from "./QuotaDetailDialog";
 import {
+  GuideButton,
+  GuideInvitation,
+  PageGuide,
+  usePageGuide,
+} from "./PageGuide";
+import {
   formatCount,
   formatDate,
   formatRelative,
@@ -25,8 +31,11 @@ type QuotaPanelProps = {
   loading: boolean;
   locale: Locale;
   onRefresh: () => void;
+  onOpenAccounts: () => void;
+  onOpenConfig: () => void;
   privateMode: boolean;
   quotas: AccountQuota[] | null;
+  supported: boolean;
   t: Translate;
 };
 
@@ -60,8 +69,11 @@ export function QuotaPanel({
   loading,
   locale,
   onRefresh,
+  onOpenAccounts,
+  onOpenConfig,
   privateMode,
   quotas,
+  supported,
   t,
 }: QuotaPanelProps) {
   const [detail, setDetail] = useState<{
@@ -83,6 +95,89 @@ export function QuotaPanel({
   const uniqueAccounts = new Set(accounts.map((account) => account.accountId))
     .size;
   const selectedAccount = detail ? byProfile.get(detail.id) : undefined;
+  const refreshFailed =
+    Boolean(error) ||
+    (accounts.length > 0 &&
+      accounts.every((account) => Boolean(refreshErrors[account.id])));
+  const variant = !supported
+    ? "storage"
+    : !accounts.length
+      ? "empty"
+      : refreshFailed
+        ? "error"
+        : summary.successful
+          ? "data"
+          : "unavailable";
+  const ready = !loading;
+  const guide = usePageGuide({
+    page: "quota",
+    variant,
+    ready,
+    automatic: false,
+  });
+  const steps =
+    variant === "storage"
+      ? [
+          {
+            target: '[data-guide="quota-storage"]',
+            title: t("quotaGuideStorageTitle"),
+            description: t("quotaGuideStorageDescription"),
+          },
+        ]
+      : variant === "error"
+        ? [
+            {
+              target: '[data-guide="quota-retry-status"]',
+              title: t("quotaGuideRefreshErrorTitle"),
+              description: t("quotaGuideRefreshErrorDescription"),
+              interactive: true,
+            },
+          ]
+        : variant === "empty"
+          ? [
+              {
+                target: '[data-guide="quota-empty"]',
+                title: t("quotaGuideEmptyTitle"),
+                description: t("quotaGuideEmptyDescription"),
+              },
+            ]
+          : variant === "unavailable"
+            ? [
+                {
+                  target: '[data-guide="quota-unavailable"]',
+                  title: t("quotaGuideUnavailableTitle"),
+                  description: t("quotaGuideUnavailableDescription"),
+                },
+                {
+                  target: '[data-guide="quota-refresh"]',
+                  title: t("quotaGuideRetryTitle"),
+                  description: t("quotaGuideRetryDescription"),
+                },
+              ]
+            : [
+                {
+                  target: '[data-guide="quota-metrics"]',
+                  title: t("quotaGuideMetricsTitle"),
+                  description: t("quotaGuideMetricsDescription"),
+                },
+                {
+                  target: '[data-guide="quota-filters"]',
+                  title: t("quotaGuideFiltersTitle"),
+                  interactive: true,
+                  description: t("quotaGuideFiltersDescription"),
+                },
+                {
+                  target: '[data-guide="quota-table"]',
+                  title: t("quotaGuideDetailsTitle"),
+                  description: t("quotaGuideDetailsDescription"),
+                },
+                {
+                  target: '[data-guide="quota-activity"]',
+                  title: t("quotaGuideActivityTitle"),
+                  interactive: true,
+                  description: t("quotaGuideActivityDescription"),
+                },
+              ];
 
   return (
     <section className="quota-section">
@@ -91,23 +186,33 @@ export function QuotaPanel({
           <span className="eyebrow">{t("quotaOverview")}</span>
           <h2>{t("quotaTitle")}</h2>
         </div>
-        <button
-          className="text-button quota-refresh-all"
-          disabled={loading || !accounts.length}
-          onClick={onRefresh}
-        >
-          <RefreshCw
-            size={15}
-            className={loading ? "quota-icon-spinning" : ""}
-            aria-hidden="true"
-          />
-          {loading ? t("queryingQuota") : t("refreshQuota")}
-        </button>
+        <div className="page-guide-actions">
+          <GuideButton onClick={guide.start} disabled={!ready} t={t} />
+          <button
+            type="button"
+            className="text-button quota-refresh-all"
+            data-guide="quota-refresh"
+            disabled={loading || !supported || !accounts.length}
+            onClick={onRefresh}
+          >
+            <RefreshCw
+              size={15}
+              className={loading ? "quota-icon-spinning" : ""}
+              aria-hidden="true"
+            />
+            {loading ? t("queryingQuota") : t("refreshQuota")}
+          </button>
+        </div>
       </div>
-      {error && (
-        <div className="usage-inline-error">
-          <span>{error}</span>
-          <button type="button" onClick={onRefresh}>
+      {!refreshFailed && <GuideInvitation guide={guide} t={t} />}
+      {refreshFailed && supported && accounts.length > 0 && (
+        <div
+          className="usage-inline-error"
+          data-guide="quota-retry-status"
+          role="status"
+        >
+          <span>{error ?? t("quotaGuideRefreshErrorDescription")}</span>
+          <button type="button" disabled={loading} onClick={onRefresh}>
             {t("retry")}
           </button>
         </div>
@@ -117,8 +222,33 @@ export function QuotaPanel({
           {t("quotaAccountsRefreshing", { count: refreshingIds.length })}
         </p>
       )}
-      {accounts.length ? (
+      {!supported ? (
+        <div className="usage-empty-state" data-guide="quota-storage">
+          <strong>{t("quotaStorageUnsupported")}</strong>
+          <p>{t("quotaStorageUnsupportedHint")}</p>
+          <button
+            type="button"
+            className="button primary"
+            onClick={onOpenConfig}
+          >
+            {t("codexConfigPageTitle")}
+          </button>
+        </div>
+      ) : accounts.length ? (
         <div className="quota-loaded-content">
+          {!loading && !summary.successful && !refreshFailed && (
+            <div className="usage-empty-state" data-guide="quota-unavailable">
+              <strong>{t("quotaGuideUnavailableTitle")}</strong>
+              <p>{t("quotaGuideUnavailableDescription")}</p>
+              <button
+                type="button"
+                className="button primary"
+                onClick={onRefresh}
+              >
+                {t("refreshQuota")}
+              </button>
+            </div>
+          )}
           <div className="quota-overview-stats">
             <QuotaSummary
               label={t("quotaAccountTotal")}
@@ -215,8 +345,19 @@ export function QuotaPanel({
           <p className="usage-privacy-note">{t("quotaPrivacy")}</p>
         </div>
       ) : (
-        <div className="quota-empty standalone">{t("saveForQuota")}</div>
+        <div className="usage-empty-state" data-guide="quota-empty">
+          <strong>{t("saveForQuota")}</strong>
+          <p>{t("quotaGuideEmptyDescription")}</p>
+          <button
+            type="button"
+            className="button primary"
+            onClick={onOpenAccounts}
+          >
+            {t("quotaGuideOpenAccounts")}
+          </button>
+        </div>
       )}
+      {!detail && <PageGuide guide={guide} steps={steps} t={t} />}
       {detail && selectedAccount && (
         <QuotaDetailDialog
           accounts={accounts}

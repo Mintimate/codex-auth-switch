@@ -4,7 +4,7 @@ import type { AccountQuota, AccountSummary } from "./api";
 import type { Locale, Translate } from "./i18n";
 import { redactEmails } from "./privacy";
 import { QuotaCostPanel } from "./QuotaCostPanel";
-import { SubscriptionValueGuide } from "./SubscriptionValueGuide";
+import { GuideSpotlight } from "./PageGuide";
 
 const GUIDE_SEEN_KEY = "codex-auth-switch-subscription-value-guide-v2";
 let guideSeenThisSession = false;
@@ -167,7 +167,7 @@ export function SubscriptionValuePage({
         </>
       )}
       {guideOpen && (!supported || !accounts.length) && (
-        <SubscriptionValueGuide
+        <GuideSpotlight
           targetSelector='[data-cost-tour="setup"]'
           step={0}
           total={1}

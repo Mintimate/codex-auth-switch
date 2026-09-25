@@ -754,6 +754,7 @@ function App() {
                   setNotice(null);
                   setImportDialog(true);
                 }}
+                onOpenConfig={() => setActiveTab("config")}
                 onLogin={(accountLabel) => openDialog("login", accountLabel)}
                 onRefresh={() => void refresh().then(() => refreshQuotas())}
                 onRemove={(account, accountLabel) =>
@@ -818,33 +819,23 @@ function App() {
                 role="tabpanel"
                 aria-label={t("quotaTab")}
               >
-                {status?.supported ? (
-                  <QuotaPanel
-                    accounts={status.accounts}
-                    refreshingIds={quotaRefreshingIds}
-                    refreshErrors={quotaRefreshErrors}
-                    onRefreshAccount={(id) => void refreshQuotas(id)}
-                    activeAccountId={status.activeAccountId}
-                    quotas={quotas}
-                    loading={quotaLoading}
-                    error={quotaError}
-                    locale={locale}
-                    onRefresh={() => void refreshQuotas()}
-                    privateMode={privateMode}
-                    t={t}
-                  />
-                ) : (
-                  <div className="usage-empty-state">
-                    <strong>{t("quotaStorageUnsupported")}</strong>
-                    <p>{t("quotaStorageUnsupportedHint")}</p>
-                    <button
-                      className="button primary"
-                      onClick={() => setActiveTab("config")}
-                    >
-                      {t("codexConfigPageTitle")}
-                    </button>
-                  </div>
-                )}
+                <QuotaPanel
+                  supported={status?.supported ?? false}
+                  accounts={status?.accounts ?? []}
+                  refreshingIds={quotaRefreshingIds}
+                  refreshErrors={quotaRefreshErrors}
+                  onRefreshAccount={(id) => void refreshQuotas(id)}
+                  activeAccountId={status?.activeAccountId ?? null}
+                  quotas={quotas}
+                  loading={quotaLoading || loading}
+                  error={quotaError}
+                  locale={locale}
+                  onRefresh={() => void refreshQuotas()}
+                  onOpenAccounts={() => setActiveTab("accounts")}
+                  onOpenConfig={() => setActiveTab("config")}
+                  privateMode={privateMode}
+                  t={t}
+                />
               </div>
             )}
 
