@@ -17,6 +17,9 @@ const CLOSE_FAILED: &str = "Codex 未能正常退出，账号未切换；请结�
 const UNSUPPORTED: &str = "当前系统暂不支持自动重启 Codex，请选择仅切换";
 const CUSTOM_HOME: &str = "自定义 CODEX_HOME 无法确认与桌面客户端一致，请选择仅切换";
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 #[derive(Clone, Copy, Serialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum SwitchStage {
@@ -89,6 +92,88 @@ struct Instance {
     path: PathBuf,
     executable: PathBuf,
     started: String,
+    // Windows 原生查询结果，只在后端内存中使用，不经脚本或 WebView 传递。
+    #[serde(skip)]
+    package: Option<PackageIdentity>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PackageIdentity {
+    full_name: String,
+    app_user_model_id: String,
+}
+
+#[cfg(any(target_os = "windows", test))]
+enum WindowsLaunchTarget<'a> {
+    Executable,
+    Packaged(&'a PackageIdentity),
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_launch_target(target: &Instance) -> Result<WindowsLaunchTarget<'_>, String> {
+    if let Some(package) = &target.package {
+        if package.full_name.is_empty()
+            || package.app_user_model_id.is_empty()
+            || package.full_name.contains('\0')
+            || package.app_user_model_id.contains('\0')
+        {
+            return Err(DETECT_FAILED.into());
+        }
+        return Ok(WindowsLaunchTarget::Packaged(package));
+    }
+    // 旧版工具可能已经裸启动了包内 EXE。即使该进程确实没有包身份，
+    // WindowsApps 或包清单仍说明不能把它作为普通安装版再次启动。
+    if target
+        .executable
+        .components()
+        .any(|part| part.as_os_str().eq_ignore_ascii_case("WindowsApps"))
+    {
+        return Err(DETECT_FAILED.into());
+    }
+    for directory in target.executable.ancestors().skip(1) {
+        if directory
+            .join("AppxManifest.xml")
+            .try_exists()
+            .map_err(|_| DETECT_FAILED)?
+        {
+            return Err(DETECT_FAILED.into());
+        }
+    }
+    Ok(WindowsLaunchTarget::Executable)
+}
+
+// Windows 需要确认新 PID、原应用和包身份，并观察同一进程持续存在。
+// 这只确认进程启动，不把进程存在当作界面或登录状态已经就绪。
+struct LaunchConfirmation {
+    expected_pid: Option<u32>,
+    stable_for: Duration,
+    observed: Option<(Instance, Duration)>,
+}
+
+impl LaunchConfirmation {
+    fn observe(&mut self, target: &Instance, instances: &[Instance], elapsed: Duration) -> bool {
+        let [current] = instances else {
+            self.observed = None;
+            return false;
+        };
+        if current.path != target.path
+            || current.executable != target.executable
+            || current.package != target.package
+            || self.expected_pid.is_some_and(|pid| current.pid != pid)
+            || (current.pid == target.pid && current.started == target.started)
+        {
+            self.observed = None;
+            return false;
+        }
+        let since = match &self.observed {
+            Some((previous, since)) if previous == current => *since,
+            _ => {
+                self.observed = Some((current.clone(), elapsed));
+                elapsed
+            }
+        };
+        elapsed.saturating_sub(since) >= self.stable_for
+    }
 }
 
 trait DesktopClient {
@@ -174,7 +259,16 @@ impl DesktopClient for SystemClient {
             return Err(UNSUPPORTED.into());
         }
         let instances = detect()?;
-        select_instance(instances)
+        let target = select_instance(instances)?;
+        if let Some(target) = &target {
+            // 退出前就确认启动入口；拒绝识别不完整的包应用，避免关掉后才发现无法启动。
+            script("validate", Some(target))?;
+            #[cfg(target_os = "windows")]
+            if let WindowsLaunchTarget::Packaged(package) = windows_launch_target(target)? {
+                windows::validate_package(package)?;
+            }
+        }
+        Ok(target)
     }
 
     fn close(&self, target: &Instance) -> Result<(), String> {
@@ -189,7 +283,11 @@ impl DesktopClient for SystemClient {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             // 连同原应用包内尚未退出的子进程一起等待；不对这些进程发送终止信号。
-            if detect()?.is_empty() && stopped(target)? {
+            // 退出中的进程可能在脚本快照与原生身份查询之间消失。
+            // 查询失败只表示尚未确认退出，继续等待，不能据此写入凭据。
+            if matches!(detect(), Ok(instances) if instances.is_empty())
+                && stopped(target).unwrap_or(false)
+            {
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -204,6 +302,8 @@ impl DesktopClient for SystemClient {
             return Err(DETECT_FAILED.into());
         }
         script("validate", Some(target))?;
+        #[cfg(not(target_os = "windows"))]
+        let expected_pid = None;
         #[cfg(target_os = "macos")]
         {
             let mut command = Command::new("/usr/bin/open");
@@ -211,24 +311,39 @@ impl DesktopClient for SystemClient {
             run_command(&mut command)?;
         }
         #[cfg(target_os = "windows")]
-        {
-            let mut command = Command::new(&target.executable);
-            command
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            let mut child = command.spawn().map_err(|_| DETECT_FAILED.to_string())?;
-            // 不等待 GUI 生命周期；后台回收子进程句柄。
-            thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let expected_pid = Some(match windows_launch_target(target)? {
+            WindowsLaunchTarget::Packaged(package) => windows::activate_package(package)?,
+            WindowsLaunchTarget::Executable => {
+                let mut command = Command::new(&target.executable);
+                command
+                    .current_dir(target.executable.parent().ok_or(DETECT_FAILED)?)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                let mut child = command.spawn().map_err(|_| DETECT_FAILED.to_string())?;
+                let pid = child.id();
+                // 不等待 GUI 生命周期；后台回收子进程句柄。
+                thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                pid
+            }
+        });
+        let mut confirmation = LaunchConfirmation {
+            expected_pid,
+            stable_for: if cfg!(target_os = "windows") {
+                Duration::from_secs(2)
+            } else {
+                Duration::ZERO
+            },
+            observed: None,
+        };
+        let launched_at = Instant::now();
+        let deadline = launched_at + Duration::from_secs(15);
         loop {
-            if detect()?
-                .iter()
-                .any(|item| item.path == target.path && item.executable == target.executable)
-            {
+            // 瞬态查询失败和进程消失都重置观察时间，超时前允许重新确认。
+            let instances = detect().unwrap_or_default();
+            if confirmation.observe(target, &instances, launched_at.elapsed()) {
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -259,7 +374,17 @@ fn select_instance(mut instances: Vec<Instance>) -> Result<Option<Instance>, Str
 }
 
 fn detect() -> Result<Vec<Instance>, String> {
-    serde_json::from_str(&script("detect", None)?).map_err(|_| DETECT_FAILED.into())
+    let instances: Vec<Instance> =
+        serde_json::from_str(&script("detect", None)?).map_err(|_| DETECT_FAILED)?;
+    #[cfg(target_os = "windows")]
+    let instances = instances
+        .into_iter()
+        .map(|mut instance| {
+            instance.package = windows::package_identity(&instance)?;
+            Ok(instance)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(instances)
 }
 
 fn stopped(target: &Instance) -> Result<bool, String> {
@@ -577,6 +702,7 @@ mod tests {
             path: file.path().into(),
             executable: file.path().into(),
             started: "1".into(),
+            package: None,
         };
         assert!(select_instance(vec![instance.clone(), instance.clone()]).is_err());
         let mut invalid = instance.clone();
@@ -586,6 +712,141 @@ mod tests {
         invalid.executable = PathBuf::from("codex");
         assert!(select_instance(vec![invalid]).is_err());
         assert!(select_instance(vec![]).unwrap().is_none());
+    }
+
+    fn desktop_instance(executable: &Path) -> Instance {
+        Instance {
+            pid: 42,
+            path: executable.into(),
+            executable: executable.into(),
+            started: "1".into(),
+            package: None,
+        }
+    }
+
+    fn package_identity() -> PackageIdentity {
+        PackageIdentity {
+            full_name: "Example.Codex_1.0.0.0_x64__publisher".into(),
+            app_user_model_id: "Example.Codex_publisher!Codex".into(),
+        }
+    }
+
+    #[test]
+    fn windows_launch_selects_the_observed_package_instead_of_its_executable() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut target = desktop_instance(file.path());
+        assert!(matches!(
+            windows_launch_target(&target).unwrap(),
+            WindowsLaunchTarget::Executable
+        ));
+        target.package = Some(package_identity());
+        let WindowsLaunchTarget::Packaged(package) = windows_launch_target(&target).unwrap() else {
+            panic!("packaged applications must use activation");
+        };
+        assert_eq!(package, target.package.as_ref().unwrap());
+        target.package.as_mut().unwrap().app_user_model_id.clear();
+        assert!(windows_launch_target(&target).is_err());
+        target.package = Some(package_identity());
+        target.package.as_mut().unwrap().full_name.push('\0');
+        assert!(windows_launch_target(&target).is_err());
+    }
+
+    #[test]
+    fn package_files_without_process_identity_never_fall_back_to_exe_launch() {
+        let root = tempfile::tempdir().unwrap();
+        for directory in ["WindowsApps", "windowsapps"] {
+            let executable = root.path().join(directory).join("Codex.exe");
+            assert!(windows_launch_target(&desktop_instance(&executable)).is_err());
+        }
+        // 解压包、侧载包可以位于 WindowsApps 以外；包清单同样拒绝降级。
+        let package_root = root.path().join("sideloaded");
+        fs::create_dir_all(package_root.join("app")).unwrap();
+        fs::write(package_root.join("AppxManifest.xml"), "<Package />").unwrap();
+        let executable = package_root.join("app/Codex.exe");
+        assert!(windows_launch_target(&desktop_instance(&executable)).is_err());
+        let mut packaged = desktop_instance(&executable);
+        packaged.package = Some(package_identity());
+        assert!(matches!(
+            windows_launch_target(&packaged).unwrap(),
+            WindowsLaunchTarget::Packaged(_)
+        ));
+    }
+
+    #[test]
+    fn script_output_cannot_supply_native_package_identity() {
+        let instance: Instance = serde_json::from_value(json!({
+            "pid": 42, "path": "/Codex.exe", "executable": "/Codex.exe", "started": "1",
+            "package": {"full_name": "injected", "app_user_model_id": "injected"}
+        }))
+        .unwrap();
+        assert!(instance.package.is_none());
+    }
+
+    fn launch_confirmation() -> LaunchConfirmation {
+        LaunchConfirmation {
+            expected_pid: Some(43),
+            stable_for: Duration::from_secs(2),
+            observed: None,
+        }
+    }
+
+    #[test]
+    fn restart_requires_the_activated_pid_and_original_package_identity() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut target = desktop_instance(file.path());
+        target.package = Some(package_identity());
+        let mut current = target.clone();
+        current.pid = 43;
+        current.started = "2".into();
+        let mut confirmation = launch_confirmation();
+        assert!(!confirmation.observe(&target, &[current.clone()], Duration::ZERO));
+        assert!(confirmation.observe(&target, &[current.clone()], Duration::from_secs(2)));
+
+        let mut wrong_package = current.clone();
+        wrong_package.package.as_mut().unwrap().full_name = "AnotherPackage".into();
+        let mut wrong_app = current.clone();
+        wrong_app.package.as_mut().unwrap().app_user_model_id = "Other!App".into();
+        let mut missing_identity = current.clone();
+        missing_identity.package = None;
+        let mut wrong_pid = current.clone();
+        wrong_pid.pid = 44;
+        let mut wrong_path = current.clone();
+        wrong_path.executable = file.path().with_extension("other");
+        for instance in [
+            wrong_package,
+            wrong_app,
+            missing_identity,
+            wrong_pid,
+            wrong_path,
+        ] {
+            let mut confirmation = launch_confirmation();
+            assert!(!confirmation.observe(&target, &[instance.clone()], Duration::ZERO));
+            assert!(!confirmation.observe(&target, &[instance], Duration::from_secs(3)));
+        }
+        assert!(!confirmation.observe(
+            &target,
+            &[current.clone(), current],
+            Duration::from_secs(3)
+        ));
+    }
+
+    #[test]
+    fn a_disappearing_or_replaced_process_restarts_the_observation_window() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let target = desktop_instance(file.path());
+        let mut current = target.clone();
+        current.pid = 43;
+        current.started = "2".into();
+        let mut confirmation = launch_confirmation();
+        assert!(!confirmation.observe(&target, &[current.clone()], Duration::ZERO));
+        assert!(!confirmation.observe(&target, &[], Duration::from_secs(1)));
+        assert!(!confirmation.observe(&target, &[current.clone()], Duration::from_secs(2)));
+        // 同 PID 被复用也不能沿用前一个进程的观察时间。
+        current.started = "3".into();
+        assert!(!confirmation.observe(&target, &[current.clone()], Duration::from_secs(3)));
+        assert!(confirmation.observe(&target, &[current], Duration::from_secs(5)));
+        confirmation.expected_pid = None;
+        assert!(!confirmation.observe(&target, &[target.clone()], Duration::from_secs(6)));
     }
 
     #[test]

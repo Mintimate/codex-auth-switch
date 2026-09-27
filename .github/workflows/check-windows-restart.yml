@@ -1,0 +1,56 @@
+name: 检查 Windows 重启兼容性
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/check-windows-restart.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-windows-restart-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Windows Rust 格式与桌面客户端测试
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: 检查 Rust 格式
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: 缓存 Rust 构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: windows-restart-check
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      # Tauri 配置引用 ../dist，直接运行 cargo 不会执行 beforeBuildCommand。
+      - name: 准备 Tauri 前端资源
+        run: npm run build:web
+
+      - name: 运行桌面客户端测试
+        working-directory: src-tauri
+        run: cargo test --locked 'desktop_client::'

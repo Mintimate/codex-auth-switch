@@ -38,4 +38,13 @@ tokio = { version = "1", features = ["io-util", "process", "sync", "time"] }
 toml = "0.9"
 toml_edit = "0.25"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_Storage_Packaging_Appx",
+    "Win32_System_Com",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+] }
+
 [dev-dependencies]
