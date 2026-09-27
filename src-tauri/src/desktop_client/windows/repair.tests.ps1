@@ -27,8 +27,9 @@ function Assert-Error([ScriptBlock]$action, [string]$expected) {
 $fullName = 'OpenAI.Codex_26.915.4065.0_x64__2p2nqsd0c76g0'
 # Rust 临时目录可能使用 RUNNER~1 等短路径，.NET Framework 会规范化该路径。
 # fixture 与实际检测使用相同路径格式，避免把同一个目录误判为不同目标。
-$location = [IO.Path]::GetFullPath((Join-Path $env:CODEX_REPAIR_TEST_ROOT $fullName))
+$location = Join-Path $env:CODEX_REPAIR_TEST_ROOT $fullName
 $null = [IO.Directory]::CreateDirectory((Join-Path $location 'app'))
+$location = [IO.Path]::GetFullPath($location)
 [IO.File]::WriteAllText((Join-Path $location 'app\ChatGPT.exe'), 'synthetic executable')
 $xml = @'
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
