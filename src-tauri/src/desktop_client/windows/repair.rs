@@ -275,7 +275,14 @@ mod tests {
             .creation_flags(0x08000000)
             .env("CODEX_REPAIR_TEST_SCRIPT", include_str!("repair.ps1"))
             .env("CODEX_REPAIR_TEST_ROOT", root.path());
-        let result = run_command_with_timeout(&mut command, Duration::from_secs(30));
-        assert!(matches!(result, Ok(output) if output.trim() == "passed"));
+        // 这里只运行合成包 fixture，保留脚本错误以定位 PowerShell 版本/参数传递差异。
+        // 生产调用仍使用有超时且丢弃原始错误的 run_command_with_timeout。
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "synthetic PowerShell fixture failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "passed");
     }
 }
