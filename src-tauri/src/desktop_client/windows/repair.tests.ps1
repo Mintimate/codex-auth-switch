@@ -20,7 +20,8 @@ function Add-AppxPackage {
 function Assert-Error([ScriptBlock]$action, [string]$expected) {
     $message = $null
     try { & $action | Out-Null } catch { $message = $_.Exception.Message }
-    if ($message -cne $expected) { throw 'unexpected inspection outcome' }
+    # 此测试只使用本文件的模拟包和临时文件，错误不含真实应用或认证内容。
+    if ($message -cne $expected) { throw ('expected ' + $expected + ', got: ' + $message) }
 }
 
 $fullName = 'OpenAI.Codex_26.915.4065.0_x64__2p2nqsd0c76g0'

@@ -23,6 +23,13 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v7
 
+      - name: 验证 Windows PowerShell 修复脚本
+        shell: powershell
+        run: |
+          $env:CODEX_REPAIR_TEST_SCRIPT = Get-Content -LiteralPath src-tauri/src/desktop_client/windows/repair.ps1 -Raw -Encoding UTF8
+          $env:CODEX_REPAIR_TEST_ROOT = Join-Path $env:RUNNER_TEMP 'codex-startup-repair-fixture'
+          & ./src-tauri/src/desktop_client/windows/repair.tests.ps1
+
       - name: 安装 Node.js
         uses: actions/setup-node@v6
         with:
