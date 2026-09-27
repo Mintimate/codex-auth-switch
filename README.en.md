@@ -184,6 +184,8 @@ One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions 
 
 Labs groups experimental features in the sidebar. Local Codex sign-in is off by default, and its toggle is saved only on this device. Enable it to choose local Codex or OAuth in the sign-in dialog. Turning it off restores OAuth as the available method and keeps saved accounts.
 
+For Windows startup errors such as “The process has no package identity,” open **Labs → Windows startup repair**, inspect the installation, then select **Repair and open** after checking the version. This feature only handles recognized Codex Store/MSIX packages: it registers the current user's startup entry again and attempts to launch the app. Save your work and fully exit Codex first. It does not reset the app, clear saved accounts, or modify authentication files. Missing or ambiguous installations and running processes prevent repair. Missing installation files and other unsupported cases still require Windows app repair or the original installer. Successful inspection and process startup do not establish that the window works normally. See the [Windows validation guide (Chinese)](docs/windows-restart-validation.md).
+
 ### Diagnostic logs
 
 For sign-in or quota failures, enable **Labs → Diagnostic logs**, reproduce the problem, then refresh the log list. Filter failures, expand filtered responses, or export JSON. Group IDs connect one quota query or local sign-in across App Server calls, compatibility requests, retries and credential refreshes.

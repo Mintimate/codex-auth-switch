@@ -6645,6 +6645,45 @@ button:disabled {
 .labs-feature-actions > span {
   font-size: var(--text-caption);
 }
+.windows-startup-repair-ready {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.windows-startup-repair-ready strong {
+  color: var(--foreground);
+}
+.windows-startup-repair-notice,
+.windows-startup-repair-error,
+.windows-startup-repair-progress {
+  margin-top: 16px;
+}
+.windows-startup-repair-error {
+  color: var(--danger);
+}
+.windows-startup-repair-actions,
+.windows-startup-repair-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.windows-startup-repair-actions {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.windows-startup-repair-actions > .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.windows-startup-repair-actions svg,
+.windows-startup-repair-progress svg {
+  flex-shrink: 0;
+}
 .diagnostic-log-actions,
 .diagnostic-log-toolbar {
   display: flex;

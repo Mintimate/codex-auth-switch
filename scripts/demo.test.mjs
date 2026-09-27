@@ -37,6 +37,12 @@ test("演示版读取虚构数据，返回值不会污染后续读取", async ()
   assert.equal((await api.getStatus()).accounts.length, 2);
   assert.equal(await api.getHostedLogin(), null);
   assert.equal(await api.desktopRestartSupported(), false);
+  assert.equal(await api.windowsStartupRepairSupported(), false);
+  assert.deepEqual(await api.inspectWindowsStartup(), {
+    status: "unsupported",
+    checkId: null,
+    version: null,
+  });
   for (const read of [
     api.getLocalUsage,
     api.getModelPrices,
@@ -87,6 +93,7 @@ test("登录、凭据、账号、配置与更新操作都在 API 边界拒绝", 
     () => api.setDiagnosticLogging(true),
     () => api.clearDiagnosticLogs(),
     () => api.exportDiagnosticLogs(),
+    () => api.repairWindowsStartup("preview-windows-startup"),
     () => api.checkAppUpdate("github"),
     () => api.installAppUpdate(),
     () => quota.setBackgroundQuotaRefresh(true),

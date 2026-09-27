@@ -4,6 +4,7 @@ import type { Translate } from "./i18n";
 import type { ThemePreferences } from "./themePreferences";
 import { ThemePicker } from "./ThemePicker";
 import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
+import { WindowsStartupRepairPanel } from "./WindowsStartupRepairPanel";
 
 export function LabsPanel({
   hostedLoginEnabled,
@@ -84,6 +85,7 @@ export function LabsPanel({
           </div>
         </div>
       </section>
+      <WindowsStartupRepairPanel t={t} />
       <DiagnosticLogPanel t={t} />
       <ThemePicker value={theme} onChange={onThemeChange} t={t} />
     </div>

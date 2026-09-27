@@ -55,6 +55,22 @@ export type SwitchResult = {
   restart: "notRequested" | "notRunning" | "restarted" | "launchFailed";
 };
 
+export type WindowsStartupInspection = {
+  status:
+    | "ready"
+    | "unsupported"
+    | "notFound"
+    | "ambiguous"
+    | "running"
+    | "unavailable";
+  checkId: string | null;
+  version: string | null;
+};
+
+export type WindowsStartupRepairResult = {
+  outcome: "opened" | "launchFailed";
+};
+
 export type SwitchVerification = {
   credentialFile:
     | "matched"
@@ -660,6 +676,8 @@ const demoCommands = new Set([
   "get_quota_history",
   "get_hosted_login",
   "desktop_restart_supported",
+  "windows_startup_repair_supported",
+  "inspect_windows_startup",
   "get_usage_cache_info",
   "get_local_usage",
   "get_model_prices",
@@ -742,6 +760,18 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
       return Promise.reject("unavailable");
     if (command === "desktop_restart_supported")
       return Promise.resolve(!isPublicDemo as T);
+    if (command === "windows_startup_repair_supported")
+      return Promise.resolve(!isPublicDemo as T);
+    if (command === "inspect_windows_startup")
+      return Promise.resolve({
+        status: isPublicDemo ? "unsupported" : "ready",
+        checkId: isPublicDemo ? null : "preview-windows-startup",
+        version: isPublicDemo ? null : "26.9.27.0",
+      } as T);
+    if (command === "repair_windows_startup")
+      return args?.checkId === "preview-windows-startup"
+        ? Promise.resolve({ outcome: "opened" } as T)
+        : Promise.reject(new Error("staleCheck"));
     if (
       command === "switch_account" ||
       command === "switch_account_with_options"
@@ -902,6 +932,13 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
 };
 
 export const getStatus = () => call<AppStatus>("get_status");
+
+export const windowsStartupRepairSupported = () =>
+  call<boolean>("windows_startup_repair_supported");
+export const inspectWindowsStartup = () =>
+  call<WindowsStartupInspection>("inspect_windows_startup");
+export const repairWindowsStartup = (checkId: string) =>
+  call<WindowsStartupRepairResult>("repair_windows_startup", { checkId });
 
 export const getDiagnosticLogs = () =>
   call<DiagnosticLogs>("get_diagnostic_logs");

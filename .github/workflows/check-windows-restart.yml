@@ -53,4 +53,7 @@ jobs:
 
       - name: 运行桌面客户端测试
         working-directory: src-tauri
-        run: cargo test --locked 'desktop_client::'
+        run: |
+          cargo test --locked 'desktop_client::'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked 'startup_repair::'

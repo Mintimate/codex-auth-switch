@@ -19,6 +19,8 @@ const CUSTOM_HOME: &str = "自定义 CODEX_HOME 无法确认与桌面客户端�
 
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+pub(crate) use windows::repair as startup_repair_backend;
 
 #[derive(Clone, Copy, Serialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -458,33 +460,52 @@ fn script(action: &str, target: Option<&Instance>) -> Result<String, String> {
 
 // 输出写临时文件以避免管道堵塞，且有超时、大小限制。只会终止我们创建的查询助手。
 fn run_command(command: &mut Command) -> Result<String, String> {
-    let mut output = tempfile::tempfile().map_err(|_| DETECT_FAILED)?;
+    run_command_with_timeout(command, Duration::from_secs(5)).map_err(|_| DETECT_FAILED.into())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CommandFailure {
+    Failed,
+    TimedOut,
+}
+
+fn run_command_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<String, CommandFailure> {
+    let mut output = tempfile::tempfile().map_err(|_| CommandFailure::Failed)?;
     command
         .stdin(Stdio::null())
         .stderr(Stdio::null())
-        .stdout(output.try_clone().map_err(|_| DETECT_FAILED)?);
-    let mut child = command.spawn().map_err(|_| DETECT_FAILED)?;
-    let deadline = Instant::now() + Duration::from_secs(5);
+        .stdout(output.try_clone().map_err(|_| CommandFailure::Failed)?);
+    let mut child = command.spawn().map_err(|_| CommandFailure::Failed)?;
+    let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => break,
-            Ok(Some(_)) => return Err(DETECT_FAILED.into()),
+            Ok(Some(_)) => return Err(CommandFailure::Failed),
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
-            _ => {
+            state => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(DETECT_FAILED.into());
+                return Err(if state.is_ok() {
+                    CommandFailure::TimedOut
+                } else {
+                    CommandFailure::Failed
+                });
             }
         }
     }
-    output.seek(SeekFrom::Start(0)).map_err(|_| DETECT_FAILED)?;
+    output
+        .seek(SeekFrom::Start(0))
+        .map_err(|_| CommandFailure::Failed)?;
     let mut text = String::new();
     output
         .take(1024 * 1024 + 1)
         .read_to_string(&mut text)
-        .map_err(|_| DETECT_FAILED)?;
+        .map_err(|_| CommandFailure::Failed)?;
     if text.len() > 1024 * 1024 {
-        return Err(DETECT_FAILED.into());
+        return Err(CommandFailure::Failed);
     }
     Ok(text)
 }
@@ -847,6 +868,25 @@ mod tests {
         assert!(confirmation.observe(&target, &[current], Duration::from_secs(5)));
         confirmation.expected_pid = None;
         assert!(!confirmation.observe(&target, &[target.clone()], Duration::from_secs(6)));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn helper_timeout_is_distinct_from_a_completed_failure() {
+        assert_eq!(
+            run_command_with_timeout(
+                Command::new("/bin/sh").args(["-c", "exec sleep 1"]),
+                Duration::from_millis(50),
+            ),
+            Err(CommandFailure::TimedOut)
+        );
+        assert_eq!(
+            run_command_with_timeout(
+                Command::new("/bin/sh").args(["-c", "exit 1"]),
+                Duration::from_secs(1),
+            ),
+            Err(CommandFailure::Failed)
+        );
     }
 
     #[test]

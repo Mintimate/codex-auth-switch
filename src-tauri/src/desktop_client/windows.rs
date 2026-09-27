@@ -1,6 +1,9 @@
 //! Windows 包身份与启动兼容层；不读取进程命令行、环境变量或认证缓存。
 //! 只把系统明确返回的「无包身份」视作普通应用，其余查询错误均停止自动重启。
 
+#[path = "windows/repair.rs"]
+pub(crate) mod repair;
+
 use super::{Instance, PackageIdentity, DETECT_FAILED};
 use std::{ffi::OsString, mem::size_of, os::windows::ffi::OsStringExt, path::PathBuf};
 use windows::{

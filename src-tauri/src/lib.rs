@@ -13,6 +13,7 @@ mod query_gate;
 mod quota;
 mod quota_history;
 mod quota_refresh;
+mod startup_repair;
 mod storage;
 mod usage;
 
@@ -35,6 +36,7 @@ struct AppState {
     operation_gate: Arc<Mutex<()>>,
     query_gate: Arc<query_gate::QueryGate>,
     prepared_auth_transfer: Mutex<Option<PreparedAuthTransferCache>>,
+    startup_repair: Arc<startup_repair::RepairService>,
 }
 
 struct PreparedAuthTransferCache {
@@ -507,6 +509,49 @@ fn desktop_restart_supported() -> bool {
 }
 
 #[tauri::command]
+fn windows_startup_repair_supported() -> bool {
+    cfg!(target_os = "windows")
+}
+
+#[tauri::command]
+async fn inspect_windows_startup(
+    state: State<'_, AppState>,
+) -> Result<startup_repair::Inspection, startup_repair::RepairError> {
+    let guard = state
+        .operation_gate
+        .clone()
+        .try_lock_owned()
+        .map_err(|_| startup_repair::RepairError::Busy)?;
+    let service = state.startup_repair.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
+        service.inspect(&startup_repair::SystemBackend)
+    })
+    .await
+    .map_err(|_| startup_repair::RepairError::InspectFailed)?
+}
+
+#[tauri::command]
+async fn repair_windows_startup(
+    state: State<'_, AppState>,
+    check_id: String,
+) -> Result<startup_repair::RepairResult, startup_repair::RepairError> {
+    let guard = state
+        .operation_gate
+        .clone()
+        .try_lock_owned()
+        .map_err(|_| startup_repair::RepairError::Busy)?;
+    let service = state.startup_repair.clone();
+    // 锁随阻塞任务持有，面板关闭或 IPC 调用方消失也不会提前释放并允许账号切换。
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
+        service.repair(&check_id, &startup_repair::SystemBackend)
+    })
+    .await
+    .map_err(|_| startup_repair::RepairError::RepairUncertain)?
+}
+
+#[tauri::command]
 async fn switch_account_with_options(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -646,6 +691,7 @@ pub fn run() {
             operation_gate: Arc::new(Mutex::new(())),
             query_gate: Arc::new(query_gate::QueryGate::default()),
             prepared_auth_transfer: Mutex::new(None),
+            startup_repair: Arc::new(startup_repair::RepairService::default()),
         })
         .manage(app_update::AppUpdateState::default())
         .setup(|app| {
@@ -705,6 +751,9 @@ pub fn run() {
             copy_hosted_login,
             switch_account,
             desktop_restart_supported,
+            windows_startup_repair_supported,
+            inspect_windows_startup,
+            repair_windows_startup,
             switch_account_with_options,
             rename_account,
             remove_account,
