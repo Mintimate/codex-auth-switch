@@ -56,8 +56,8 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
 
-      - name: 验证 updater 清单生成器
-        run: node --test .github/scripts/generate-updater-manifest.test.mjs
+      - name: 验证发布脚本
+        run: node --test .github/scripts/*.test.mjs
 
       - name: 创建或重置草稿 Release
         id: release
@@ -159,12 +159,19 @@ jobs:
             asset_arch: x64
           - name: Linux x64
             platform: ubuntu-22.04
-            args: --bundles deb,rpm,appimage
+            args: --bundles deb,rpm
             rust_targets: ""
             cache_key: linux-x86_64
             apple_signing_identity: ""
             asset_os: Linux
             asset_arch: x64
+          - name: Linux AppImage x64
+            platform: ubuntu-22.04
+            args: --bundles appimage
+            rust_targets: ""
+            cache_key: linux-appimage-x86_64
+            apple_signing_identity: ""
+            appimage: true
 
     steps:
       - name: 检出代码
@@ -175,6 +182,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: 安装 AppImage 检查依赖
+        if: matrix.appimage
+        run: sudo apt-get install -y squashfs-tools bubblewrap xvfb xauth xdotool dbus-x11
+
+      - name: 修复打包前 AppRun 权限
+        if: matrix.appimage
+        run: bash .github/scripts/prepare-appimage.sh
 
       - name: 安装 Node.js
         uses: actions/setup-node@v6
@@ -192,6 +207,17 @@ jobs:
         with:
           workspaces: ./src-tauri -> target
           key: ${{ matrix.cache_key }}
+
+      - name: 隔离缓存中的旧 Linux 安装产物
+        if: startsWith(matrix.platform, 'ubuntu-')
+        shell: bash
+        run: |
+          # tauri-action 会扫描所有已存在的安装包，不按 --bundles 过滤。
+          # 保留编译缓存，但只允许本次构建生成的安装包进入草稿 Release。
+          if [[ -d src-tauri/target/release/bundle ]]; then
+            archive_dir="$(mktemp -d "${RUNNER_TEMP}/codex-old-bundles.XXXXXX")"
+            mv src-tauri/target/release/bundle "${archive_dir}/bundle"
+          fi
 
       - name: 安装前端依赖
         run: npm ci
@@ -270,7 +296,21 @@ jobs:
           # 各平台只上传唯一命名的安装包和签名，latest.json 在所有构建结束后统一生成。
           uploadUpdaterJson: false
           uploadUpdaterSignatures: true
-          releaseAssetNamePattern: Codex-Auth-Switch_[version]_${{ matrix.asset_os }}_${{ matrix.asset_arch }}[setup][ext]
+          releaseAssetNamePattern: ${{ matrix.appimage && 'Codex-Auth-Switch_[version]_Linux_x64[ext]' || format('Codex-Auth-Switch_[version]_{0}_{1}[setup][ext]', matrix.asset_os, matrix.asset_arch) }}
+
+      # 安装包此时只在草稿中；检查失败会阻止依赖 build 的 publish 任务。
+      - name: 验证最终 AppImage 权限与启动窗口
+        if: matrix.appimage
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          shopt -s nullglob
+          images=(src-tauri/target/release/bundle/appimage/*.AppImage)
+          if [[ ${#images[@]} -ne 1 ]]; then
+            echo "::error::应当生成唯一的 AppImage"
+            exit 1
+          fi
+          bash .github/scripts/check-appimage.sh "${images[0]}"
 
   publish:
     name: 验证并发布更新
