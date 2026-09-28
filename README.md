@@ -143,6 +143,8 @@ Codex Auth Switch 用于在一台设备上保存和切换多个 Codex ChatGPT �
 
 macOS 安装包使用 ad-hoc 签名。首次打开时，可能需要在“系统设置 → 隐私与安全性”中确认。请只从本项目 Releases 下载。
 
+Linux 安装包以 Ubuntu 22.04 为构建基线，需要 glibc 2.35 或更新版本；Ubuntu 20.04、Debian 11 不在当前支持范围内。glibc 版本满足要求不代表所有发行版和图形环境均已验证兼容。AppImage 下载后需赋予执行权限，例如 `chmod +x ./Codex-Auth-Switch_*.AppImage`。
+
 ## 快速开始
 
 ### 1. 启用文件凭据存储

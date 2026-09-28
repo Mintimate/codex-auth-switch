@@ -143,6 +143,8 @@ Download the installer for your system from [Releases](https://github.com/Mintim
 
 The macOS package uses an ad hoc signature, so first launch may require approval in System Settings → Privacy & Security. Download only from this project's Releases page.
 
+Linux packages are built on Ubuntu 22.04 and require glibc 2.35 or newer; Ubuntu 20.04 and Debian 11 are outside the current support range. Meeting the glibc requirement does not mean every distribution or graphics environment has been verified. After downloading an AppImage, make it executable, for example with `chmod +x ./Codex-Auth-Switch_*.AppImage`.
+
 ## Quick Start
 
 ### 1. Enable file-based credential storage
