@@ -145,7 +145,7 @@ cat <<EOF
 | macOS | Apple Silicon | \`Codex-Auth-Switch_${version}_macOS_arm64.dmg\` |
 | macOS | Intel | \`Codex-Auth-Switch_${version}_macOS_x64.dmg\` |
 | Windows | x64 | \`Codex-Auth-Switch_${version}_Windows_x64-setup.exe\`（推荐）或 \`Codex-Auth-Switch_${version}_Windows_x64.msi\` |
-| Linux | x64 | \`Codex-Auth-Switch_${version}_Linux_x64.AppImage\`、\`Codex-Auth-Switch_${version}_Linux_x64.deb\` 或 \`Codex-Auth-Switch_${version}_Linux_x64.rpm\` |
+| Linux | x64 | \`Codex-Auth-Switch_${version}_x86_64.AppImage\`、\`Codex-Auth-Switch_${version}_Linux_x64.deb\` 或 \`Codex-Auth-Switch_${version}_Linux_x64.rpm\` |
 
 > \`.app.tar.gz\`、\`.sig\` 和 \`latest.json\` 由应用内更新使用，手动安装时无需下载。
 

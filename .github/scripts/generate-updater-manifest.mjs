@@ -31,8 +31,8 @@ const TARGETS = [
   },
   {
     keys: ["linux-x86_64", "linux-x86_64-appimage"],
-    os: "Linux",
-    arch: "x64",
+    os: "",
+    arch: "x86_64",
     suffix: ".AppImage",
   },
   {
@@ -50,7 +50,7 @@ const TARGETS = [
 ];
 
 function assetName(version, target, signature = false) {
-  return `Codex-Auth-Switch_${version}_${target.os}_${target.arch}${target.suffix}${signature ? ".sig" : ""}`;
+  return `Codex-Auth-Switch_${version}_${target.os ? `${target.os}_` : ""}${target.arch}${target.suffix}${signature ? ".sig" : ""}`;
 }
 
 function findUniqueAsset(release, expectedName) {

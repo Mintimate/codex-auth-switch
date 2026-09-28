@@ -33,6 +33,37 @@ function createFixture(version = "1.2.3") {
   };
 }
 
+test("AppImage 使用独立名称及签名，其他 Linux 安装包保留名称", () => {
+  const names = expectedUpdaterAssetNames("1.2.3");
+  assert.ok(names.includes("Codex-Auth-Switch_1.2.3_x86_64.AppImage"));
+  assert.ok(names.includes("Codex-Auth-Switch_1.2.3_x86_64.AppImage.sig"));
+  assert.ok(names.includes("Codex-Auth-Switch_1.2.3_Linux_x64.deb"));
+  assert.ok(names.includes("Codex-Auth-Switch_1.2.3_Linux_x64.rpm"));
+  assert.ok(!names.some((name) => /Linux.*\.AppImage/.test(name)));
+});
+
+test("AppImage 更新 URL 和签名对应同一新命名资产", (t) => {
+  const { directory, release } = createFixture();
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const asset = release.assets.find(
+    (entry) => entry.name === "Codex-Auth-Switch_1.2.3_x86_64.AppImage",
+  );
+  const manifest = generateUpdaterManifest({
+    version: "1.2.3",
+    tag: "v1.2.3",
+    release,
+    signatureDirectory: directory,
+  });
+  assert.deepEqual(manifest.platforms["linux-x86_64"], {
+    url: asset.url,
+    signature: "signature:Codex-Auth-Switch_1.2.3_x86_64.AppImage.sig\n",
+  });
+  assert.deepEqual(
+    manifest.platforms["linux-x86_64"],
+    manifest.platforms["linux-x86_64-appimage"],
+  );
+});
+
 test("生成完整的跨平台 updater 清单", (t) => {
   const { directory, release } = createFixture();
   t.after(() => rmSync(directory, { recursive: true, force: true }));

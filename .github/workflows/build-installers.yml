@@ -296,7 +296,7 @@ jobs:
           # 各平台只上传唯一命名的安装包和签名，latest.json 在所有构建结束后统一生成。
           uploadUpdaterJson: false
           uploadUpdaterSignatures: true
-          releaseAssetNamePattern: ${{ matrix.appimage && 'Codex-Auth-Switch_[version]_Linux_x64[ext]' || format('Codex-Auth-Switch_[version]_{0}_{1}[setup][ext]', matrix.asset_os, matrix.asset_arch) }}
+          releaseAssetNamePattern: ${{ matrix.appimage && 'Codex-Auth-Switch_[version]_x86_64[ext]' || format('Codex-Auth-Switch_[version]_{0}_{1}[setup][ext]', matrix.asset_os, matrix.asset_arch) }}
 
       # 安装包此时只在草稿中；检查失败会阻止依赖 build 的 publish 任务。
       - name: 验证最终 AppImage 权限与启动窗口
