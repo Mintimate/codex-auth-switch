@@ -288,6 +288,52 @@ const latestSuccessfulQuotas = (quotas: AccountQuota[]) => {
   return [...byAccount.values()];
 };
 
+export const quotaUsageUpdatedAt = (quota: AccountQuota) => {
+  if (!quota.officialUsage) return null;
+  // 旧快照还没有独立时间字段；降级查询时间不能用作用量更新时间。
+  const timestamp =
+    quota.usageUpdatedAt === undefined && !quota.usageWarning
+      ? quota.queriedAt
+      : quota.usageUpdatedAt;
+  return typeof timestamp === "number" && Number.isFinite(timestamp)
+    ? timestamp
+    : null;
+};
+
+export const quotaUsageWarning = (quota: AccountQuota, t: Translate) => {
+  switch (quota.usageWarning) {
+    case "appServerUnavailable":
+      return t("quotaUsageServiceUnavailable");
+    case "appServerTimeout":
+      return t("quotaUsageServiceTimeout");
+    case "appServerFailed":
+      return t("quotaUsageServiceFailed");
+    case "usageUnavailable":
+      return t("quotaUsageNotReturned");
+    default:
+      return null;
+  }
+};
+
+export const summarizeUsageFreshness = (quotas: AccountQuota[]) => {
+  const stale = latestSuccessfulQuotas(quotas).filter(
+    (quota) => quota.usageWarning,
+  );
+  const cached = stale.filter((quota) => quota.officialUsage);
+  const timestamps = cached.map(quotaUsageUpdatedAt);
+  const knownTimestamps = timestamps.filter(
+    (timestamp): timestamp is number => timestamp !== null,
+  );
+  return {
+    warningAccounts: stale.length,
+    cachedAccounts: cached.length,
+    oldestCachedAt: knownTimestamps.length
+      ? Math.min(...knownTimestamps)
+      : null,
+    hasUnknownCacheTime: timestamps.some((timestamp) => timestamp === null),
+  };
+};
+
 export const aggregateDailyUsage = (quotas: AccountQuota[]) => {
   const totals = new Map<string, number>();
   let accountCount = 0;

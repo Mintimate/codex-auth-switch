@@ -221,6 +221,8 @@ mod tests {
             reset_credits: None,
             plan_type: Some("plus".into()),
             official_usage: None,
+            usage_updated_at: None,
+            usage_warning: None,
             source: Some("appServer".into()),
             success: true,
             error: None,

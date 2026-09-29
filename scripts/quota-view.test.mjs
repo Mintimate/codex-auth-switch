@@ -7,10 +7,12 @@ import {
   nextQuotaReset,
   normalizeDailyUsage,
   quotaLevel,
+  quotaUsageUpdatedAt,
   remainingQuotaPercent,
   summaryQuotaBucket,
   recentTokenUsage,
   summarizeQuotas,
+  summarizeUsageFreshness,
 } from "../src/quotaView.ts";
 
 const day = (offset) => {
@@ -123,6 +125,73 @@ test("summary deduplicates subscription accounts and takes the latest successful
   assert.equal(result.successful, 1);
   assert.equal(result.credits, 3);
   assert.equal(result.sevenDays.tokens, 30);
+});
+
+test("Token freshness reports partial failures independently of quota success", () => {
+  const cached = quota({
+    queriedAt: 500,
+    usageUpdatedAt: 100,
+    usageWarning: "appServerUnavailable",
+    source: "compatibility",
+  });
+  const missing = quota({
+    accountId: "missing",
+    officialUsage: null,
+    usageUpdatedAt: null,
+    usageWarning: "usageUnavailable",
+  });
+  assert.deepEqual(summarizeUsageFreshness([cached, missing]), {
+    warningAccounts: 2,
+    cachedAccounts: 1,
+    oldestCachedAt: 100,
+    hasUnknownCacheTime: false,
+  });
+  assert.equal(summarizeQuotas([cached, missing]).sevenDays.tokens, 30);
+  assert.equal(quotaUsageUpdatedAt(cached), 100);
+  assert.equal(quotaUsageUpdatedAt(missing), null);
+});
+
+test("Token freshness follows account deduplication and clears after recovery", () => {
+  const old = quota({
+    usageUpdatedAt: 50,
+    usageWarning: "appServerTimeout",
+  });
+  const recovered = quota({ profileId: "new", queriedAt: 200 });
+  assert.deepEqual(summarizeUsageFreshness([old, recovered]), {
+    warningAccounts: 0,
+    cachedAccounts: 0,
+    oldestCachedAt: null,
+    hasUnknownCacheTime: false,
+  });
+  const duplicate = { ...old, profileId: "duplicate", queriedAt: 300 };
+  assert.equal(summarizeUsageFreshness([old, duplicate]).warningAccounts, 1);
+});
+
+test("Token cache timestamps never inherit a newer fallback query time", () => {
+  const legacy = quota({ queriedAt: 100 });
+  const unknown = quota({
+    queriedAt: 500,
+    usageUpdatedAt: null,
+    usageWarning: "appServerFailed",
+  });
+  const known = quota({
+    accountId: "known",
+    queriedAt: 600,
+    usageUpdatedAt: 200,
+    usageWarning: "appServerTimeout",
+  });
+  assert.equal(quotaUsageUpdatedAt(legacy), 100);
+  assert.equal(quotaUsageUpdatedAt(unknown), null);
+  assert.equal(
+    quotaUsageUpdatedAt({ ...unknown, usageUpdatedAt: undefined }),
+    null,
+  );
+  assert.deepEqual(summarizeUsageFreshness([unknown, known]), {
+    warningAccounts: 2,
+    cachedAccounts: 2,
+    oldestCachedAt: 200,
+    hasUnknownCacheTime: true,
+  });
 });
 
 test("unknown totals differ from confirmed zero usage and credits", () => {

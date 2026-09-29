@@ -20,6 +20,8 @@ import {
   levelLabel,
   nextQuotaReset,
   quotaLevel,
+  quotaUsageUpdatedAt,
+  quotaUsageWarning,
   quotaUtilization,
   recentTokenUsage,
 } from "./quotaView";
@@ -220,6 +222,7 @@ export function QuotaAccountTable({
               const label = displayLabel(account.label);
               const refreshing = refreshingIds.includes(account.id);
               const refreshFailed = Boolean(refreshErrors[account.id]);
+              const usageUpdatedAt = quota ? quotaUsageUpdatedAt(quota) : null;
               return (
                 <tr
                   key={account.id}
@@ -320,6 +323,21 @@ export function QuotaAccountTable({
                       >
                         {formatCount(value, locale)}
                       </button>
+                      {quota?.usageWarning && (
+                        <small title={quotaUsageWarning(quota, t) ?? undefined}>
+                          {value !== null
+                            ? t("quotaUsageCachedShort")
+                            : t("quotaUsageUnavailableShort")}
+                          {value !== null && (
+                            <>
+                              {" · "}
+                              {usageUpdatedAt === null
+                                ? t("quotaUsageUpdateTimeUnknown")
+                                : formatDate(usageUpdatedAt, locale, true)}
+                            </>
+                          )}
+                        </small>
+                      )}
                     </td>
                   ))}
                   <td className="quota-table-number">

@@ -10,6 +10,7 @@ import {
 import { ExternalLink } from "./ExternalLink";
 import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
+import { QuotaUsageNotice } from "./QuotaUsageNotice";
 import type { Locale, Translate } from "./i18n";
 import { QuotaCostPeriod } from "./QuotaCostPeriod";
 import { GuideSpotlight } from "./PageGuide";
@@ -242,6 +243,7 @@ export function QuotaCostPanel({
 
   return (
     <section className="quota-cost-panel" aria-label={t("costTitle")}>
+      <QuotaUsageNotice quotas={selectedQuotas} locale={locale} t={t} />
       <div className="cost-controls cost-main-controls">
         <div className="cost-selectors">
           <div className="cost-field" data-cost-tour="account">

@@ -43,6 +43,16 @@ pub struct AccountUsageDailyBucket {
     pub tokens: u64,
 }
 
+// 仅传递固定分类，避免把本地进程或服务端的原始错误带到前端。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UsageWarning {
+    AppServerUnavailable,
+    AppServerTimeout,
+    AppServerFailed,
+    UsageUnavailable,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountQuota {
@@ -55,6 +65,8 @@ pub struct AccountQuota {
     pub reset_credits: Option<UsageResetCredits>,
     pub plan_type: Option<String>,
     pub official_usage: Option<AccountUsageSummary>,
+    pub usage_updated_at: Option<u64>,
+    pub usage_warning: Option<UsageWarning>,
     pub source: Option<String>,
     pub success: bool,
     pub error: Option<String>,

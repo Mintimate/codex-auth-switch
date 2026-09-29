@@ -222,6 +222,13 @@ export type AccountQuota = {
   resetCredits: UsageResetCredits | null;
   planType: string | null;
   officialUsage: AccountUsageSummary | null;
+  usageUpdatedAt?: number | null;
+  usageWarning?:
+    | "appServerUnavailable"
+    | "appServerTimeout"
+    | "appServerFailed"
+    | "usageUnavailable"
+    | null;
   source: "appServer" | "compatibility" | null;
   success: boolean;
   error: string | null;

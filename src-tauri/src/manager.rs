@@ -1,6 +1,6 @@
 pub use crate::quota::{
     AccountQuota, AccountUsageDailyBucket, AccountUsageSummary, QuotaBucket, UsageResetCredits,
-    UsageWindow,
+    UsageWarning, UsageWindow,
 };
 use crate::{
     auth_share::{self, ImportedAuth},
@@ -282,6 +282,7 @@ struct QuotaDetails {
     reset_credits: Option<UsageResetCredits>,
     plan_type: Option<String>,
     official_usage: Option<AccountUsageSummary>,
+    usage_warning: Option<UsageWarning>,
     source: String,
 }
 
@@ -1060,7 +1061,9 @@ impl AccountManager {
                 buckets: details.buckets,
                 reset_credits: details.reset_credits,
                 plan_type: details.plan_type,
+                usage_updated_at: details.official_usage.as_ref().map(|_| queried_at),
                 official_usage: details.official_usage,
+                usage_warning: details.usage_warning,
                 source: Some(details.source),
                 success: true,
                 error: None,
@@ -1077,6 +1080,8 @@ impl AccountManager {
                 reset_credits: None,
                 plan_type: None,
                 official_usage: None,
+                usage_updated_at: None,
+                usage_warning: None,
                 source: None,
                 success: false,
                 error: Some("订阅凭据已失效，请重新登录该账号".to_string()),
@@ -1093,6 +1098,8 @@ impl AccountManager {
                 reset_credits: None,
                 plan_type: None,
                 official_usage: None,
+                usage_updated_at: None,
+                usage_warning: None,
                 source: None,
                 success: false,
                 error: Some(message),
@@ -1749,7 +1756,7 @@ async fn query_account_details_inner(
         },
         None => None,
     };
-    match outcome.result {
+    let usage_warning = match outcome.result {
         Err(codex_app_server::AppServerError::RateLimited) => {
             return (
                 Err(QuotaQueryError::Message(
@@ -1758,7 +1765,9 @@ async fn query_account_details_inner(
                 refreshed_auth,
             );
         }
-        Err(_) => {}
+        Err(codex_app_server::AppServerError::Unavailable) => UsageWarning::AppServerUnavailable,
+        Err(codex_app_server::AppServerError::Timeout) => UsageWarning::AppServerTimeout,
+        Err(codex_app_server::AppServerError::QueryFailed) => UsageWarning::AppServerFailed,
         Ok(snapshot) => {
             if snapshot
                 .rate_limits
@@ -1775,7 +1784,7 @@ async fn query_account_details_inner(
             }
             return (Ok(official_quota_details(snapshot)), refreshed_auth);
         }
-    }
+    };
 
     // App Server 即使失败也可能已经轮换令牌，兼容路径必须从新凭据继续。
     let current_auth = refreshed_auth.as_ref().unwrap_or(auth);
@@ -1791,6 +1800,9 @@ async fn query_account_details_inner(
             }
             Err(error) => result = Err(QuotaQueryError::Message(error.to_string())),
         }
+    }
+    if let Ok(details) = &mut result {
+        details.usage_warning = Some(usage_warning);
     }
     (result, refreshed_auth)
 }
@@ -1868,6 +1880,7 @@ fn official_quota_details(snapshot: codex_app_server::AccountSnapshot) -> QuotaD
         buckets,
         reset_credits,
         plan_type,
+        usage_warning: usage.is_none().then_some(UsageWarning::UsageUnavailable),
         official_usage: usage.map(|usage| AccountUsageSummary {
             lifetime_tokens: usage.summary.lifetime_tokens,
             peak_daily_tokens: usage.summary.peak_daily_tokens,
@@ -1919,6 +1932,7 @@ async fn query_account_quota_compatibility(auth: &Value, account_id: &str) -> Qu
         reset_credits,
         plan_type: None,
         official_usage: None,
+        usage_warning: None,
         source: "compatibility".to_string(),
     })
 }
@@ -2567,6 +2581,7 @@ mod tests {
                 reset_credits: None,
                 plan_type: None,
                 official_usage: None,
+                usage_warning: Some(UsageWarning::UsageUnavailable),
                 source: "appServer".into(),
             }),
         };
@@ -3762,6 +3777,7 @@ mod tests {
 
         let details = official_quota_details(snapshot);
         assert_eq!(details.source, "appServer");
+        assert_eq!(details.usage_warning, None);
         assert_eq!(details.plan_type.as_deref(), Some("pro"));
         assert_eq!(details.buckets.len(), 2);
         assert_eq!(details.buckets[0].id, "codex");
@@ -3771,6 +3787,30 @@ mod tests {
         assert_eq!(official_usage.longest_streak_days, Some(14));
         assert_eq!(official_usage.daily_usage_buckets.len(), 1);
         assert_eq!(official_usage.daily_usage_buckets[0].tokens, 45_678);
+    }
+
+    #[test]
+    fn missing_optional_usage_is_reported_without_discarding_limits() {
+        let details = official_quota_details(codex_app_server::AccountSnapshot {
+            plan_type: Some("plus".into()),
+            rate_limits: codex_app_server::RateLimitsResponse {
+                rate_limits: codex_app_server::RateLimitSnapshot {
+                    primary: Some(codex_app_server::RateLimitWindow {
+                        used_percent: 32.0,
+                        window_duration_mins: Some(300),
+                        resets_at: Some(1000),
+                    }),
+                    ..Default::default()
+                },
+                rate_limits_by_limit_id: None,
+                rate_limit_reset_credits: None,
+                account_id: Some("account-a".into()),
+            },
+            usage: None,
+        });
+        assert_eq!(details.primary.as_ref().unwrap().used_percent, 32.0);
+        assert!(details.official_usage.is_none());
+        assert_eq!(details.usage_warning, Some(UsageWarning::UsageUnavailable));
     }
 
     #[test]

@@ -385,7 +385,15 @@ fn parse_result<T: for<'de> Deserialize<'de>>(value: Option<Value>) -> Result<T,
 
 fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
     let proxy_settings = proxy::get().map_err(|_| AppServerError::QueryFailed)?;
-    for executable in codex_executables() {
+    spawn_app_server_from(codex_home, &proxy_settings, codex_executables())
+}
+
+fn spawn_app_server_from(
+    codex_home: &Path,
+    proxy_settings: &proxy::ProxySettings,
+    executables: impl IntoIterator<Item = PathBuf>,
+) -> Result<Child, AppServerError> {
+    for executable in executables {
         let mut command = Command::new(executable);
         command
             .args(["app-server", "--listen", "stdio://"])
@@ -394,11 +402,10 @@ fn spawn_app_server(codex_home: &Path) -> Result<Child, AppServerError> {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        apply_proxy_env(&mut command, &proxy_settings);
-        match command.spawn() {
-            Ok(child) => return Ok(child),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(_) => return Err(AppServerError::Unavailable),
+        apply_proxy_env(&mut command, proxy_settings);
+        // 旧安装残留可能存在但无法执行，继续探测其余安装位置。
+        if let Ok(child) = command.spawn() {
+            return Ok(child);
         }
     }
     Err(AppServerError::Unavailable)
@@ -447,18 +454,23 @@ pub(crate) fn apply_proxy_env(command: &mut Command, settings: &proxy::ProxySett
 }
 
 pub(crate) fn codex_executables() -> Vec<PathBuf> {
+    codex_executable_candidates(env::var_os("CODEX_BINARY").map(PathBuf::from))
+}
+
+fn codex_executable_candidates(override_path: Option<PathBuf>) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    if let Some(path) = env::var_os("CODEX_BINARY") {
-        paths.push(PathBuf::from(path));
+    if let Some(path) = override_path {
+        paths.push(path);
     }
     #[cfg(target_os = "macos")]
     {
-        paths.push(PathBuf::from(
-            "/Applications/ChatGPT.app/Contents/Resources/codex",
-        ));
-        paths.push(PathBuf::from(
-            "/Applications/Codex.app/Contents/Resources/codex",
-        ));
+        for app in ["ChatGPT.app", "Codex.app"] {
+            let resources = Path::new("/Applications")
+                .join(app)
+                .join("Contents/Resources");
+            paths.push(resources.join("codex-cli/CodexCLI.app/Contents/MacOS/codex"));
+            paths.push(resources.join("codex"));
+        }
     }
     paths.push(PathBuf::from("codex"));
     paths
@@ -487,6 +499,58 @@ fn read_refreshed_auth(codex_home: &Path, original: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn executable_candidates_preserve_override_and_path_priority() {
+        let override_path = PathBuf::from("custom-codex");
+        let defaults = codex_executable_candidates(None);
+        let with_override = codex_executable_candidates(Some(override_path.clone()));
+        assert_eq!(with_override.first(), Some(&override_path));
+        assert_eq!(&with_override[1..], defaults.as_slice());
+        assert_eq!(defaults.last(), Some(&PathBuf::from("codex")));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_candidates_include_nested_and_legacy_app_binaries() {
+        assert_eq!(
+            codex_executable_candidates(None),
+            [
+                "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+                "/Applications/ChatGPT.app/Contents/Resources/codex",
+                "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+                "/Applications/Codex.app/Contents/Resources/codex",
+                "codex",
+            ]
+            .map(PathBuf::from)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_server_skips_missing_and_non_executable_candidates() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::TempDir::new().unwrap();
+        let blocked = root.path().join("blocked-codex");
+        fs::write(&blocked, "#!/bin/sh\nexit 1\n").unwrap();
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o600)).unwrap();
+        let working = root.path().join("working-codex");
+        fs::write(&working, "#!/bin/sh\nprintf 'candidate-ok\\n'\n").unwrap();
+        fs::set_permissions(&working, fs::Permissions::from_mode(0o700)).unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let child = spawn_app_server_from(
+                root.path(),
+                &proxy::ProxySettings::default(),
+                [root.path().join("missing-codex"), blocked, working],
+            )
+            .unwrap();
+            let output = child.wait_with_output().await.unwrap();
+            assert!(output.status.success());
+            assert_eq!(output.stdout, b"candidate-ok\n");
+        });
+    }
 
     #[test]
     fn child_proxy_modes_override_parameters_and_inherited_environment() {

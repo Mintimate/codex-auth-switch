@@ -3,6 +3,7 @@ import type { AccountQuota, AccountSummary } from "./api";
 import type { Locale, Translate } from "./i18n";
 import { DailyUsageHeatmap } from "./DailyUsageHeatmap";
 import { aggregateDailyUsage } from "./quotaView";
+import { QuotaUsageNotice } from "./QuotaUsageNotice";
 
 type Props = {
   accounts: AccountSummary[];
@@ -23,11 +24,10 @@ export function QuotaActivityOverview({
   const selectedId = accounts.some((account) => account.id === profileId)
     ? profileId
     : "";
-  const { buckets, accountCount } = aggregateDailyUsage(
-    selectedId
-      ? quotas.filter((quota) => quota.profileId === selectedId)
-      : quotas,
-  );
+  const scopedQuotas = selectedId
+    ? quotas.filter((quota) => quota.profileId === selectedId)
+    : quotas;
+  const { buckets, accountCount } = aggregateDailyUsage(scopedQuotas);
   const total = selectedId
     ? 1
     : new Set(accounts.map((account) => account.accountId)).size;
@@ -52,6 +52,7 @@ export function QuotaActivityOverview({
       data-guide="quota-activity"
       aria-label={t("dailyTokenActivity")}
     >
+      <QuotaUsageNotice quotas={scopedQuotas} locale={locale} t={t} />
       {buckets.length ? (
         <DailyUsageHeatmap
           buckets={buckets}

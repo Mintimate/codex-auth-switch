@@ -121,7 +121,7 @@ impl Runtime {
         }
         ids
     }
-    fn accept(&mut self, request_id: u64, quota: AccountQuota, now: Instant) {
+    fn accept(&mut self, request_id: u64, mut quota: AccountQuota, now: Instant) {
         let Some(attempt) = self
             .attempts
             .get_mut(&quota.profile_id)
@@ -132,6 +132,18 @@ impl Runtime {
         attempt.finish(quota.success, now);
         if quota.success {
             self.errors.remove(&quota.profile_id);
+            // 额度刷新和 Token 用量刷新分别计时。部分成功不能清空旧用量，
+            // 也不能把旧用量伪装成这次刚查到的数据。
+            if quota.official_usage.is_none() {
+                if let Some(previous) = self
+                    .quotas
+                    .get(&quota.profile_id)
+                    .filter(|previous| previous.success && previous.account_id == quota.account_id)
+                {
+                    quota.official_usage = previous.official_usage.clone();
+                    quota.usage_updated_at = previous.usage_updated_at;
+                }
+            }
         } else {
             self.errors.insert(
                 quota.profile_id.clone(),
@@ -298,6 +310,7 @@ impl QuotaRefresh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quota::{AccountUsageDailyBucket, AccountUsageSummary, UsageWarning, UsageWindow};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -316,6 +329,8 @@ mod tests {
             reset_credits: None,
             plan_type: None,
             official_usage: None,
+            usage_updated_at: None,
+            usage_warning: None,
             source: None,
             success,
             error: (!success).then(|| "test failure".into()),
@@ -323,6 +338,109 @@ mod tests {
             history_warning: None,
         }
     }
+
+    fn quota_with_usage(tokens: u64, queried_at: u64) -> AccountQuota {
+        AccountQuota {
+            official_usage: Some(AccountUsageSummary {
+                lifetime_tokens: Some(tokens),
+                peak_daily_tokens: Some(tokens),
+                longest_running_turn_sec: None,
+                current_streak_days: None,
+                longest_streak_days: None,
+                daily_usage_buckets: vec![AccountUsageDailyBucket {
+                    start_date: "2026-09-29".into(),
+                    tokens,
+                }],
+            }),
+            usage_updated_at: Some(queried_at),
+            queried_at,
+            source: Some("appServer".into()),
+            ..quota(true)
+        }
+    }
+
+    #[test]
+    fn partial_refresh_updates_limits_and_preserves_usage_until_recovery() {
+        let mut runtime = Runtime::default();
+        let now = Instant::now();
+        runtime.begin(&ids(), None, false, now);
+        runtime.accept(runtime.revision, quota_with_usage(1234, 100), now);
+
+        for (queried_at, source, warning) in [
+            (200, "compatibility", UsageWarning::AppServerUnavailable),
+            (300, "compatibility", UsageWarning::AppServerTimeout),
+            (400, "appServer", UsageWarning::UsageUnavailable),
+        ] {
+            runtime.begin(&ids(), Some(&["a".into()]), false, now);
+            runtime.accept(
+                runtime.revision,
+                AccountQuota {
+                    primary: Some(UsageWindow {
+                        used_percent: 32.0,
+                        window_minutes: Some(300),
+                        resets_at: Some(1000),
+                    }),
+                    queried_at,
+                    source: Some(source.into()),
+                    usage_warning: Some(warning),
+                    ..quota(true)
+                },
+                now,
+            );
+            let cached = &runtime.quotas["a"];
+            assert!(cached.success);
+            assert!(!runtime.errors.contains_key("a"));
+            assert_eq!(cached.primary.as_ref().unwrap().used_percent, 32.0);
+            assert_eq!(cached.queried_at, queried_at);
+            assert_eq!(cached.usage_updated_at, Some(100));
+            assert_eq!(cached.usage_warning, Some(warning));
+            assert_eq!(
+                cached.official_usage.as_ref().unwrap().daily_usage_buckets[0].tokens,
+                1234
+            );
+        }
+
+        runtime.begin(&ids(), Some(&["a".into()]), false, now);
+        // 新结果即使用量为零也必须替换缓存，并清除旧警告。
+        runtime.accept(runtime.revision, quota_with_usage(0, 500), now);
+        let fresh = &runtime.quotas["a"];
+        assert_eq!(fresh.usage_updated_at, Some(500));
+        assert_eq!(fresh.usage_warning, None);
+        assert_eq!(
+            fresh.official_usage.as_ref().unwrap().lifetime_tokens,
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn partial_refresh_without_matching_account_usage_does_not_invent_data() {
+        let now = Instant::now();
+        for previous in [None, Some(quota_with_usage(1234, 100))] {
+            let mut runtime = Runtime::default();
+            if let Some(mut previous) = previous {
+                previous.account_id = "another-account".into();
+                runtime.quotas.insert("a".into(), previous);
+            }
+            runtime.begin(&ids(), None, false, now);
+            runtime.accept(
+                runtime.revision,
+                AccountQuota {
+                    usage_warning: Some(UsageWarning::AppServerUnavailable),
+                    source: Some("compatibility".into()),
+                    ..quota(true)
+                },
+                now,
+            );
+            let result = &runtime.quotas["a"];
+            assert!(result.official_usage.is_none());
+            assert!(result.usage_updated_at.is_none());
+            assert_eq!(
+                result.usage_warning,
+                Some(UsageWarning::AppServerUnavailable)
+            );
+        }
+    }
+
     #[test]
     fn manual_and_automatic_requests_share_schedule_and_preserve_success() {
         let mut r = Runtime {

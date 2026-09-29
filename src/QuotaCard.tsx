@@ -15,6 +15,8 @@ import {
   levelLabel,
   quotaBuckets,
   quotaLevel,
+  quotaUsageUpdatedAt,
+  quotaUsageWarning,
   quotaWindows,
   recentTokenUsage,
 } from "./quotaView";
@@ -86,6 +88,7 @@ export function QuotaCard({
   const level = quota ? quotaLevel(quota) : "unknown";
   const buckets = quota ? quotaBuckets(quota) : [];
   const plan = formatPlan(quota?.planType ?? null);
+  const usageUpdatedAt = quota ? quotaUsageUpdatedAt(quota) : null;
   const sevenDayUsage = quota?.officialUsage
     ? recentTokenUsage(quota.officialUsage.dailyUsageBuckets, 7)
     : null;
@@ -134,6 +137,26 @@ export function QuotaCard({
       )}
       {quota?.success ? (
         <>
+          {quota.usageWarning && (
+            <p className="alert warning" role="status">
+              <span>
+                {quotaUsageWarning(quota, t)}{" "}
+                {quota.officialUsage
+                  ? t("quotaUsageCached")
+                  : t("quotaUsageUnavailableHint")}
+                {quota.officialUsage && (
+                  <>
+                    {" "}
+                    {usageUpdatedAt === null
+                      ? t("quotaUsageUpdateTimeUnknown")
+                      : t("quotaUsageUpdatedAt", {
+                          date: formatDate(usageUpdatedAt, locale, true),
+                        })}
+                  </>
+                )}
+              </span>
+            </p>
+          )}
           {view === "quota" && (
             <div className="quota-account-facts">
               <div>
@@ -182,6 +205,15 @@ export function QuotaCard({
                   <strong>{t("officialAccountUsage")}</strong>
                   <span>{t("officialAccountUsageHint")}</span>
                 </div>
+                {!quota.usageWarning && (
+                  <p className="quota-activity-coverage">
+                    {usageUpdatedAt === null
+                      ? t("quotaUsageUpdateTimeUnknown")
+                      : t("quotaUsageUpdatedAt", {
+                          date: formatDate(usageUpdatedAt, locale, true),
+                        })}
+                  </p>
+                )}
                 <div className="quota-official-metrics">
                   <div className="quota-recent-usage-group">
                     {(
