@@ -336,6 +336,10 @@ cargo test
 
 Use `npm run release <version>` to synchronize versions, create the release commit, and tag it. Pushing a `v*` tag lets CI build, sign, and publish installers for every platform.
 
+If the CNB mirror fails, fix the sync script and sync `main` to CNB, then click “重新镜像 GitHub Release” on the CNB `main` branch page and enter a published tag such as `v1.3.9`. The pipeline downloads the existing GitHub Release assets, rewrites the updater manifest, and uploads them to CNB. Rerunning a build for an old tag still uses the scripts from that tag.
+
+Run the release mirror regression tests offline with `node --test .github/scripts/generate-updater-manifest.test.mjs .cnb/scripts/pull-github-release.test.mjs`.
+
 ## License
 
 [MIT](LICENSE)

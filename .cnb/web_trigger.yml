@@ -1,0 +1,13 @@
+branch:
+  - reg: ^main$
+    buttons:
+      - name: 重新镜像 GitHub Release
+        description: 使用主分支脚本同步已发布版本，修复失败的 CNB 镜像。
+        event: web_trigger_mirror_release
+        inputs:
+          MIRROR_RELEASE_TAG:
+            name: 已发布版本标签
+            description: 填写 GitHub 已发布的标签，例如 v1.3.9。
+            type: input
+            required: true
+            placeholder: v1.3.9

@@ -72,8 +72,8 @@ jq -e \
   "${manifest}" >/dev/null
 
 expected_assets=(
-  "Codex-Auth-Switch_${version}_Linux_x64.AppImage"
-  "Codex-Auth-Switch_${version}_Linux_x64.AppImage.sig"
+  "Codex-Auth-Switch_${version}_x86_64.AppImage"
+  "Codex-Auth-Switch_${version}_x86_64.AppImage.sig"
   "Codex-Auth-Switch_${version}_Linux_x64.deb"
   "Codex-Auth-Switch_${version}_Linux_x64.deb.sig"
   "Codex-Auth-Switch_${version}_Linux_x64.rpm"
@@ -154,8 +154,8 @@ jq \
       "darwin-aarch64-app": "Codex-Auth-Switch_\($version)_macOS_arm64.app.tar.gz",
       "darwin-x86_64": "Codex-Auth-Switch_\($version)_macOS_x64.app.tar.gz",
       "darwin-x86_64-app": "Codex-Auth-Switch_\($version)_macOS_x64.app.tar.gz",
-      "linux-x86_64": "Codex-Auth-Switch_\($version)_Linux_x64.AppImage",
-      "linux-x86_64-appimage": "Codex-Auth-Switch_\($version)_Linux_x64.AppImage",
+      "linux-x86_64": "Codex-Auth-Switch_\($version)_x86_64.AppImage",
+      "linux-x86_64-appimage": "Codex-Auth-Switch_\($version)_x86_64.AppImage",
       "linux-x86_64-deb": "Codex-Auth-Switch_\($version)_Linux_x64.deb",
       "linux-x86_64-rpm": "Codex-Auth-Switch_\($version)_Linux_x64.rpm",
       "windows-x86_64": "Codex-Auth-Switch_\($version)_Windows_x64-setup.exe",

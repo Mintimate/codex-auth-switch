@@ -338,6 +338,10 @@ cargo test
 
 发布版本必须使用 `npm run release <version>` 同步版本、创建提交与标签；推送 `v*` 标签后由 CI 构建、签名并发布各平台安装包。
 
+如果 CNB 镜像失败，修复同步脚本并将主分支同步到 CNB 后，在 CNB 的 `main` 分支详情页点击“重新镜像 GitHub Release”，填写已发布标签（例如 `v1.3.9`）。流水线会从现有 GitHub Release 下载附件、改写更新清单并上传至 CNB。重跑旧标签的构建会继续使用该标签中的旧脚本。
+
+发布同步脚本的离线回归测试：`node --test .github/scripts/generate-updater-manifest.test.mjs .cnb/scripts/pull-github-release.test.mjs`。
+
 ## License
 
 [MIT](LICENSE)
