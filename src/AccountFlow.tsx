@@ -1,7 +1,35 @@
-import { ChevronDown, ShieldCheck } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ShieldCheck,
+} from "lucide-react";
+import { useState } from "react";
 import { AppStatus } from "./api";
 import { Translate } from "./i18n";
 import { SceneCat } from "./SceneCat";
+
+const FLOW_EXPANDED_STORAGE_KEY = "codex-auth-switch-account-flow-expanded";
+let sessionFlowExpanded: boolean | undefined;
+
+function readFlowExpanded() {
+  if (sessionFlowExpanded !== undefined) return sessionFlowExpanded;
+  try {
+    return window.localStorage.getItem(FLOW_EXPANDED_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function saveFlowExpanded(expanded: boolean) {
+  // 优先记住本次运行的选择，避免存储写入失败后切页读回旧值。
+  sessionFlowExpanded = expanded;
+  try {
+    window.localStorage.setItem(FLOW_EXPANDED_STORAGE_KEY, String(expanded));
+  } catch {
+    // 无法持久化时仍允许展开、收起，并在本次运行内保留选择。
+  }
+}
 
 type AccountFlowProps = {
   activeLabel: string | null;
@@ -131,6 +159,13 @@ function AccountSwitchScene({
 }
 
 export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
+  const [expanded, setExpanded] = useState(readFlowExpanded);
+  const toggleLabel = t(expanded ? "flowCollapse" : "flowExpand");
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    saveFlowExpanded(next);
+  };
   const steps = [
     {
       detail: t("flowSavedDetail", { count: status?.accounts.length ?? 0 }),
@@ -161,43 +196,72 @@ export function AccountFlow({ activeLabel, status, t }: AccountFlowProps) {
 
   return (
     <section
-      className="account-flow-section"
+      className={`account-flow-section${expanded ? "" : " is-collapsed"}`}
       aria-labelledby="account-flow-title"
     >
       <div className="accounts-section-heading account-flow-heading">
-        <h2 id="account-flow-title">{t("flowTitle")}</h2>
-        <p>
-          <ShieldCheck size={14} aria-hidden="true" />
-          {t("flowLocalOnly")}
-        </p>
+        <div className="account-flow-heading-copy">
+          <h2 id="account-flow-title">{t("flowTitle")}</h2>
+          <p>
+            <ShieldCheck size={14} aria-hidden="true" />
+            {t("flowLocalOnly")}
+          </p>
+        </div>
+        <div className="account-list-toolbar">
+          <button
+            type="button"
+            className="text-button account-toolbar-button"
+            title={toggleLabel}
+            aria-label={toggleLabel}
+            aria-expanded={expanded}
+            aria-controls="account-flow-content"
+            onClick={toggleExpanded}
+          >
+            {expanded ? (
+              <ChevronsDownUp size={20} aria-hidden="true" />
+            ) : (
+              <ChevronsUpDown size={20} aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </div>
 
-      <AccountSwitchScene activeLabel={activeLabel} t={t} />
+      <div
+        id="account-flow-content"
+        className="account-flow-content"
+        hidden={!expanded}
+      >
+        {expanded && (
+          <>
+            <AccountSwitchScene activeLabel={activeLabel} t={t} />
 
-      <details className="account-flow-details">
-        <summary>
-          {t("flowDetails")}
-          <ChevronDown size={14} aria-hidden="true" />
-        </summary>
-        <div className="account-flow" role="list">
-          {steps.map((step, index) => (
-            <div className="account-flow-fragment" key={step.label}>
-              <div className="flow-step" role="listitem">
-                <div className={`flow-icon ${step.icon}`}>
-                  <FlowIcon kind={step.icon} />
-                </div>
-                <strong>{step.label}</strong>
-                <span>{step.detail}</span>
+            <details className="account-flow-details">
+              <summary>
+                {t("flowDetails")}
+                <ChevronDown size={14} aria-hidden="true" />
+              </summary>
+              <div className="account-flow" role="list">
+                {steps.map((step, index) => (
+                  <div className="account-flow-fragment" key={step.label}>
+                    <div className="flow-step" role="listitem">
+                      <div className={`flow-icon ${step.icon}`}>
+                        <FlowIcon kind={step.icon} />
+                      </div>
+                      <strong>{step.label}</strong>
+                      <span>{step.detail}</span>
+                    </div>
+                    {index < connectors.length && (
+                      <FlowConnector label={connectors[index]} />
+                    )}
+                  </div>
+                ))}
               </div>
-              {index < connectors.length && (
-                <FlowConnector label={connectors[index]} />
-              )}
-            </div>
-          ))}
-        </div>
 
-        <p className="account-flow-note">{t("flowPrivacyNote")}</p>
-      </details>
+              <p className="account-flow-note">{t("flowPrivacyNote")}</p>
+            </details>
+          </>
+        )}
+      </div>
     </section>
   );
 }

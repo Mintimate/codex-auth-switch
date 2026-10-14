@@ -40,6 +40,8 @@
   "accountAddGuide": "点击“登录新账号”，选择登录方式并设置本机名称。本地 Codex 登录由已安装的 Codex 完成浏览器授权，先保存账号，再由你选择切换；OAuth 登录使用设备码授权，完成后保存并切换。两种方式都无需在本应用输入 ChatGPT 密码。",
   "flowEyebrow": "切换链路",
   "flowTitle": "账号如何切换",
+  "flowExpand": "展开账号切换说明",
+  "flowCollapse": "收起账号切换说明",
   "flowLocalOnly": "凭据仅在本机切换",
   "flowDetails": "查看切换原理",
   "flowDescription": "切换只发生在本机凭据文件，不代理 Codex 请求。",

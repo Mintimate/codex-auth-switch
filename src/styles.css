@@ -984,6 +984,28 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.account-flow-heading {
+  margin-bottom: 0;
+}
+
+.account-flow-heading-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.account-flow-content {
+  margin-top: 14px;
+}
+
+.account-flow-section.is-collapsed {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
 .account-flow-heading p,
 .account-flow-note {
   margin: 0;
@@ -1010,6 +1032,18 @@ button:disabled {
 
 .account-flow-heading p svg {
   flex-shrink: 0;
+}
+
+@container accounts-page (max-width: 640px) {
+  .account-flow-heading-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .account-flow-heading p {
+    text-align: left;
+  }
 }
 
 .account-switch-stage {
@@ -5739,16 +5773,6 @@ button:disabled {
   .account-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-
-  .account-flow-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .account-flow-heading p {
-    text-align: left;
   }
 
   .account-flow {

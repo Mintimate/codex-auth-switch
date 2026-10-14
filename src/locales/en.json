@@ -40,6 +40,8 @@
   "accountAddGuide": "Select Add account, choose a sign-in method, and enter a local name. Local Codex uses your installed Codex for browser authorization, saves the account, and lets you choose when to switch. OAuth uses a device code and saves and switches after authorization. Neither method asks for your ChatGPT password in this app.",
   "flowEyebrow": "Switching path",
   "flowTitle": "How account switching works",
+  "flowExpand": "Expand account switching guide",
+  "flowCollapse": "Collapse account switching guide",
   "flowLocalOnly": "Credentials stay on this device",
   "flowDetails": "Switching details",
   "flowDescription": "Switching changes only the local credential file; Codex requests are never proxied.",
