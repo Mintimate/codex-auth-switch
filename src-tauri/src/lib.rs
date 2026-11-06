@@ -8,6 +8,7 @@ mod diagnostics;
 mod hosted_login;
 mod manager;
 mod pricing;
+mod project_state;
 mod proxy;
 mod query_gate;
 mod quota;
@@ -557,15 +558,22 @@ async fn switch_account_with_options(
     state: State<'_, AppState>,
     profile_id: String,
     restart: bool,
+    carry_projects: Option<bool>,
     on_progress: tauri::ipc::Channel<desktop_client::SwitchStage>,
 ) -> Result<desktop_client::SwitchResult, String> {
     let _guard = state.operation_gate.lock().await;
     let manager = account_manager(&app)?;
     // 进程检测与退出等待不能占用 WebView 主线程或异步运行时工作线程。
     tauri::async_runtime::spawn_blocking(move || {
-        desktop_client::switch_account(&manager, &profile_id, restart, |stage| {
-            let _ = on_progress.send(stage);
-        })
+        desktop_client::switch_account(
+            &manager,
+            &profile_id,
+            restart,
+            carry_projects.unwrap_or(true),
+            |stage| {
+                let _ = on_progress.send(stage);
+            },
+        )
     })
     .await
     .map_err(|_| "账号切换操作中断，请刷新账号状态后重试".to_string())?

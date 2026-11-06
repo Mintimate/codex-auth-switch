@@ -49,10 +49,17 @@ export type AppStatus = {
 };
 
 export type SwitchPreference = "ask" | "switchOnly" | "restart";
-export type SwitchStage = "checking" | "closing" | "switching" | "launching";
+export type SwitchStage =
+  "checking" | "closing" | "switching" | "carryingProjects" | "launching";
+export type ProjectCarryResult = {
+  outcome: "disabled" | "notNeeded" | "copied" | "failed";
+  copied: number;
+  skipped: number;
+};
 export type SwitchResult = {
   status: AppStatus;
   restart: "notRequested" | "notRunning" | "restarted" | "launchFailed";
+  projects: ProjectCarryResult;
 };
 
 export type WindowsStartupInspection = {
@@ -798,6 +805,11 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
             : {
                 status: previewStatus,
                 restart: args?.restart ? "restarted" : "notRequested",
+                projects: {
+                  outcome: args?.carryProjects ? "copied" : "disabled",
+                  copied: args?.carryProjects ? 3 : 0,
+                  skipped: 0,
+                },
               },
         ) as T,
       );
@@ -1109,6 +1121,7 @@ export const switchAccountWithOptions = (
   profileId: string,
   restart: boolean,
   onProgress: (stage: SwitchStage) => void,
+  carryProjects = true,
 ) => {
   if (isPublicDemo) return Promise.reject(demoReadOnlyError());
   if (isBrowserPreview()) {
@@ -1116,6 +1129,7 @@ export const switchAccountWithOptions = (
     return call<SwitchResult>("switch_account_with_options", {
       profileId,
       restart,
+      carryProjects,
     });
   }
   const channel = new Channel<SwitchStage>();
@@ -1123,6 +1137,7 @@ export const switchAccountWithOptions = (
   return call<SwitchResult>("switch_account_with_options", {
     profileId,
     restart,
+    carryProjects,
     onProgress: channel,
   });
 };

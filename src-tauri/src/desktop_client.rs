@@ -28,6 +28,7 @@ pub enum SwitchStage {
     Checking,
     Closing,
     Switching,
+    CarryingProjects,
     Launching,
 }
 
@@ -45,6 +46,7 @@ pub enum RestartOutcome {
 pub struct SwitchResult {
     pub status: AppStatus,
     pub restart: RestartOutcome,
+    pub projects: crate::project_state::CarryResult,
 }
 
 #[derive(Debug, Serialize)]
@@ -183,6 +185,7 @@ trait DesktopClient {
     fn prepare(&self) -> Result<Option<Self::Target>, String>;
     fn close(&self, target: &Self::Target) -> Result<(), String>;
     fn launch(&self, target: &Self::Target) -> Result<(), String>;
+    fn is_stopped(&self) -> bool;
 }
 
 pub fn supported() -> bool {
@@ -193,18 +196,29 @@ pub fn switch_account(
     manager: &AccountManager,
     profile_id: &str,
     restart: bool,
+    carry_projects: bool,
     progress: impl Fn(SwitchStage),
 ) -> Result<SwitchResult, String> {
     if restart {
         ensure_default_home(manager.codex_home_path())?;
     }
-    switch_with_client(manager, profile_id, restart, &SystemClient, progress)
+    switch_with_client(
+        manager,
+        profile_id,
+        restart,
+        carry_projects,
+        supported() && ensure_default_home(manager.codex_home_path()).is_ok(),
+        &SystemClient,
+        progress,
+    )
 }
 
 fn switch_with_client<C: DesktopClient>(
     manager: &AccountManager,
     profile_id: &str,
     restart: bool,
+    carry_projects: bool,
+    project_home_supported: bool,
     client: &C,
     progress: impl Fn(SwitchStage),
 ) -> Result<SwitchResult, String> {
@@ -217,11 +231,49 @@ fn switch_with_client<C: DesktopClient>(
         progress(SwitchStage::Closing);
         client.close(target)?;
     }
+    // 退出后读取最新项目状态。仅切换若仍在运行，拒绝写入并保持原账号，允许用户重新选择。
+    let project_copy = if carry_projects {
+        let copy = manager
+            .prepare_project_copy(profile_id)
+            .map_err(str::to_owned)?;
+        if copy.needs_write() {
+            if !project_home_supported {
+                return Err(crate::project_state::UNSUPPORTED.into());
+            }
+            if !client.is_stopped() {
+                return Err(crate::project_state::QUIT_REQUIRED.into());
+            }
+        }
+        Some(copy)
+    } else {
+        None
+    };
     progress(SwitchStage::Switching);
     // 退出确认后才读取最新旧账号凭据并原子提交；关闭失败不会改写认证。
     let status = manager
         .switch_account(profile_id)
         .map_err(|e| e.to_string())?;
+    let projects = if let Some(copy) = project_copy {
+        if copy.needs_write() {
+            progress(SwitchStage::CarryingProjects);
+            if client.is_stopped() {
+                copy.apply(
+                    manager.codex_home_path(),
+                    &manager.project_state_backup_path(),
+                )
+            } else {
+                crate::project_state::CarryResult {
+                    outcome: crate::project_state::CarryOutcome::Failed,
+                    copied: 0,
+                    skipped: copy.result.skipped,
+                }
+            }
+        } else {
+            copy.result
+        }
+    } else {
+        crate::project_state::CarryResult::disabled()
+    };
     let restart = if let Some(target) = &target {
         progress(SwitchStage::Launching);
         if client.launch(target).is_ok() {
@@ -235,7 +287,11 @@ fn switch_with_client<C: DesktopClient>(
     } else {
         RestartOutcome::NotRequested
     };
-    Ok(SwitchResult { status, restart })
+    Ok(SwitchResult {
+        status,
+        restart,
+        projects,
+    })
 }
 
 fn ensure_default_home(home: &Path) -> Result<(), String> {
@@ -255,6 +311,10 @@ struct SystemClient;
 
 impl DesktopClient for SystemClient {
     type Target = Instance;
+
+    fn is_stopped(&self) -> bool {
+        supported() && detect().is_ok_and(|instances| instances.is_empty())
+    }
 
     fn prepare(&self) -> Result<Option<Instance>, String> {
         if !supported() {
@@ -513,13 +573,50 @@ fn run_command_with_timeout(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     use serde_json::{json, Value};
     use std::cell::RefCell;
 
     fn auth(account: &str, refresh: &str) -> Value {
+        let claims = json!({"https://api.openai.com/auth": {
+            "chatgpt_user_id": format!("user-{account}"), "chatgpt_account_id": account
+        }});
+        let token = format!(
+            "e30.{}.synthetic",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
+        );
         json!({"auth_mode": "chatgpt", "tokens": {
-            "account_id": account, "access_token": "synthetic-access", "refresh_token": refresh
+            "account_id": account, "id_token": token, "access_token": "synthetic-access", "refresh_token": refresh
         }})
+    }
+
+    const TARGET_OWNER: &str = "5936e5da8f4e101c0f56ecef4808eed0de9476e98a5fa1d124f775126d4b6066";
+
+    fn project_state(manager: &AccountManager) -> Value {
+        json!({
+            "electron-account-renderer-state-v1": {
+                "owner": "be431902dafe21bd9114c864579b3bd27343a4a8bc40ce0e90436e13cfebeb98", "inactive": {}
+            },
+            "local-projects": {"local": {
+                "id": "local", "name": "local", "rootPaths": [manager.codex_home_path().join("project")],
+                "createdAt": 1, "updatedAt": 2
+            }}
+        })
+    }
+
+    fn write_projects(manager: &AccountManager, value: &Value) {
+        fs::write(
+            manager.codex_home_path().join(".codex-global-state.json"),
+            serde_json::to_vec(value).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn read_projects(manager: &AccountManager) -> Value {
+        serde_json::from_slice(
+            &fs::read(manager.codex_home_path().join(".codex-global-state.json")).unwrap(),
+        )
+        .unwrap()
     }
 
     fn fixture() -> (tempfile::TempDir, AccountManager) {
@@ -544,6 +641,8 @@ mod tests {
         close_fails: bool,
         launch_fails: bool,
         break_write: bool,
+        projects_on_close: Option<Value>,
+        reappears_after_switch: bool,
         calls: RefCell<Vec<&'static str>>,
     }
 
@@ -556,6 +655,8 @@ mod tests {
                 close_fails: false,
                 launch_fails: false,
                 break_write: false,
+                projects_on_close: None,
+                reappears_after_switch: false,
                 calls: RefCell::new(vec![]),
             }
         }
@@ -563,6 +664,15 @@ mod tests {
 
     impl DesktopClient for FakeClient<'_> {
         type Target = ();
+        fn is_stopped(&self) -> bool {
+            self.calls.borrow_mut().push("is_stopped");
+            if self.reappears_after_switch
+                && self.manager.status().unwrap().active_account_id.as_deref() == Some("target")
+            {
+                return false;
+            }
+            !self.present || self.calls.borrow().contains(&"close") && !self.close_fails
+        }
         fn prepare(&self) -> Result<Option<()>, String> {
             self.calls.borrow_mut().push("prepare");
             if self.prepare_fails {
@@ -586,6 +696,9 @@ mod tests {
                 serde_json::to_vec(&auth("current", "synthetic-rotated")).unwrap(),
             )
             .unwrap();
+            if let Some(state) = &self.projects_on_close {
+                write_projects(self.manager, state);
+            }
             if self.break_write {
                 fs::remove_file(&path).unwrap();
                 fs::create_dir(&path).unwrap();
@@ -611,7 +724,7 @@ mod tests {
         let (_root, manager) = fixture();
         let client = FakeClient::new(&manager);
         let stages = RefCell::new(vec![]);
-        let result = switch_with_client(&manager, "target", true, &client, |stage| {
+        let result = switch_with_client(&manager, "target", true, true, true, &client, |stage| {
             stages.borrow_mut().push(stage)
         })
         .unwrap();
@@ -634,10 +747,11 @@ mod tests {
     }
 
     #[test]
-    fn only_switch_never_inspects_or_controls_processes() {
+    fn only_switch_without_project_changes_never_inspects_or_controls_processes() {
         let (_root, manager) = fixture();
         let client = FakeClient::new(&manager);
-        let result = switch_with_client(&manager, "target", false, &client, |_| {}).unwrap();
+        let result =
+            switch_with_client(&manager, "target", false, true, true, &client, |_| {}).unwrap();
         assert_eq!(result.restart, RestartOutcome::NotRequested);
         assert!(client.calls.borrow().is_empty());
     }
@@ -647,7 +761,8 @@ mod tests {
         let (_root, manager) = fixture();
         let mut client = FakeClient::new(&manager);
         client.present = false;
-        let result = switch_with_client(&manager, "target", true, &client, |_| {}).unwrap();
+        let result =
+            switch_with_client(&manager, "target", true, true, true, &client, |_| {}).unwrap();
         assert_eq!(result.restart, RestartOutcome::NotRunning);
         assert_eq!(*client.calls.borrow(), ["prepare"]);
         assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
@@ -657,7 +772,9 @@ mod tests {
     fn invalid_target_does_not_touch_client_or_auth() {
         let (_root, manager) = fixture();
         let client = FakeClient::new(&manager);
-        assert!(switch_with_client(&manager, "missing", true, &client, |_| {}).is_err());
+        assert!(
+            switch_with_client(&manager, "missing", true, true, true, &client, |_| {}).is_err()
+        );
         assert!(client.calls.borrow().is_empty());
         assert_eq!(
             manager.status().unwrap().active_account_id.as_deref(),
@@ -675,7 +792,9 @@ mod tests {
             let mut client = FakeClient::new(&manager);
             client.prepare_fails = detection;
             client.close_fails = !detection;
-            assert!(switch_with_client(&manager, "target", true, &client, |_| {}).is_err());
+            assert!(
+                switch_with_client(&manager, "target", true, true, true, &client, |_| {}).is_err()
+            );
             assert!(fs::read(auth_path).unwrap() == before_auth);
             assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
             assert!(!client.calls.borrow().contains(&"launch"));
@@ -687,7 +806,7 @@ mod tests {
         let (_root, manager) = fixture();
         let mut client = FakeClient::new(&manager);
         client.break_write = true;
-        assert!(switch_with_client(&manager, "target", true, &client, |_| {}).is_err());
+        assert!(switch_with_client(&manager, "target", true, true, true, &client, |_| {}).is_err());
         assert_eq!(*client.calls.borrow(), ["prepare", "close"]);
     }
 
@@ -696,7 +815,8 @@ mod tests {
         let (_root, manager) = fixture();
         let mut client = FakeClient::new(&manager);
         client.launch_fails = true;
-        let result = switch_with_client(&manager, "target", true, &client, |_| {}).unwrap();
+        let result =
+            switch_with_client(&manager, "target", true, true, true, &client, |_| {}).unwrap();
         assert_eq!(result.restart, RestartOutcome::LaunchFailed);
         assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
         // 仅允许账号摘要和重启结果跨过 IPC 边界。
@@ -704,6 +824,137 @@ mod tests {
         assert!(!serialized.contains("synthetic-"));
         assert!(!serialized.contains("access_token"));
         assert!(!serialized.contains("refresh_token"));
+    }
+
+    #[test]
+    fn projects_use_exit_time_snapshot_and_are_ready_before_launch() {
+        let (_root, manager) = fixture();
+        let mut state = project_state(&manager);
+        write_projects(&manager, &state);
+        state["local-projects"]["local"]["name"] = json!("saved-at-exit");
+        let mut client = FakeClient::new(&manager);
+        client.projects_on_close = Some(state.clone());
+        let stages = RefCell::new(vec![]);
+        let result = switch_with_client(&manager, "target", true, true, true, &client, |stage| {
+            stages.borrow_mut().push(stage);
+            if stage == SwitchStage::Launching {
+                let actual = read_projects(&manager);
+                assert_eq!(
+                    actual["electron-account-renderer-state-v1"]["inactive"][TARGET_OWNER]
+                        ["globals"]["local-projects"],
+                    state["local-projects"]
+                );
+            }
+        })
+        .unwrap();
+        assert_eq!(
+            result.projects.outcome,
+            crate::project_state::CarryOutcome::Copied
+        );
+        assert_eq!(result.projects.copied, 1);
+        assert_eq!(
+            *stages.borrow(),
+            [
+                SwitchStage::Checking,
+                SwitchStage::Closing,
+                SwitchStage::Switching,
+                SwitchStage::CarryingProjects,
+                SwitchStage::Launching
+            ]
+        );
+        assert_eq!(
+            *client.calls.borrow(),
+            ["prepare", "close", "is_stopped", "is_stopped", "launch"]
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &fs::read(manager.project_state_backup_path()).unwrap()
+            )
+            .unwrap(),
+            state
+        );
+    }
+
+    #[test]
+    fn running_client_blocks_project_copy_before_auth_changes_and_toggle_allows_switch() {
+        let (_root, manager) = fixture();
+        let state = project_state(&manager);
+        write_projects(&manager, &state);
+        let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
+        let before_vault = fs::read(manager.vault_path()).unwrap();
+        let client = FakeClient::new(&manager);
+        let error = switch_with_client(&manager, "target", false, true, true, &client, |_| {})
+            .err()
+            .unwrap();
+        assert_eq!(error, crate::project_state::QUIT_REQUIRED);
+        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+        assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+        assert_eq!(read_projects(&manager), state);
+        assert!(!manager.project_state_backup_path().exists());
+        assert_eq!(*client.calls.borrow(), ["is_stopped"]);
+        client.calls.borrow_mut().clear();
+        let result =
+            switch_with_client(&manager, "target", false, false, true, &client, |_| {}).unwrap();
+        assert_eq!(
+            result.projects.outcome,
+            crate::project_state::CarryOutcome::Disabled
+        );
+        assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
+        assert_eq!(read_projects(&manager), state);
+        assert!(client.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn project_copy_on_closed_client_requires_supported_home_and_keeps_client_closed() {
+        let (_root, manager) = fixture();
+        let state = project_state(&manager);
+        write_projects(&manager, &state);
+        let mut client = FakeClient::new(&manager);
+        client.present = false;
+        assert_eq!(
+            switch_with_client(&manager, "target", false, true, false, &client, |_| {})
+                .err()
+                .unwrap(),
+            crate::project_state::UNSUPPORTED
+        );
+        assert_eq!(
+            manager.status().unwrap().active_account_id.as_deref(),
+            Some("current")
+        );
+        assert_eq!(read_projects(&manager), state);
+        let result =
+            switch_with_client(&manager, "target", false, true, true, &client, |_| {}).unwrap();
+        assert_eq!(
+            result.projects.outcome,
+            crate::project_state::CarryOutcome::Copied
+        );
+        assert_eq!(result.restart, RestartOutcome::NotRequested);
+        assert_eq!(*client.calls.borrow(), ["is_stopped", "is_stopped"]);
+    }
+
+    #[test]
+    fn copy_failure_is_reported_separately_from_committed_auth_and_does_not_block_launch() {
+        for reappears in [false, true] {
+            let (_root, manager) = fixture();
+            let state = project_state(&manager);
+            write_projects(&manager, &state);
+            let mut client = FakeClient::new(&manager);
+            client.reappears_after_switch = reappears;
+            if !reappears {
+                fs::create_dir(manager.project_state_backup_path()).unwrap();
+            }
+            let result =
+                switch_with_client(&manager, "target", true, true, true, &client, |_| {}).unwrap();
+            assert_eq!(
+                result.projects.outcome,
+                crate::project_state::CarryOutcome::Failed
+            );
+            assert_eq!(result.projects.copied, 0);
+            assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
+            assert_eq!(result.restart, RestartOutcome::Restarted);
+            assert_eq!(read_projects(&manager), state);
+            assert_eq!(client.calls.borrow().last(), Some(&"launch"));
+        }
     }
 
     #[test]

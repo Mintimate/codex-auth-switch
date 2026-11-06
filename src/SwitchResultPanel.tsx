@@ -12,6 +12,7 @@ import type {
   SwitchResult,
   SwitchStage,
   SwitchVerification,
+  ProjectCarryResult,
 } from "./api";
 import type { Locale, MessageKey, Translate } from "./i18n";
 import { formatDate } from "./quotaView";
@@ -21,6 +22,7 @@ export type SwitchReport = {
   profileId: string;
   restart: SwitchResult["restart"] | "failed";
   failedStage?: SwitchStage;
+  projects?: ProjectCarryResult;
 };
 
 const fileKeys: Record<SwitchVerification["credentialFile"], MessageKey> = {
@@ -48,6 +50,7 @@ const stageKeys: Record<SwitchStage, MessageKey> = {
   checking: "switchProgressChecking",
   closing: "switchProgressClosing",
   switching: "switchProgressWriting",
+  carryingProjects: "switchProgressProjects",
   launching: "switchProgressLaunching",
 };
 
@@ -107,6 +110,7 @@ export function SwitchResultPanel({
     : t("switchTargetRemoved");
   const matched = verification?.credentialFile === "matched";
   const needsAttention =
+    report.projects?.outcome === "failed" ||
     report.restart === "failed" ||
     report.restart === "launchFailed" ||
     (report.restart === "restarted" &&
@@ -141,6 +145,23 @@ export function SwitchResultPanel({
         <div className="switch-result-message" role="status" aria-live="polite">
           <span>{t(outcomeKeys[report.restart], { account: label })}</span>
           {verificationWarning && <small>{verificationWarning}</small>}
+          {report.projects && report.projects.outcome !== "disabled" && (
+            <small>
+              {t(
+                report.projects.outcome === "copied"
+                  ? "projectCarryCopied"
+                  : report.projects.outcome === "failed"
+                    ? "projectCarryFailed"
+                    : "projectCarryNotNeeded",
+                { count: report.projects.copied },
+              )}
+            </small>
+          )}
+          {report.projects && report.projects.skipped > 0 && (
+            <small>
+              {t("projectCarrySkipped", { count: report.projects.skipped })}
+            </small>
+          )}
         </div>
         <button
           type="button"

@@ -104,6 +104,8 @@ const diagnosticDetail = (check: LocalDiagnosticCheck, t: Translate) =>
 type SettingsPanelProps = {
   switchPreference: SwitchPreference;
   onSwitchPreferenceChange: (value: SwitchPreference) => void;
+  carryProjects: boolean;
+  onCarryProjectsChange: (value: boolean) => void;
   restartSupported: boolean;
   backgroundRefresh: boolean;
   backgroundRefreshSaving: boolean;
@@ -156,6 +158,8 @@ function SegmentedControl<T extends string>({
 export function SettingsPanel({
   switchPreference,
   onSwitchPreferenceChange,
+  carryProjects,
+  onCarryProjectsChange,
   restartSupported,
   backgroundRefresh,
   backgroundRefreshSaving,
@@ -535,6 +539,26 @@ export function SettingsPanel({
                 {t("switchAndRestart")}
               </option>
             </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <strong>{t("carryLocalProjects")}</strong>
+              <span id="settings-projects-hint">
+                {t("carryLocalProjectsHint")}
+              </span>
+            </div>
+            <button
+              type="button"
+              className={`toggle${carryProjects ? " active" : ""}`}
+              role="switch"
+              aria-label={t("carryLocalProjects")}
+              aria-checked={carryProjects}
+              aria-describedby="settings-projects-hint"
+              disabled={isPublicDemo}
+              onClick={() => onCarryProjectsChange(!carryProjects)}
+            >
+              <span />
+            </button>
           </div>
         </section>
 

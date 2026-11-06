@@ -577,6 +577,27 @@ impl AccountManager {
         self.status()
     }
 
+    pub(crate) fn prepare_project_copy(
+        &self,
+        profile_id: &str,
+    ) -> Result<crate::project_state::PreparedCopy, &'static str> {
+        let vault = self
+            .load_vault()
+            .map_err(|_| crate::project_state::IDENTITY_ERROR)?;
+        let target = vault
+            .profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .ok_or(crate::project_state::IDENTITY_ERROR)?;
+        let current = self.read_live_auth().unwrap_or(Value::Null);
+        crate::project_state::prepare(&self.codex_home, &current, &target.auth)
+    }
+
+    pub(crate) fn project_state_backup_path(&self) -> PathBuf {
+        self.vault_path
+            .with_file_name("codex-project-state-backup.v1.json")
+    }
+
     pub fn rename_account(&self, profile_id: &str, label: &str) -> Result<AppStatus, ManagerError> {
         let label = validate_label(label)?;
         let mut vault = self.load_vault()?;
