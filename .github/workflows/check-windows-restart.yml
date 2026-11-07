@@ -23,6 +23,12 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v7
 
+      - name: 验证 Windows PowerShell 退出检测
+        shell: powershell
+        run: |
+          $env:CODEX_DESKTOP_TEST_SCRIPT = Get-Content -LiteralPath src-tauri/src/desktop_client/windows.ps1 -Raw -Encoding UTF8
+          & ./src-tauri/src/desktop_client/windows.tests.ps1
+
       - name: 验证 Windows PowerShell 修复脚本
         shell: powershell
         run: |

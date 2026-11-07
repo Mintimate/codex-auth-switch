@@ -52,7 +52,7 @@ export type SwitchPreference = "ask" | "switchOnly" | "restart";
 export type SwitchStage =
   "checking" | "closing" | "switching" | "carryingProjects" | "launching";
 export type ProjectCarryResult = {
-  outcome: "disabled" | "notNeeded" | "copied" | "failed";
+  outcome: "disabled" | "notNeeded" | "copied" | "reordered" | "failed";
   copied: number;
   skipped: number;
 };

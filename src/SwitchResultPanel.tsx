@@ -150,9 +150,11 @@ export function SwitchResultPanel({
               {t(
                 report.projects.outcome === "copied"
                   ? "projectCarryCopied"
-                  : report.projects.outcome === "failed"
-                    ? "projectCarryFailed"
-                    : "projectCarryNotNeeded",
+                  : report.projects.outcome === "reordered"
+                    ? "projectCarryReordered"
+                    : report.projects.outcome === "failed"
+                      ? "projectCarryFailed"
+                      : "projectCarryNotNeeded",
                 { count: report.projects.copied },
               )}
             </small>

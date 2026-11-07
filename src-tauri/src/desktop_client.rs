@@ -17,6 +17,8 @@ const CLOSE_FAILED: &str = "Codex 未能正常退出，账号未切换；请结�
 const UNSUPPORTED: &str = "当前系统暂不支持自动重启 Codex，请选择仅切换";
 const CUSTOM_HOME: &str = "自定义 CODEX_HOME 无法确认与桌面客户端一致，请选择仅切换";
 
+#[cfg(any(target_os = "macos", test))]
+mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
@@ -344,7 +346,8 @@ impl DesktopClient for SystemClient {
         }
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
-            // 连同原应用包内尚未退出的子进程一起等待；不对这些进程发送终止信号。
+            // 等待原应用包内仍可能读写状态的进程；已识别的独立崩溃报告器不阻止退出。
+            // 不对这些进程发送终止信号，更新器和未知后台进程仍需正常结束。
             // 退出中的进程可能在脚本快照与原生身份查询之间消失。
             // 查询失败只表示尚未确认退出，继续等待，不能据此写入凭据。
             if matches!(detect(), Ok(instances) if instances.is_empty())
@@ -455,10 +458,7 @@ fn stopped(target: &Instance) -> Result<bool, String> {
         let mut command = Command::new("/bin/ps");
         command.args(["-axo", "comm="]);
         let output = run_command(&mut command)?;
-        let contents = target.path.join("Contents");
-        Ok(!output
-            .lines()
-            .any(|line| Path::new(line.trim()).starts_with(&contents)))
+        Ok(macos::bundle_processes_stopped(&target.path, &output))
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -602,6 +602,30 @@ mod tests {
                 "createdAt": 1, "updatedAt": 2
             }}
         })
+    }
+
+    fn sidebar_reorder_state(manager: &AccountManager) -> Value {
+        let mut state = project_state(manager);
+        state["local-projects"]["other"] = json!({
+            "id": "other", "name": "other",
+            "rootPaths": [manager.codex_home_path().join("other-project")],
+            "createdAt": 1, "updatedAt": 2
+        });
+        state["project-order"] = json!(["other", "local"]);
+        state["electron-persisted-atom-state"] = json!({
+            "unified-sidebar-project-order-v1": ["codex:project:other", "codex:project:local"]
+        });
+        state["electron-account-renderer-state-v1"]["inactive"][TARGET_OWNER] = json!({
+            "atoms": {
+                "unified-sidebar-project-order-v1": ["codex:project:local", "codex:project:other"],
+                "unrelated": "target-private"
+            },
+            "globals": {
+                "local-projects": state["local-projects"],
+                "project-order": state["project-order"]
+            }
+        });
+        state
     }
 
     fn write_projects(manager: &AccountManager, value: &Value) {
@@ -905,6 +929,83 @@ mod tests {
     }
 
     #[test]
+    fn running_client_blocks_sidebar_reorder_before_auth_changes() {
+        let (_root, manager) = fixture();
+        let state = sidebar_reorder_state(&manager);
+        write_projects(&manager, &state);
+        let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
+        let before_vault = fs::read(manager.vault_path()).unwrap();
+        let state_path = manager.codex_home_path().join(".codex-global-state.json");
+        let before_projects = fs::read(&state_path).unwrap();
+        let client = FakeClient::new(&manager);
+
+        let error = switch_with_client(&manager, "target", false, true, true, &client, |_| {})
+            .err()
+            .unwrap();
+
+        assert_eq!(error, crate::project_state::QUIT_REQUIRED);
+        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+        assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+        assert!(fs::read(&state_path).unwrap() == before_projects);
+        assert!(!manager.project_state_backup_path().exists());
+        assert_eq!(*client.calls.borrow(), ["is_stopped"]);
+    }
+
+    #[test]
+    fn sidebar_reorder_is_backed_up_and_applied_before_launch_without_new_projects() {
+        let (_root, manager) = fixture();
+        let state = sidebar_reorder_state(&manager);
+        write_projects(&manager, &state);
+        let mut expected = state.clone();
+        expected["electron-account-renderer-state-v1"]["inactive"][TARGET_OWNER]["atoms"]
+            ["unified-sidebar-project-order-v1"] =
+            state["electron-persisted-atom-state"]["unified-sidebar-project-order-v1"].clone();
+        let client = FakeClient::new(&manager);
+        let stages = RefCell::new(vec![]);
+
+        let result = switch_with_client(&manager, "target", true, true, true, &client, |stage| {
+            stages.borrow_mut().push(stage);
+            if stage == SwitchStage::Launching {
+                assert_eq!(read_projects(&manager), expected);
+                assert_eq!(
+                    serde_json::from_slice::<Value>(
+                        &fs::read(manager.project_state_backup_path()).unwrap()
+                    )
+                    .unwrap(),
+                    state
+                );
+            }
+        })
+        .unwrap();
+
+        assert_eq!(
+            result.projects,
+            crate::project_state::CarryResult {
+                outcome: crate::project_state::CarryOutcome::Reordered,
+                copied: 0,
+                skipped: 0
+            }
+        );
+        assert_eq!(result.restart, RestartOutcome::Restarted);
+        assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
+        assert_eq!(read_projects(&manager), expected);
+        assert_eq!(
+            *stages.borrow(),
+            [
+                SwitchStage::Checking,
+                SwitchStage::Closing,
+                SwitchStage::Switching,
+                SwitchStage::CarryingProjects,
+                SwitchStage::Launching
+            ]
+        );
+        assert_eq!(
+            *client.calls.borrow(),
+            ["prepare", "close", "is_stopped", "is_stopped", "launch"]
+        );
+    }
+
+    #[test]
     fn project_copy_on_closed_client_requires_supported_home_and_keeps_client_closed() {
         let (_root, manager) = fixture();
         let state = project_state(&manager);
@@ -1052,6 +1153,38 @@ mod tests {
         }))
         .unwrap();
         assert!(instance.package.is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn powershell_exit_detection_handles_helpers_and_disappearing_processes() {
+        use std::os::windows::process::CommandExt;
+
+        let system_root = std::env::var_os("SystemRoot").unwrap();
+        let mut command = Command::new(
+            PathBuf::from(system_root).join("System32/WindowsPowerShell/v1.0/powershell.exe"),
+        );
+        command
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                include_str!("desktop_client/windows.tests.ps1"),
+            ])
+            .creation_flags(0x08000000)
+            .env(
+                "CODEX_DESKTOP_TEST_SCRIPT",
+                include_str!("desktop_client/windows.ps1"),
+            );
+        // 仅执行合成进程快照，错误可用于定位 Windows PowerShell 5.1 的兼容性问题。
+        // 测试替身不会查询、关闭或结束任何真实应用进程。
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "synthetic PowerShell fixture failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "passed");
     }
 
     fn launch_confirmation() -> LaunchConfirmation {
