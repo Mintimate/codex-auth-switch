@@ -68,13 +68,11 @@ const messageOf = (error: unknown) =>
 const DEFAULT_TAB_STORAGE_KEY = "codex-auth-switch-default-tab";
 const PRIVATE_MODE_STORAGE_KEY = "codex-auth-switch-private-mode";
 const SWITCH_PREFERENCE_STORAGE_KEY = "codex-auth-switch-switch-preference";
-const CARRY_PROJECTS_STORAGE_KEY = "codex-auth-switch-carry-local-projects";
 const LABS_HOSTED_LOGIN_STORAGE_KEY = "codex-auth-switch-labs-hosted-login";
 const switchStageKeys: Record<SwitchStage, MessageKey> = {
   checking: "switchProgressChecking",
   closing: "switchProgressClosing",
   switching: "switchProgressWriting",
-  carryingProjects: "switchProgressProjects",
   launching: "switchProgressLaunching",
 };
 const storedSwitchPreference = (): SwitchPreference => {
@@ -118,9 +116,6 @@ function App() {
     storedSwitchPreference,
   );
   const [restartSupported, setRestartSupported] = useState(false);
-  const [carryProjects, setCarryProjects] = useState(
-    () => window.localStorage.getItem(CARRY_PROJECTS_STORAGE_KEY) !== "false",
-  );
   const [switchDialogId, setSwitchDialogId] = useState<string | null>(null);
   const [switchStage, setSwitchStage] = useState<SwitchStage | null>(null);
   const [switchReport, setSwitchReport] = useState<SwitchReport | null>(null);
@@ -256,11 +251,9 @@ function App() {
   }, [switchPreference]);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      CARRY_PROJECTS_STORAGE_KEY,
-      String(carryProjects),
-    );
-  }, [carryProjects]);
+    // 项目合并已移至实验室的一次性操作，不继承旧版自动沿用偏好。
+    window.localStorage.removeItem("codex-auth-switch-carry-local-projects");
+  }, []);
 
   useEffect(() => {
     if (activeTab === "usage") void refreshUsage();
@@ -394,11 +387,7 @@ function App() {
     }
   };
 
-  const handleSwitchAccount = async (
-    profileId: string,
-    restart: boolean,
-    inheritProjects = carryProjects,
-  ) => {
+  const handleSwitchAccount = async (profileId: string, restart: boolean) => {
     if (busy || loading || switchingRef.current) return;
     switchingRef.current = true;
     setSwitchingId(profileId);
@@ -415,17 +404,12 @@ function App() {
         ? 0
         : ACCOUNT_SWITCH_FEEDBACK_MS;
       const [result] = await Promise.all([
-        switchAccountWithOptions(
-          profileId,
-          restart,
-          (stage) => {
-            if (acceptProgress) {
-              lastStage = stage;
-              setSwitchStage(stage);
-            }
-          },
-          inheritProjects,
-        ),
+        switchAccountWithOptions(profileId, restart, (stage) => {
+          if (acceptProgress) {
+            lastStage = stage;
+            setSwitchStage(stage);
+          }
+        }),
         new Promise<void>((resolve) => window.setTimeout(resolve, feedbackMs)),
       ]);
       const nextStatus = result.status;
@@ -434,7 +418,6 @@ function App() {
       setSwitchReport({
         profileId,
         restart: result.restart,
-        projects: result.projects,
       });
       refreshActiveData();
     } catch (reason) {
@@ -897,6 +880,11 @@ function App() {
                 aria-label={t("labsTab")}
               >
                 <LabsPanel
+                  status={status}
+                  privateMode={privateMode}
+                  locale={locale}
+                  desktopSupported={restartSupported}
+                  accountBusy={Boolean(busy || switchingId)}
                   theme={theme}
                   onThemeChange={setTheme}
                   hostedLoginEnabled={hostedLoginEnabled}
@@ -935,8 +923,6 @@ function App() {
                   onBackgroundRefreshChange={setBackgroundRefresh}
                   switchPreference={switchPreference}
                   onSwitchPreferenceChange={setSwitchPreference}
-                  carryProjects={carryProjects}
-                  onCarryProjectsChange={setCarryProjects}
                   restartSupported={restartSupported}
                   defaultTab={defaultTab}
                   languageOptions={languageOptions}
@@ -972,15 +958,13 @@ function App() {
               : switchDialogAccount.label
           }
           restartSupported={restartSupported}
-          carryProjects={carryProjects}
           onClose={() => setSwitchDialogId(null)}
-          onConfirm={(restart, remember, inheritProjects) => {
+          onConfirm={(restart, remember) => {
             const id = switchDialogAccount.id;
             if (remember)
               setSwitchPreference(restart ? "restart" : "switchOnly");
-            setCarryProjects(inheritProjects);
             setSwitchDialogId(null);
-            void handleSwitchAccount(id, restart, inheritProjects);
+            void handleSwitchAccount(id, restart);
           }}
           t={t}
         />

@@ -6669,6 +6669,40 @@ button:disabled {
 .labs-feature-actions > span {
   font-size: var(--text-caption);
 }
+.project-merge-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.project-merge-accounts label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: var(--foreground);
+}
+.project-merge-accounts select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--foreground);
+  background: var(--input);
+  font: inherit;
+}
+.project-merge-result,
+.project-merge-error {
+  margin-top: 16px;
+}
+.project-merge-error {
+  color: var(--danger);
+}
+.project-merge .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .windows-startup-repair-ready {
   display: grid;
   gap: 8px;

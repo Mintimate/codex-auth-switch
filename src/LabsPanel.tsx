@@ -1,12 +1,19 @@
 import { isPublicDemo } from "./runtime";
 import { FlaskConical } from "lucide-react";
-import type { Translate } from "./i18n";
+import type { Locale, Translate } from "./i18n";
+import type { AppStatus } from "./api";
 import type { ThemePreferences } from "./themePreferences";
 import { ThemePicker } from "./ThemePicker";
 import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
 import { WindowsStartupRepairPanel } from "./WindowsStartupRepairPanel";
+import { ProjectMergePanel } from "./ProjectMergePanel";
 
 export function LabsPanel({
+  status,
+  privateMode,
+  locale,
+  desktopSupported,
+  accountBusy,
   hostedLoginEnabled,
   onHostedLoginChange,
   onTryHostedLogin,
@@ -14,6 +21,11 @@ export function LabsPanel({
   onThemeChange,
   t,
 }: {
+  status: AppStatus | null;
+  privateMode: boolean;
+  locale: Locale;
+  desktopSupported: boolean;
+  accountBusy: boolean;
   hostedLoginEnabled: boolean;
   onHostedLoginChange: (enabled: boolean) => void;
   onTryHostedLogin: () => void;
@@ -85,6 +97,14 @@ export function LabsPanel({
           </div>
         </div>
       </section>
+      <ProjectMergePanel
+        status={status}
+        privateMode={privateMode}
+        locale={locale}
+        desktopSupported={desktopSupported}
+        accountBusy={accountBusy}
+        t={t}
+      />
       <WindowsStartupRepairPanel t={t} />
       <DiagnosticLogPanel t={t} />
       <ThemePicker value={theme} onChange={onThemeChange} t={t} />

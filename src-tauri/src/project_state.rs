@@ -1,5 +1,5 @@
 //! Codex 26.1103 桌面项目状态的本地兼容层，不是公开稳定接口。
-//! 仅向目标账号合并已知形态的纯本地项目入口；不迁移云端绑定、会话、权限或认证。
+//! 仅由实验室一次性操作调用；向目标账号合并已知形态的纯本地项目入口；不迁移云端绑定、会话、权限或认证。
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -20,17 +20,16 @@ const ATOMS_KEY: &str = "electron-persisted-atom-state";
 const SIDEBAR_ORDER_KEY: &str = "unified-sidebar-project-order-v1";
 const CODEX_PROJECT_PREFIX: &str = "codex:project:";
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
-pub(crate) const INSPECT_ERROR: &str = "无法安全读取 Codex 项目配置；可关闭沿用本地项目后切换账号";
-pub(crate) const IDENTITY_ERROR: &str =
-    "无法确认项目所属账号；请重新登录，或关闭沿用本地项目后切换账号";
-pub(crate) const QUIT_REQUIRED: &str =
-    "沿用本地项目需要先完全退出 Codex，或选择切换并重启；也可关闭沿用后仅切换账号";
-pub(crate) const UNSUPPORTED: &str = "当前环境无法安全沿用本地项目；请关闭沿用本地项目后切换账号";
+pub(crate) const INSPECT_ERROR: &str = "无法安全读取 Codex 项目配置，未执行合并";
+pub(crate) const IDENTITY_ERROR: &str = "无法确认项目所属账号，请重新选择已保存的账号";
+pub(crate) const QUIT_REQUIRED: &str = "请先完全退出 Codex，再执行一次性项目合并";
+pub(crate) const UNSUPPORTED: &str = "一次性项目合并仅支持 macOS / Windows 的默认 Codex 目录";
+
+pub(crate) const SAME_ACCOUNT: &str = "请选择不同的来源账号和目标账号";
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum CarryOutcome {
-    Disabled,
+pub enum MergeOutcome {
     NotNeeded,
     Copied,
     Reordered,
@@ -39,36 +38,26 @@ pub enum CarryOutcome {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CarryResult {
-    pub outcome: CarryOutcome,
+pub struct MergeResult {
+    pub outcome: MergeOutcome,
     pub copied: usize,
     pub skipped: usize,
 }
 
-impl CarryResult {
-    pub fn disabled() -> Self {
-        Self {
-            outcome: CarryOutcome::Disabled,
-            copied: 0,
-            skipped: 0,
-        }
-    }
-}
-
 // 不派生 Debug/Serialize：快照可能含有其它客户端的私密状态，只在后端内存中处理。
-pub(crate) struct PreparedCopy {
+pub(crate) struct PreparedMerge {
     before: Vec<u8>,
     after: Option<Vec<u8>>,
-    pub result: CarryResult,
+    pub result: MergeResult,
 }
 
-impl PreparedCopy {
+impl PreparedMerge {
     fn unchanged(skipped: usize) -> Self {
         Self {
             before: Vec::new(),
             after: None,
-            result: CarryResult {
-                outcome: CarryOutcome::NotNeeded,
+            result: MergeResult {
+                outcome: MergeOutcome::NotNeeded,
                 copied: 0,
                 skipped,
             },
@@ -81,7 +70,7 @@ impl PreparedCopy {
 
     /// 调用方须在写入前确认桌面客户端已停止，并在此操作结束后才启动客户端。
     /// 备份失败或快照变化时不覆盖状态；错误只返回固定结果，不输出文件内容。
-    pub fn apply(self, codex_home: &Path, backup: &Path) -> CarryResult {
+    pub fn apply(self, codex_home: &Path, backup: &Path) -> MergeResult {
         let Some(after) = self.after else {
             return self.result;
         };
@@ -100,8 +89,8 @@ impl PreparedCopy {
         if write().is_ok() {
             self.result
         } else {
-            CarryResult {
-                outcome: CarryOutcome::Failed,
+            MergeResult {
+                outcome: MergeOutcome::Failed,
                 copied: 0,
                 skipped: self.result.skipped,
             }
@@ -183,14 +172,14 @@ pub(crate) fn prepare(
     codex_home: &Path,
     source_auth: &Value,
     target_auth: &Value,
-) -> Result<PreparedCopy, &'static str> {
+) -> Result<PreparedMerge, &'static str> {
     let Some(before) = read_state(&codex_home.join(STATE_FILE)).map_err(|_| INSPECT_ERROR)? else {
-        return Ok(PreparedCopy::unchanged(0));
+        return Ok(PreparedMerge::unchanged(0));
     };
     let mut state: Value = serde_json::from_slice(&before).map_err(|_| INSPECT_ERROR)?;
     let object = state.as_object().ok_or(INSPECT_ERROR)?;
     let Some(scoped) = object.get(SCOPED_KEY) else {
-        return Ok(PreparedCopy::unchanged(0));
+        return Ok(PreparedMerge::unchanged(0));
     };
     let scoped = scoped.as_object().ok_or(INSPECT_ERROR)?;
     let owner = match scoped.get("owner") {
@@ -211,7 +200,7 @@ pub(crate) fn prepare(
     let source_key = owner_key(source_auth).ok_or(IDENTITY_ERROR)?;
     let target_key = owner_key(target_auth).ok_or(IDENTITY_ERROR)?;
     if source_key == target_key {
-        return Ok(PreparedCopy::unchanged(0));
+        return Ok(PreparedMerge::unchanged(0));
     }
     let source = if owner == Some(source_key.as_str()) {
         object
@@ -258,7 +247,7 @@ pub(crate) fn prepare(
     };
     let merged = merge_projects(source, &source_atoms, target, target_atoms)?;
     if !merged.changed {
-        return Ok(PreparedCopy::unchanged(merged.skipped));
+        return Ok(PreparedMerge::unchanged(merged.skipped));
     }
     if target_active {
         let root = state.as_object_mut().ok_or(INSPECT_ERROR)?;
@@ -279,14 +268,14 @@ pub(crate) fn prepare(
     if after.len() as u64 > MAX_BYTES {
         return Err(INSPECT_ERROR);
     }
-    Ok(PreparedCopy {
+    Ok(PreparedMerge {
         before,
         after: Some(after),
-        result: CarryResult {
+        result: MergeResult {
             outcome: if merged.copied > 0 {
-                CarryOutcome::Copied
+                MergeOutcome::Copied
             } else {
-                CarryOutcome::Reordered
+                MergeOutcome::Reordered
             },
             copied: merged.copied,
             skipped: merged.skipped,
@@ -555,8 +544,8 @@ mod tests {
         let result = copy.apply(dir.path(), &backup);
         assert_eq!(
             result,
-            CarryResult {
-                outcome: CarryOutcome::Copied,
+            MergeResult {
+                outcome: MergeOutcome::Copied,
                 copied: 2,
                 skipped: 0
             }
@@ -646,8 +635,8 @@ mod tests {
             assert!(copy.needs_write());
             assert_eq!(
                 copy.apply(dir.path(), &backup),
-                CarryResult {
-                    outcome: CarryOutcome::Reordered,
+                MergeResult {
+                    outcome: MergeOutcome::Reordered,
                     copied: 0,
                     skipped: 0,
                 }
@@ -919,7 +908,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             copy.apply(dir.path(), &dir.path().join("backup")).outcome,
-            CarryOutcome::Failed
+            MergeOutcome::Failed
         );
         assert_eq!(read(dir.path()), changed);
         assert!(!dir.path().join("backup").exists());
@@ -927,7 +916,7 @@ mod tests {
         fs::create_dir(dir.path().join("backup")).unwrap();
         assert_eq!(
             copy.apply(dir.path(), &dir.path().join("backup")).outcome,
-            CarryOutcome::Failed
+            MergeOutcome::Failed
         );
         assert_eq!(read(dir.path()), changed);
     }
@@ -959,7 +948,7 @@ mod tests {
         let copy = prepare(dir.path(), &auth("source"), &auth("target")).unwrap();
         assert_eq!(
             copy.apply(dir.path(), &backup).outcome,
-            CarryOutcome::Failed
+            MergeOutcome::Failed
         );
         assert_eq!(read(other.path()), value);
         fs::remove_file(&backup).unwrap();

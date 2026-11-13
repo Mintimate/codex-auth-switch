@@ -30,7 +30,6 @@ pub enum SwitchStage {
     Checking,
     Closing,
     Switching,
-    CarryingProjects,
     Launching,
 }
 
@@ -48,7 +47,6 @@ pub enum RestartOutcome {
 pub struct SwitchResult {
     pub status: AppStatus,
     pub restart: RestartOutcome,
-    pub projects: crate::project_state::CarryResult,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,29 +196,18 @@ pub fn switch_account(
     manager: &AccountManager,
     profile_id: &str,
     restart: bool,
-    carry_projects: bool,
     progress: impl Fn(SwitchStage),
 ) -> Result<SwitchResult, String> {
     if restart {
         ensure_default_home(manager.codex_home_path())?;
     }
-    switch_with_client(
-        manager,
-        profile_id,
-        restart,
-        carry_projects,
-        supported() && ensure_default_home(manager.codex_home_path()).is_ok(),
-        &SystemClient,
-        progress,
-    )
+    switch_with_client(manager, profile_id, restart, &SystemClient, progress)
 }
 
 fn switch_with_client<C: DesktopClient>(
     manager: &AccountManager,
     profile_id: &str,
     restart: bool,
-    carry_projects: bool,
-    project_home_supported: bool,
     client: &C,
     progress: impl Fn(SwitchStage),
 ) -> Result<SwitchResult, String> {
@@ -233,49 +220,11 @@ fn switch_with_client<C: DesktopClient>(
         progress(SwitchStage::Closing);
         client.close(target)?;
     }
-    // 退出后读取最新项目状态。仅切换若仍在运行，拒绝写入并保持原账号，允许用户重新选择。
-    let project_copy = if carry_projects {
-        let copy = manager
-            .prepare_project_copy(profile_id)
-            .map_err(str::to_owned)?;
-        if copy.needs_write() {
-            if !project_home_supported {
-                return Err(crate::project_state::UNSUPPORTED.into());
-            }
-            if !client.is_stopped() {
-                return Err(crate::project_state::QUIT_REQUIRED.into());
-            }
-        }
-        Some(copy)
-    } else {
-        None
-    };
     progress(SwitchStage::Switching);
     // 退出确认后才读取最新旧账号凭据并原子提交；关闭失败不会改写认证。
     let status = manager
         .switch_account(profile_id)
         .map_err(|e| e.to_string())?;
-    let projects = if let Some(copy) = project_copy {
-        if copy.needs_write() {
-            progress(SwitchStage::CarryingProjects);
-            if client.is_stopped() {
-                copy.apply(
-                    manager.codex_home_path(),
-                    &manager.project_state_backup_path(),
-                )
-            } else {
-                crate::project_state::CarryResult {
-                    outcome: crate::project_state::CarryOutcome::Failed,
-                    copied: 0,
-                    skipped: copy.result.skipped,
-                }
-            }
-        } else {
-            copy.result
-        }
-    } else {
-        crate::project_state::CarryResult::disabled()
-    };
     let restart = if let Some(target) = &target {
         progress(SwitchStage::Launching);
         if client.launch(target).is_ok() {
@@ -289,11 +238,51 @@ fn switch_with_client<C: DesktopClient>(
     } else {
         RestartOutcome::NotRequested
     };
-    Ok(SwitchResult {
-        status,
-        restart,
-        projects,
-    })
+    Ok(SwitchResult { status, restart })
+}
+
+/// 实验室的一次性操作；不切换认证，也不退出或启动桌面客户端。
+pub fn merge_local_projects(
+    manager: &AccountManager,
+    source_profile_id: &str,
+    target_profile_id: &str,
+) -> Result<crate::project_state::MergeResult, String> {
+    merge_projects_with_client(
+        manager,
+        source_profile_id,
+        target_profile_id,
+        supported() && ensure_default_home(manager.codex_home_path()).is_ok(),
+        &SystemClient,
+    )
+}
+
+fn merge_projects_with_client<C: DesktopClient>(
+    manager: &AccountManager,
+    source_profile_id: &str,
+    target_profile_id: &str,
+    project_home_supported: bool,
+    client: &C,
+) -> Result<crate::project_state::MergeResult, String> {
+    if !project_home_supported {
+        return Err(crate::project_state::UNSUPPORTED.into());
+    }
+    if !client.is_stopped() {
+        return Err(crate::project_state::QUIT_REQUIRED.into());
+    }
+    let merge = manager
+        .prepare_project_merge(source_profile_id, target_profile_id)
+        .map_err(str::to_owned)?;
+    if !merge.needs_write() {
+        return Ok(merge.result);
+    }
+    // 读取快照后再次检查；客户端重开时不写入。apply 还会检查文件变化并先备份。
+    if !client.is_stopped() {
+        return Err(crate::project_state::QUIT_REQUIRED.into());
+    }
+    Ok(merge.apply(
+        manager.codex_home_path(),
+        &manager.project_state_backup_path(),
+    ))
 }
 
 fn ensure_default_home(home: &Path) -> Result<(), String> {
@@ -666,7 +655,7 @@ mod tests {
         launch_fails: bool,
         break_write: bool,
         projects_on_close: Option<Value>,
-        reappears_after_switch: bool,
+        reappears_on_second_check: bool,
         calls: RefCell<Vec<&'static str>>,
     }
 
@@ -680,7 +669,7 @@ mod tests {
                 launch_fails: false,
                 break_write: false,
                 projects_on_close: None,
-                reappears_after_switch: false,
+                reappears_on_second_check: false,
                 calls: RefCell::new(vec![]),
             }
         }
@@ -690,8 +679,14 @@ mod tests {
         type Target = ();
         fn is_stopped(&self) -> bool {
             self.calls.borrow_mut().push("is_stopped");
-            if self.reappears_after_switch
-                && self.manager.status().unwrap().active_account_id.as_deref() == Some("target")
+            if self.reappears_on_second_check
+                && self
+                    .calls
+                    .borrow()
+                    .iter()
+                    .filter(|call| **call == "is_stopped")
+                    .count()
+                    > 1
             {
                 return false;
             }
@@ -748,7 +743,7 @@ mod tests {
         let (_root, manager) = fixture();
         let client = FakeClient::new(&manager);
         let stages = RefCell::new(vec![]);
-        let result = switch_with_client(&manager, "target", true, true, true, &client, |stage| {
+        let result = switch_with_client(&manager, "target", true, &client, |stage| {
             stages.borrow_mut().push(stage)
         })
         .unwrap();
@@ -771,11 +766,10 @@ mod tests {
     }
 
     #[test]
-    fn only_switch_without_project_changes_never_inspects_or_controls_processes() {
+    fn only_switch_never_inspects_or_controls_processes() {
         let (_root, manager) = fixture();
         let client = FakeClient::new(&manager);
-        let result =
-            switch_with_client(&manager, "target", false, true, true, &client, |_| {}).unwrap();
+        let result = switch_with_client(&manager, "target", false, &client, |_| {}).unwrap();
         assert_eq!(result.restart, RestartOutcome::NotRequested);
         assert!(client.calls.borrow().is_empty());
     }
@@ -785,8 +779,7 @@ mod tests {
         let (_root, manager) = fixture();
         let mut client = FakeClient::new(&manager);
         client.present = false;
-        let result =
-            switch_with_client(&manager, "target", true, true, true, &client, |_| {}).unwrap();
+        let result = switch_with_client(&manager, "target", true, &client, |_| {}).unwrap();
         assert_eq!(result.restart, RestartOutcome::NotRunning);
         assert_eq!(*client.calls.borrow(), ["prepare"]);
         assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
@@ -796,9 +789,7 @@ mod tests {
     fn invalid_target_does_not_touch_client_or_auth() {
         let (_root, manager) = fixture();
         let client = FakeClient::new(&manager);
-        assert!(
-            switch_with_client(&manager, "missing", true, true, true, &client, |_| {}).is_err()
-        );
+        assert!(switch_with_client(&manager, "missing", true, &client, |_| {}).is_err());
         assert!(client.calls.borrow().is_empty());
         assert_eq!(
             manager.status().unwrap().active_account_id.as_deref(),
@@ -816,9 +807,7 @@ mod tests {
             let mut client = FakeClient::new(&manager);
             client.prepare_fails = detection;
             client.close_fails = !detection;
-            assert!(
-                switch_with_client(&manager, "target", true, true, true, &client, |_| {}).is_err()
-            );
+            assert!(switch_with_client(&manager, "target", true, &client, |_| {}).is_err());
             assert!(fs::read(auth_path).unwrap() == before_auth);
             assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
             assert!(!client.calls.borrow().contains(&"launch"));
@@ -830,7 +819,7 @@ mod tests {
         let (_root, manager) = fixture();
         let mut client = FakeClient::new(&manager);
         client.break_write = true;
-        assert!(switch_with_client(&manager, "target", true, true, true, &client, |_| {}).is_err());
+        assert!(switch_with_client(&manager, "target", true, &client, |_| {}).is_err());
         assert_eq!(*client.calls.borrow(), ["prepare", "close"]);
     }
 
@@ -839,8 +828,7 @@ mod tests {
         let (_root, manager) = fixture();
         let mut client = FakeClient::new(&manager);
         client.launch_fails = true;
-        let result =
-            switch_with_client(&manager, "target", true, true, true, &client, |_| {}).unwrap();
+        let result = switch_with_client(&manager, "target", true, &client, |_| {}).unwrap();
         assert_eq!(result.restart, RestartOutcome::LaunchFailed);
         assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
         // 仅允许账号摘要和重启结果跨过 IPC 边界。
@@ -851,44 +839,54 @@ mod tests {
     }
 
     #[test]
-    fn projects_use_exit_time_snapshot_and_are_ready_before_launch() {
-        let (_root, manager) = fixture();
-        let mut state = project_state(&manager);
-        write_projects(&manager, &state);
-        state["local-projects"]["local"]["name"] = json!("saved-at-exit");
-        let mut client = FakeClient::new(&manager);
-        client.projects_on_close = Some(state.clone());
-        let stages = RefCell::new(vec![]);
-        let result = switch_with_client(&manager, "target", true, true, true, &client, |stage| {
-            stages.borrow_mut().push(stage);
-            if stage == SwitchStage::Launching {
-                let actual = read_projects(&manager);
-                assert_eq!(
-                    actual["electron-account-renderer-state-v1"]["inactive"][TARGET_OWNER]
-                        ["globals"]["local-projects"],
-                    state["local-projects"]
-                );
+    fn switching_never_reads_or_writes_project_settings() {
+        for restart in [false, true] {
+            for malformed in [false, true] {
+                let (_root, manager) = fixture();
+                let path = manager.codex_home_path().join(".codex-global-state.json");
+                if malformed {
+                    fs::write(&path, b"invalid project state").unwrap();
+                } else {
+                    write_projects(&manager, &sidebar_reorder_state(&manager));
+                }
+                let before = fs::read(&path).unwrap();
+                let client = FakeClient::new(&manager);
+                let result =
+                    switch_with_client(&manager, "target", restart, &client, |_| {}).unwrap();
+                assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
+                assert_eq!(fs::read(&path).unwrap(), before);
+                assert!(!manager.project_state_backup_path().exists());
+                assert!(!client.calls.borrow().contains(&"is_stopped"));
+                assert!(serde_json::to_value(result)
+                    .unwrap()
+                    .get("projects")
+                    .is_none());
             }
-        })
-        .unwrap();
+        }
+    }
+
+    #[test]
+    fn manual_merge_backs_up_projects_without_changing_auth_or_controlling_client() {
+        let (_root, manager) = fixture();
+        let state = project_state(&manager);
+        write_projects(&manager, &state);
+        let auth_path = manager.codex_home_path().join("auth.json");
+        let before_auth = fs::read(&auth_path).unwrap();
+        let before_vault = fs::read(manager.vault_path()).unwrap();
+        let mut client = FakeClient::new(&manager);
+        client.present = false;
+
+        let result =
+            merge_projects_with_client(&manager, "current", "target", true, &client).unwrap();
+
+        assert_eq!(result.outcome, crate::project_state::MergeOutcome::Copied);
+        assert_eq!(result.copied, 1);
+        let after = read_projects(&manager);
+        assert_eq!(after["local-projects"], state["local-projects"]);
         assert_eq!(
-            result.projects.outcome,
-            crate::project_state::CarryOutcome::Copied
-        );
-        assert_eq!(result.projects.copied, 1);
-        assert_eq!(
-            *stages.borrow(),
-            [
-                SwitchStage::Checking,
-                SwitchStage::Closing,
-                SwitchStage::Switching,
-                SwitchStage::CarryingProjects,
-                SwitchStage::Launching
-            ]
-        );
-        assert_eq!(
-            *client.calls.borrow(),
-            ["prepare", "close", "is_stopped", "is_stopped", "launch"]
+            after["electron-account-renderer-state-v1"]["inactive"][TARGET_OWNER]["globals"]
+                ["local-projects"],
+            state["local-projects"]
         );
         assert_eq!(
             serde_json::from_slice::<Value>(
@@ -897,164 +895,226 @@ mod tests {
             .unwrap(),
             state
         );
-    }
-
-    #[test]
-    fn running_client_blocks_project_copy_before_auth_changes_and_toggle_allows_switch() {
-        let (_root, manager) = fixture();
-        let state = project_state(&manager);
-        write_projects(&manager, &state);
-        let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
-        let before_vault = fs::read(manager.vault_path()).unwrap();
-        let client = FakeClient::new(&manager);
-        let error = switch_with_client(&manager, "target", false, true, true, &client, |_| {})
-            .err()
-            .unwrap();
-        assert_eq!(error, crate::project_state::QUIT_REQUIRED);
-        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+        assert!(fs::read(&auth_path).unwrap() == before_auth);
         assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
-        assert_eq!(read_projects(&manager), state);
-        assert!(!manager.project_state_backup_path().exists());
-        assert_eq!(*client.calls.borrow(), ["is_stopped"]);
-        client.calls.borrow_mut().clear();
-        let result =
-            switch_with_client(&manager, "target", false, false, true, &client, |_| {}).unwrap();
+        assert_eq!(*client.calls.borrow(), ["is_stopped", "is_stopped"]);
         assert_eq!(
-            result.projects.outcome,
-            crate::project_state::CarryOutcome::Disabled
+            serde_json::to_value(result).unwrap(),
+            json!({"outcome":"copied", "copied":1, "skipped":0})
         );
-        assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
-        assert_eq!(read_projects(&manager), state);
-        assert!(client.calls.borrow().is_empty());
+
+        let backup = fs::read(manager.project_state_backup_path()).unwrap();
+        let again =
+            merge_projects_with_client(&manager, "current", "target", true, &client).unwrap();
+        assert_eq!(again.outcome, crate::project_state::MergeOutcome::NotNeeded);
+        assert_eq!(read_projects(&manager), after);
+        assert_eq!(
+            fs::read(manager.project_state_backup_path()).unwrap(),
+            backup
+        );
     }
 
     #[test]
-    fn running_client_blocks_sidebar_reorder_before_auth_changes() {
+    fn manual_merge_can_restore_from_selected_inactive_account_into_current_account() {
+        let (_root, manager) = fixture();
+        let source = project_state(&manager);
+        let source_owner = source["electron-account-renderer-state-v1"]["owner"]
+            .as_str()
+            .unwrap();
+        let mut state = json!({
+            "electron-account-renderer-state-v1": {"owner": TARGET_OWNER, "inactive": {}},
+            "local-projects": {}
+        });
+        state["electron-account-renderer-state-v1"]["inactive"][source_owner] = json!({
+            "atoms": {}, "globals": {"local-projects": source["local-projects"]}
+        });
+        write_projects(&manager, &state);
+        manager.switch_account("target").unwrap();
+        let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
+        let before_vault = fs::read(manager.vault_path()).unwrap();
+        let mut client = FakeClient::new(&manager);
+        client.present = false;
+
+        let result =
+            merge_projects_with_client(&manager, "current", "target", true, &client).unwrap();
+
+        assert_eq!(result.outcome, crate::project_state::MergeOutcome::Copied);
+        let after = read_projects(&manager);
+        assert_eq!(after["local-projects"], source["local-projects"]);
+        assert_eq!(
+            after["electron-account-renderer-state-v1"],
+            state["electron-account-renderer-state-v1"]
+        );
+        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+        assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+    }
+
+    #[test]
+    fn manual_merge_preserves_credentials_when_only_updating_sidebar_order() {
         let (_root, manager) = fixture();
         let state = sidebar_reorder_state(&manager);
         write_projects(&manager, &state);
         let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
         let before_vault = fs::read(manager.vault_path()).unwrap();
-        let state_path = manager.codex_home_path().join(".codex-global-state.json");
-        let before_projects = fs::read(&state_path).unwrap();
-        let client = FakeClient::new(&manager);
-
-        let error = switch_with_client(&manager, "target", false, true, true, &client, |_| {})
-            .err()
-            .unwrap();
-
-        assert_eq!(error, crate::project_state::QUIT_REQUIRED);
-        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
-        assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
-        assert!(fs::read(&state_path).unwrap() == before_projects);
-        assert!(!manager.project_state_backup_path().exists());
-        assert_eq!(*client.calls.borrow(), ["is_stopped"]);
-    }
-
-    #[test]
-    fn sidebar_reorder_is_backed_up_and_applied_before_launch_without_new_projects() {
-        let (_root, manager) = fixture();
-        let state = sidebar_reorder_state(&manager);
-        write_projects(&manager, &state);
         let mut expected = state.clone();
         expected["electron-account-renderer-state-v1"]["inactive"][TARGET_OWNER]["atoms"]
             ["unified-sidebar-project-order-v1"] =
             state["electron-persisted-atom-state"]["unified-sidebar-project-order-v1"].clone();
-        let client = FakeClient::new(&manager);
-        let stages = RefCell::new(vec![]);
+        let mut client = FakeClient::new(&manager);
+        client.present = false;
 
-        let result = switch_with_client(&manager, "target", true, true, true, &client, |stage| {
-            stages.borrow_mut().push(stage);
-            if stage == SwitchStage::Launching {
-                assert_eq!(read_projects(&manager), expected);
-                assert_eq!(
-                    serde_json::from_slice::<Value>(
-                        &fs::read(manager.project_state_backup_path()).unwrap()
-                    )
-                    .unwrap(),
-                    state
-                );
-            }
-        })
-        .unwrap();
+        let result =
+            merge_projects_with_client(&manager, "current", "target", true, &client).unwrap();
 
         assert_eq!(
-            result.projects,
-            crate::project_state::CarryResult {
-                outcome: crate::project_state::CarryOutcome::Reordered,
+            result,
+            crate::project_state::MergeResult {
+                outcome: crate::project_state::MergeOutcome::Reordered,
                 copied: 0,
                 skipped: 0
             }
         );
-        assert_eq!(result.restart, RestartOutcome::Restarted);
-        assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
         assert_eq!(read_projects(&manager), expected);
         assert_eq!(
-            *stages.borrow(),
-            [
-                SwitchStage::Checking,
-                SwitchStage::Closing,
-                SwitchStage::Switching,
-                SwitchStage::CarryingProjects,
-                SwitchStage::Launching
-            ]
+            serde_json::from_slice::<Value>(
+                &fs::read(manager.project_state_backup_path()).unwrap()
+            )
+            .unwrap(),
+            state
         );
-        assert_eq!(
-            *client.calls.borrow(),
-            ["prepare", "close", "is_stopped", "is_stopped", "launch"]
-        );
-    }
-
-    #[test]
-    fn project_copy_on_closed_client_requires_supported_home_and_keeps_client_closed() {
-        let (_root, manager) = fixture();
-        let state = project_state(&manager);
-        write_projects(&manager, &state);
-        let mut client = FakeClient::new(&manager);
-        client.present = false;
-        assert_eq!(
-            switch_with_client(&manager, "target", false, true, false, &client, |_| {})
-                .err()
-                .unwrap(),
-            crate::project_state::UNSUPPORTED
-        );
-        assert_eq!(
-            manager.status().unwrap().active_account_id.as_deref(),
-            Some("current")
-        );
-        assert_eq!(read_projects(&manager), state);
-        let result =
-            switch_with_client(&manager, "target", false, true, true, &client, |_| {}).unwrap();
-        assert_eq!(
-            result.projects.outcome,
-            crate::project_state::CarryOutcome::Copied
-        );
-        assert_eq!(result.restart, RestartOutcome::NotRequested);
+        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+        assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
         assert_eq!(*client.calls.borrow(), ["is_stopped", "is_stopped"]);
     }
 
     #[test]
-    fn copy_failure_is_reported_separately_from_committed_auth_and_does_not_block_launch() {
+    fn manual_merge_requires_supported_home_and_stopped_client() {
+        for supported in [false, true] {
+            for reorder in [false, true] {
+                let (_root, manager) = fixture();
+                let state = if reorder {
+                    sidebar_reorder_state(&manager)
+                } else {
+                    project_state(&manager)
+                };
+                write_projects(&manager, &state);
+                let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
+                let before_vault = fs::read(manager.vault_path()).unwrap();
+                let client = FakeClient::new(&manager);
+                let error =
+                    merge_projects_with_client(&manager, "current", "target", supported, &client)
+                        .unwrap_err();
+                assert_eq!(
+                    error,
+                    if supported {
+                        crate::project_state::QUIT_REQUIRED
+                    } else {
+                        crate::project_state::UNSUPPORTED
+                    }
+                );
+                assert_eq!(read_projects(&manager), state);
+                assert!(!manager.project_state_backup_path().exists());
+                assert!(
+                    fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth
+                );
+                assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+                assert!(!client.calls.borrow().contains(&"close"));
+            }
+        }
+    }
+
+    #[test]
+    fn manual_merge_rejects_missing_or_same_accounts_without_writing() {
+        let (_root, manager) = fixture();
+        let state = project_state(&manager);
+        write_projects(&manager, &state);
+        let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
+        let before_vault = fs::read(manager.vault_path()).unwrap();
+        let mut client = FakeClient::new(&manager);
+        client.present = false;
+        for (source, target, error) in [
+            ("current", "current", crate::project_state::SAME_ACCOUNT),
+            ("missing", "target", crate::project_state::IDENTITY_ERROR),
+            ("current", "missing", crate::project_state::IDENTITY_ERROR),
+        ] {
+            assert_eq!(
+                merge_projects_with_client(&manager, source, target, true, &client).unwrap_err(),
+                error
+            );
+        }
+        assert_eq!(read_projects(&manager), state);
+        assert!(!manager.project_state_backup_path().exists());
+        assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+        assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+    }
+
+    #[test]
+    fn manual_merge_never_recovers_credential_or_vault_backups() {
+        for missing_vault in [false, true] {
+            let (_root, manager) = fixture();
+            let state = project_state(&manager);
+            write_projects(&manager, &state);
+            let auth_path = manager.codex_home_path().join("auth.json");
+            let auth_backup = auth_path.with_extension("cam-backup");
+            let vault_backup = manager.vault_path().with_extension("cam-backup");
+            let before_auth = fs::read(&auth_path).unwrap();
+            let before_vault = fs::read(manager.vault_path()).unwrap();
+            fs::rename(&auth_path, &auth_backup).unwrap();
+            if missing_vault {
+                fs::rename(manager.vault_path(), &vault_backup).unwrap();
+            }
+            let mut client = FakeClient::new(&manager);
+            client.present = false;
+
+            let result = merge_projects_with_client(&manager, "current", "target", true, &client);
+
+            assert!(!auth_path.exists());
+            assert!(fs::read(&auth_backup).unwrap() == before_auth);
+            if missing_vault {
+                assert_eq!(result.unwrap_err(), crate::project_state::IDENTITY_ERROR);
+                assert!(!manager.vault_path().exists());
+                assert!(fs::read(&vault_backup).unwrap() == before_vault);
+                assert_eq!(read_projects(&manager), state);
+                assert!(!manager.project_state_backup_path().exists());
+            } else {
+                assert_eq!(
+                    result.unwrap().outcome,
+                    crate::project_state::MergeOutcome::Copied
+                );
+                assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+            }
+        }
+    }
+
+    #[test]
+    fn manual_merge_does_not_write_when_client_reopens_or_backup_fails() {
         for reappears in [false, true] {
             let (_root, manager) = fixture();
             let state = project_state(&manager);
             write_projects(&manager, &state);
+            let before_auth = fs::read(manager.codex_home_path().join("auth.json")).unwrap();
+            let before_vault = fs::read(manager.vault_path()).unwrap();
             let mut client = FakeClient::new(&manager);
-            client.reappears_after_switch = reappears;
+            client.present = false;
+            client.reappears_on_second_check = reappears;
             if !reappears {
                 fs::create_dir(manager.project_state_backup_path()).unwrap();
             }
-            let result =
-                switch_with_client(&manager, "target", true, true, true, &client, |_| {}).unwrap();
-            assert_eq!(
-                result.projects.outcome,
-                crate::project_state::CarryOutcome::Failed
-            );
-            assert_eq!(result.projects.copied, 0);
-            assert_eq!(result.status.active_account_id.as_deref(), Some("target"));
-            assert_eq!(result.restart, RestartOutcome::Restarted);
+
+            let result = merge_projects_with_client(&manager, "current", "target", true, &client);
+
+            if reappears {
+                assert_eq!(result.unwrap_err(), crate::project_state::QUIT_REQUIRED);
+                assert!(!manager.project_state_backup_path().exists());
+            } else {
+                let result = result.unwrap();
+                assert_eq!(result.outcome, crate::project_state::MergeOutcome::Failed);
+                assert_eq!(result.copied, 0);
+            }
             assert_eq!(read_projects(&manager), state);
-            assert_eq!(client.calls.borrow().last(), Some(&"launch"));
+            assert!(fs::read(manager.codex_home_path().join("auth.json")).unwrap() == before_auth);
+            assert!(fs::read(manager.vault_path()).unwrap() == before_vault);
+            assert_eq!(*client.calls.borrow(), ["is_stopped", "is_stopped"]);
         }
     }
 

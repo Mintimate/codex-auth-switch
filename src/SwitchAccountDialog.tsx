@@ -4,26 +4,19 @@ import type { Translate } from "./i18n";
 export function SwitchAccountDialog({
   label,
   restartSupported,
-  carryProjects,
   onClose,
   onConfirm,
   t,
 }: {
   label: string;
   restartSupported: boolean;
-  carryProjects: boolean;
   onClose: () => void;
-  onConfirm: (
-    restart: boolean,
-    remember: boolean,
-    carryProjects: boolean,
-  ) => void;
+  onConfirm: (restart: boolean, remember: boolean) => void;
   t: Translate;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const switchOnlyRef = useRef<HTMLButtonElement>(null);
   const [remember, setRemember] = useState(false);
-  const [inheritProjects, setInheritProjects] = useState(carryProjects);
   useEffect(() => {
     const dialog = dialogRef.current;
     const previousFocus = document.activeElement;
@@ -52,18 +45,6 @@ export function SwitchAccountDialog({
       <label className="switch-remember-choice">
         <input
           type="checkbox"
-          checked={inheritProjects}
-          onChange={(event) => setInheritProjects(event.target.checked)}
-          aria-describedby="switch-projects-hint"
-        />
-        <span>{t("carryLocalProjects")}</span>
-      </label>
-      <p id="switch-projects-hint" className="switch-result-hint">
-        {t("carryLocalProjectsHint")}
-      </p>
-      <label className="switch-remember-choice">
-        <input
-          type="checkbox"
           checked={remember}
           onChange={(event) => setRemember(event.target.checked)}
         />
@@ -78,7 +59,7 @@ export function SwitchAccountDialog({
           className="button secondary"
           ref={switchOnlyRef}
           autoFocus
-          onClick={() => onConfirm(false, remember, inheritProjects)}
+          onClick={() => onConfirm(false, remember)}
         >
           {t("switchOnly")}
         </button>
@@ -86,7 +67,7 @@ export function SwitchAccountDialog({
           type="button"
           className="button primary"
           disabled={!restartSupported}
-          onClick={() => onConfirm(true, remember, inheritProjects)}
+          onClick={() => onConfirm(true, remember)}
         >
           {t("switchAndRestart")}
         </button>

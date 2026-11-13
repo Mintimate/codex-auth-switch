@@ -577,20 +577,31 @@ impl AccountManager {
         self.status()
     }
 
-    pub(crate) fn prepare_project_copy(
+    pub(crate) fn prepare_project_merge(
         &self,
-        profile_id: &str,
-    ) -> Result<crate::project_state::PreparedCopy, &'static str> {
-        let vault = self
-            .load_vault()
-            .map_err(|_| crate::project_state::IDENTITY_ERROR)?;
+        source_profile_id: &str,
+        target_profile_id: &str,
+    ) -> Result<crate::project_state::PreparedMerge, &'static str> {
+        if source_profile_id == target_profile_id {
+            return Err(crate::project_state::SAME_ACCOUNT);
+        }
+        // 一次性项目合并严格只读账号库，避免通用读取路径恢复旧版 Windows 备份或读取当前认证。
+        let vault: Vault = fs::read(&self.vault_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .filter(|vault: &Vault| vault.version == VAULT_VERSION)
+            .ok_or(crate::project_state::IDENTITY_ERROR)?;
+        let source = vault
+            .profiles
+            .iter()
+            .find(|p| p.id == source_profile_id)
+            .ok_or(crate::project_state::IDENTITY_ERROR)?;
         let target = vault
             .profiles
             .iter()
-            .find(|p| p.id == profile_id)
+            .find(|p| p.id == target_profile_id)
             .ok_or(crate::project_state::IDENTITY_ERROR)?;
-        let current = self.read_live_auth().unwrap_or(Value::Null);
-        crate::project_state::prepare(&self.codex_home, &current, &target.auth)
+        crate::project_state::prepare(&self.codex_home, &source.auth, &target.auth)
     }
 
     pub(crate) fn project_state_backup_path(&self) -> PathBuf {

@@ -70,14 +70,20 @@ const backendErrorTranslations: Record<string, string> = {
     "Cannot confirm that the desktop app uses this custom CODEX_HOME. Choose Switch only.",
   "账号切换操作中断，请刷新账号状态后重试":
     "Account switching was interrupted. Refresh the account status before retrying.",
-  "无法安全读取 Codex 项目配置；可关闭沿用本地项目后切换账号":
-    "Could not safely read Codex project settings. Turn off Keep local projects when switching to continue.",
-  "无法确认项目所属账号；请重新登录，或关闭沿用本地项目后切换账号":
-    "Could not confirm the project's account. Sign in again, or turn off Keep local projects when switching.",
-  "沿用本地项目需要先完全退出 Codex，或选择切换并重启；也可关闭沿用后仅切换账号":
-    "Fully quit Codex first or choose Switch and restart to keep local projects. You can also turn off Keep local projects when switching and choose Switch only.",
-  "当前环境无法安全沿用本地项目；请关闭沿用本地项目后切换账号":
-    "This environment cannot safely copy local projects. Turn off Keep local projects when switching to continue.",
+  "无法安全读取 Codex 项目配置，未执行合并":
+    "Could not safely read Codex project settings. No merge was performed.",
+  "无法确认项目所属账号，请重新选择已保存的账号":
+    "Could not confirm project ownership. Select the saved accounts again.",
+  "请先完全退出 Codex，再执行一次性项目合并":
+    "Fully quit Codex before running the one-time project merge.",
+  "一次性项目合并仅支持 macOS / Windows 的默认 Codex 目录":
+    "One-time project merging requires the default Codex directory on macOS or Windows.",
+  请选择不同的来源账号和目标账号:
+    "Select different source and target accounts.",
+  "其他账号操作正在进行，请稍后再合并项目":
+    "Another account operation is in progress. Try merging again later.",
+  "项目合并操作中断，请检查项目状态后重试":
+    "Project merging was interrupted. Check project state before retrying.",
   "代理配置文件格式错误，请检查 network-proxy.json":
     "Invalid proxy configuration. Check network-proxy.json.",
   "无法读取代理配置文件，请检查 network-proxy.json 的访问权限":

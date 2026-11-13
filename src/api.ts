@@ -49,17 +49,15 @@ export type AppStatus = {
 };
 
 export type SwitchPreference = "ask" | "switchOnly" | "restart";
-export type SwitchStage =
-  "checking" | "closing" | "switching" | "carryingProjects" | "launching";
-export type ProjectCarryResult = {
-  outcome: "disabled" | "notNeeded" | "copied" | "reordered" | "failed";
+export type SwitchStage = "checking" | "closing" | "switching" | "launching";
+export type ProjectMergeResult = {
+  outcome: "notNeeded" | "copied" | "reordered" | "failed";
   copied: number;
   skipped: number;
 };
 export type SwitchResult = {
   status: AppStatus;
   restart: "notRequested" | "notRunning" | "restarted" | "launchFailed";
-  projects: ProjectCarryResult;
 };
 
 export type WindowsStartupInspection = {
@@ -786,6 +784,19 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
       return args?.checkId === "preview-windows-startup"
         ? Promise.resolve({ outcome: "opened" } as T)
         : Promise.reject(new Error("staleCheck"));
+    if (command === "merge_local_projects") {
+      if (args?.sourceProfileId === args?.targetProfileId)
+        return Promise.reject(new Error("请选择不同的来源账号和目标账号"));
+      if (
+        ![args?.sourceProfileId, args?.targetProfileId].every((id) =>
+          previewStatus.accounts.some((account) => account.id === id),
+        )
+      )
+        return Promise.reject(
+          new Error("无法确认项目所属账号，请重新选择已保存的账号"),
+        );
+      return Promise.resolve({ outcome: "copied", copied: 3, skipped: 1 } as T);
+    }
     if (
       command === "switch_account" ||
       command === "switch_account_with_options"
@@ -805,11 +816,6 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
             : {
                 status: previewStatus,
                 restart: args?.restart ? "restarted" : "notRequested",
-                projects: {
-                  outcome: args?.carryProjects ? "copied" : "disabled",
-                  copied: args?.carryProjects ? 3 : 0,
-                  skipped: 0,
-                },
               },
         ) as T,
       );
@@ -1117,11 +1123,19 @@ export const clearQuotaHistory = () => call<void>("clear_quota_history");
 export const desktopRestartSupported = () =>
   call<boolean>("desktop_restart_supported");
 
+export const mergeLocalProjects = (
+  sourceProfileId: string,
+  targetProfileId: string,
+) =>
+  call<ProjectMergeResult>("merge_local_projects", {
+    sourceProfileId,
+    targetProfileId,
+  });
+
 export const switchAccountWithOptions = (
   profileId: string,
   restart: boolean,
   onProgress: (stage: SwitchStage) => void,
-  carryProjects = true,
 ) => {
   if (isPublicDemo) return Promise.reject(demoReadOnlyError());
   if (isBrowserPreview()) {
@@ -1129,7 +1143,6 @@ export const switchAccountWithOptions = (
     return call<SwitchResult>("switch_account_with_options", {
       profileId,
       restart,
-      carryProjects,
     });
   }
   const channel = new Channel<SwitchStage>();
@@ -1137,7 +1150,6 @@ export const switchAccountWithOptions = (
   return call<SwitchResult>("switch_account_with_options", {
     profileId,
     restart,
-    carryProjects,
     onProgress: channel,
   });
 };

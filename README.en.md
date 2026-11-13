@@ -170,11 +170,7 @@ Local Codex sign-in uses a separate temporary directory and preserves current au
 
 Select **Switch** beside the two-arrow icon, then choose **Switch only** or **Switch and restart**. You can remember the choice and change it under **Settings → Saved account switching**. The default is to ask every time, with automatic restart off.
 
-**Keep local projects when switching** is on by default and can be disabled in the switch dialog or Settings. For the account-scoped project state observed in Codex `26.1103.31037`, switching saved accounts merges recognized local folder projects into the target account in the previous account's saved order. Projects unique to the target account are preserved, keeping their relative order. Identical project IDs or directory sets are not added twice, and order changes are applied even when no new projects need to be added. Cloud, account-linked, conflicting, and unknown project structures are skipped and counted. This merges project entries and their order per switch; it does not continuously sync projects or aggregate or rewrite conversations, databases, or model provider settings.
-
-When new projects need to be added or their order needs to change, choose **Switch and restart** or fully quit Codex first. **Switch only** stops before changing authentication if Codex is still running. Project copying currently requires a verifiably closed macOS / Windows desktop app and the default Codex directory; disable this option in other environments. Device Code sign-in and Auth imports do not copy projects; switching a saved account after local Codex sign-in supports this option. Legacy project settings without account scopes are left unchanged. This is a local compatibility layer and may require updates for future Codex releases.
-
-Before writing project settings, the app saves `codex-project-state-backup.v1.json` alongside its account vault. It retains only the latest complete original snapshot, up to 32 MiB, which may contain private UI state and should not be shared publicly. Invalid configuration or unconfirmed ownership stops the operation; failed backups or detected concurrent changes prevent overwriting project settings. If authentication has already switched, project-copy failure is reported separately without rolling back credentials. Verify project loading after reopening Codex.
+Account switching only handles authentication and the optional desktop restart. It no longer reads or merges project settings. The previous automatic-copy preference is cleared; use **Labs → Merge local projects once** for manual recovery on older Codex versions.
 
 Restarting validates the target and desktop app, requests a normal quit, waits for the app to exit, saves the previous account's latest credentials, atomically replaces `auth.json`, and reopens the same app. Finish running tasks first. A quit timeout leaves authentication unchanged and never force-kills processes. A launch failure is reported separately after a successful account switch. An app that is already closed is not launched.
 
@@ -193,6 +189,16 @@ One-time Auth transfer supports QR codes and the clipboard. Stop Codex sessions 
 ## Labs
 
 Labs groups experimental features in the sidebar. Local Codex sign-in is off by default, and its toggle is saved only on this device. Enable it to choose local Codex or OAuth in the sign-in dialog. Turning it off restores OAuth as the available method and keeps saved accounts.
+
+### Merge local projects once
+
+This manual recovery option targets account-scoped project lists in older Codex versions such as `26.1103`. Finish your tasks and fully quit Codex, select saved source and target accounts, then click **Merge once**. It runs once without switching sign-in, launching Codex, or enabling ongoing sync. Newer Codex versions usually do not need it. Normal account switching is independent of this feature.
+
+Recognized local folder projects are merged in the source account's saved order. Existing target names and settings are preserved, along with target-only projects and their relative order. Matching project IDs or folder sets are deduplicated; order-only changes are supported. Cloud, account-linked, conflicting, and unsupported projects are skipped and counted. Authentication, the account vault, conversation content, databases, and model-provider settings are not modified.
+
+This requires the default Codex directory on macOS or Windows and a safely confirmed stopped desktop client. Before writing, the tool saves `codex-project-state-backup.v1.json` beside the account vault, retaining only the latest original snapshot (up to 32 MiB; it can contain private UI state and should not be shared publicly). Invalid settings, uncertain ownership, backup failures, changed files, or a reopened client stop the relevant operation. Settings without legacy account partitions stay unchanged. Reopen Codex and check the target account to verify loading. This is an internal-format compatibility layer, not an officially guaranteed API.
+
+### Windows startup repair
 
 For Windows startup errors such as “The process has no package identity,” open **Labs → Windows startup repair**, inspect the installation, then select **Repair and open** after checking the version. This feature only handles recognized Codex Store/MSIX packages: it registers the current user's startup entry again and attempts to launch the app. Save your work and fully exit Codex first. It does not reset the app, clear saved accounts, or modify authentication files. Missing or ambiguous installations and running processes prevent repair. Missing installation files and other unsupported cases still require Windows app repair or the original installer. Successful inspection and process startup do not establish that the window works normally. See the [Windows validation guide (Chinese)](docs/windows-restart-validation.md).
 

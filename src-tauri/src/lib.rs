@@ -558,25 +558,40 @@ async fn switch_account_with_options(
     state: State<'_, AppState>,
     profile_id: String,
     restart: bool,
-    carry_projects: Option<bool>,
     on_progress: tauri::ipc::Channel<desktop_client::SwitchStage>,
 ) -> Result<desktop_client::SwitchResult, String> {
     let _guard = state.operation_gate.lock().await;
     let manager = account_manager(&app)?;
     // 进程检测与退出等待不能占用 WebView 主线程或异步运行时工作线程。
     tauri::async_runtime::spawn_blocking(move || {
-        desktop_client::switch_account(
-            &manager,
-            &profile_id,
-            restart,
-            carry_projects.unwrap_or(true),
-            |stage| {
-                let _ = on_progress.send(stage);
-            },
-        )
+        desktop_client::switch_account(&manager, &profile_id, restart, |stage| {
+            let _ = on_progress.send(stage);
+        })
     })
     .await
     .map_err(|_| "账号切换操作中断，请刷新账号状态后重试".to_string())?
+}
+
+#[tauri::command]
+async fn merge_local_projects(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source_profile_id: String,
+    target_profile_id: String,
+) -> Result<project_state::MergeResult, String> {
+    let guard = state
+        .operation_gate
+        .clone()
+        .try_lock_owned()
+        .map_err(|_| "其他账号操作正在进行，请稍后再合并项目".to_string())?;
+    let manager = account_manager(&app)?;
+    // 面板关闭或调用取消时仍持锁到实际写入完成，避免与登录、切换及额度凭据刷新交错。
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
+        desktop_client::merge_local_projects(&manager, &source_profile_id, &target_profile_id)
+    })
+    .await
+    .map_err(|_| "项目合并操作中断，请检查项目状态后重试".to_string())?
 }
 
 #[tauri::command]
@@ -763,6 +778,7 @@ pub fn run() {
             inspect_windows_startup,
             repair_windows_startup,
             switch_account_with_options,
+            merge_local_projects,
             rename_account,
             remove_account,
             prepare_auth_transfer,
