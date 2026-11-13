@@ -23,7 +23,7 @@
   --activity-4: var(--accent-deep);
 }
 
-/* 水鸭主题参考 TT Switch 的 themePalettes.ts：
+/* 水鸭主题的中性色阶：
    用背景与文字色推导页面、侧栏、卡片和交互底色，强调色单独配对。
    下方保留推导后的 sRGB 色值，兼容不支持 color-mix 的 WebView。 */
 :root[data-palette="mint_light_blue"],

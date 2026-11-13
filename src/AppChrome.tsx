@@ -9,6 +9,7 @@ const APP_TABS: AppTab[] = [
   "accounts",
   "config",
   "usage",
+  "monitor",
   "quota",
   "value",
   "labs",
@@ -55,6 +56,16 @@ function PrivacyModeIcon({ enabled }: { enabled: boolean }) {
 }
 
 function TabIcon({ tab }: { tab: AppTab }) {
+  if (tab === "monitor") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M5 5v10M5 10h10V5" />
+        <circle cx="5" cy="3" r="2" />
+        <circle cx="5" cy="17" r="2" />
+        <circle cx="15" cy="3" r="2" />
+      </svg>
+    );
+  }
   if (tab === "labs") {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -115,6 +126,7 @@ const tabLabel = (tab: AppTab, t: Translate) => {
   if (tab === "accounts") return t("accountsTab");
   if (tab === "config") return t("configTab");
   if (tab === "usage") return t("usageTab");
+  if (tab === "monitor") return t("monitorTab");
   if (tab === "quota") return t("quotaTab");
   if (tab === "value") return t("costTitle");
   if (tab === "labs") return t("labsTab");

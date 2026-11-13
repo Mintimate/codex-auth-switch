@@ -1,2 +1,9 @@
 export type AppTab =
-  "accounts" | "config" | "usage" | "quota" | "value" | "labs" | "settings";
+  | "accounts"
+  | "config"
+  | "usage"
+  | "monitor"
+  | "quota"
+  | "value"
+  | "labs"
+  | "settings";

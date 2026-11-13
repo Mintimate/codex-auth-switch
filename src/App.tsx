@@ -55,6 +55,7 @@ import { useAppearance } from "./theme";
 import { QuotaPanel } from "./QuotaPanel";
 import { SubscriptionValuePage } from "./SubscriptionValuePage";
 import { UsagePanel } from "./UsagePanel";
+import { CallMonitorPanel } from "./CallMonitorPanel";
 import { SwitchResultPanel } from "./SwitchResultPanel";
 import type { SwitchReport } from "./SwitchResultPanel";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
@@ -87,6 +88,7 @@ const storedDefaultTab = (): AppTab => {
   return value === "accounts" ||
     value === "config" ||
     value === "usage" ||
+    value === "monitor" ||
     value === "quota" ||
     value === "value" ||
     value === "labs" ||
@@ -816,6 +818,21 @@ function App() {
                   privateMode={privateMode}
                   t={t}
                   modelProvider={modelProvider}
+                />
+              </div>
+            )}
+
+            {activeTab === "monitor" && (
+              <div
+                id="monitor-panel"
+                className="tab-panel"
+                role="tabpanel"
+                aria-label={t("monitorTab")}
+              >
+                <CallMonitorPanel
+                  locale={locale}
+                  t={t}
+                  privateMode={privateMode}
                 />
               </div>
             )}

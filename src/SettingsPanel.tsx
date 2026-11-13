@@ -231,6 +231,7 @@ export function SettingsPanel({
     { label: t("accountsTab"), value: "accounts" },
     { label: t("configTab"), value: "config" },
     { label: t("usageTab"), value: "usage" },
+    { label: t("monitorTab"), value: "monitor" },
     { label: t("quotaTab"), value: "quota" },
     { label: t("costTitle"), value: "value" },
     { label: t("labsTab"), value: "labs" },
