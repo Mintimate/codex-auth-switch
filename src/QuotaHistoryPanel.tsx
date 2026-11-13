@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { isPublicDemo } from "./runtime";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
@@ -155,7 +156,7 @@ export function QuotaHistoryPanel({
       <div className="history-controls">
         <label>
           {t("historyWindow")}
-          <select
+          <Select
             value={selection ?? ""}
             disabled={!series.length}
             onChange={(e) => {
@@ -176,11 +177,11 @@ export function QuotaHistoryPanel({
                 )}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           {t("historyRange")}
-          <select
+          <Select
             value={days}
             onChange={(e) => {
               setDays(Number(e.target.value));
@@ -190,7 +191,7 @@ export function QuotaHistoryPanel({
             <option value={1}>{t("history24Hours")}</option>
             <option value={7}>{t("last7Days")}</option>
             <option value={30}>{t("last30Days")}</option>
-          </select>
+          </Select>
         </label>
       </div>
       {loading && !history ? (

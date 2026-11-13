@@ -129,16 +129,7 @@
 .history-controls label:first-child {
   flex: 1;
 }
-.history-controls select {
-  max-width: 100%;
-  min-width: 0;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--input);
-  color: var(--foreground);
-  font: inherit;
-}
+
 .history-empty {
   padding: 32px 16px;
   text-align: center;
@@ -2203,7 +2194,6 @@ button:disabled {
     flex-wrap: wrap;
   }
 }
-.cost-controls select,
 .cost-percent-input input {
   width: 100%;
   min-width: 0;
@@ -2226,33 +2216,46 @@ button:disabled {
   align-content: start;
   gap: 9px;
 }
-.cost-select {
+.select-control {
+  display: inline-grid;
   position: relative;
   min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
 }
-/* 使用原生菜单和键盘语义，但不让平台默认外观限制选择框高度。 */
-.cost-select select {
+/* 保留原生菜单和键盘语义，统一所有下拉框的外观与箭头位置。 */
+.select-control select {
   display: block;
   -webkit-appearance: none;
   appearance: none;
+  width: 100%;
+  min-width: 0;
   min-height: 46px;
-  padding: 12px 14px;
-  padding-inline-end: 42px;
+  border: 1px solid var(--border);
   border-radius: 11px;
+  background: var(--input);
+  color: var(--foreground);
+  padding: 10px 14px;
+  padding-inline-end: 42px;
+  font: inherit;
   font-size: var(--text-body);
   line-height: var(--leading-normal);
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.cost-select select:hover:not(:disabled) {
+.select-control select:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
-.cost-select select:disabled {
+.select-control select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.select-control select:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
-.cost-select > svg {
+.select-control > svg {
   position: absolute;
   top: 50%;
   inset-inline-end: 14px;
@@ -2260,7 +2263,7 @@ button:disabled {
   color: var(--muted);
   pointer-events: none;
 }
-.cost-select select:disabled + svg {
+.select-control select:disabled + svg {
   opacity: 0.55;
 }
 .cost-presets {
@@ -2361,7 +2364,6 @@ button:disabled {
   padding: 7px 5px;
   font-variant-numeric: tabular-nums;
 }
-.cost-controls select:focus-visible,
 .cost-ratio-control input:focus-visible,
 .cost-preset:focus-visible {
   outline: 2px solid var(--accent);
@@ -2954,18 +2956,8 @@ button:disabled {
   padding: 0;
 }
 
-.quota-activity-overview select {
-  min-width: 0;
+.quota-activity-overview .select-control {
   width: 180px;
-  max-width: 100%;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--input);
-  color: var(--foreground);
-  padding: 0 8px;
-  font: inherit;
-  font-size: var(--text-body);
 }
 
 .quota-activity-coverage {
@@ -5003,15 +4995,6 @@ button:disabled {
   accent-color: var(--accent);
 }
 
-.switch-preference-select {
-  max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: var(--foreground);
-  background: var(--input);
-}
-
 .switch-progress .spinner {
   flex-shrink: 0;
   width: 18px;
@@ -6077,13 +6060,13 @@ button:disabled {
   display: flex;
   width: 210px;
   max-width: 100%;
-  height: 34px;
+  height: 46px;
   align-items: center;
   gap: 6px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 11px;
   background: var(--input);
-  padding: 0 8px;
+  padding: 0 14px;
   color: var(--muted);
 }
 
@@ -6109,20 +6092,6 @@ button:disabled {
 
 .quota-search > svg {
   flex: none;
-}
-
-.quota-table-tools select,
-.quota-detail-header select {
-  min-width: 0;
-  max-width: 100%;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--input);
-  padding: 0 8px;
-  color: var(--foreground);
-  font: inherit;
-  font-size: var(--text-body);
 }
 
 .quota-filter-bar,
@@ -6434,7 +6403,7 @@ button:disabled {
   font-size: var(--text-title);
 }
 
-.quota-detail-header select {
+.quota-detail-header .select-control {
   width: 240px;
 }
 
@@ -6509,7 +6478,7 @@ button:disabled {
     padding: 14px 14px 0;
   }
 
-  .quota-detail-header select {
+  .quota-detail-header .select-control {
     order: 3;
     width: 100%;
   }
@@ -6680,16 +6649,6 @@ button:disabled {
   gap: 8px;
   min-width: 0;
   color: var(--foreground);
-}
-.project-merge-accounts select {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 10px;
-  color: var(--foreground);
-  background: var(--input);
-  font: inherit;
 }
 .project-merge-result,
 .project-merge-error {

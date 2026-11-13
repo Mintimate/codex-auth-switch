@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { isPublicDemo } from "./runtime";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -520,8 +521,7 @@ export function SettingsPanel({
                 <span>{t("desktopRestartUnavailable")}</span>
               )}
             </div>
-            <select
-              className="switch-preference-select"
+            <Select
               aria-label={t("switchPreference")}
               disabled={isPublicDemo}
               value={switchPreference}
@@ -534,7 +534,7 @@ export function SettingsPanel({
               <option value="restart" disabled={!restartSupported}>
                 {t("switchAndRestart")}
               </option>
-            </select>
+            </Select>
           </div>
         </section>
 

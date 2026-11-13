@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useState } from "react";
 import {
   ChevronLeft,
@@ -155,7 +156,7 @@ export function QuotaAccountTable({
                 </button>
               )}
             </div>
-            <select
+            <Select
               aria-label={t("quotaSortAccounts")}
               value={sort}
               onChange={(event) => {
@@ -169,7 +170,7 @@ export function QuotaAccountTable({
               <option value="sevenDays">{t("quotaSortSevenDays")}</option>
               <option value="thirtyDays">{t("quotaSortThirtyDays")}</option>
               <option value="credits">{t("quotaSortCredits")}</option>
-            </select>
+            </Select>
           </div>
         </div>
         <div

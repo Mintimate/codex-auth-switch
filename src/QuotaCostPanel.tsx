@@ -1,12 +1,7 @@
+import { Select } from "./Select";
 import { useEffect, useId, useState } from "react";
 import { isPublicDemo } from "./runtime";
-import {
-  ArrowLeftRight,
-  Check,
-  ChevronDown,
-  Info,
-  RefreshCw,
-} from "lucide-react";
+import { ArrowLeftRight, Check, Info, RefreshCw } from "lucide-react";
 import { ExternalLink } from "./ExternalLink";
 import { getModelPrices } from "./api";
 import type { AccountQuota, AccountSummary, ModelPrices } from "./api";
@@ -248,72 +243,61 @@ export function QuotaCostPanel({
         <div className="cost-selectors">
           <div className="cost-field" data-cost-tour="account">
             <label htmlFor={`${id}-account`}>{t("costAccountScope")}</label>
-            <div className="cost-select">
-              <select
-                id={`${id}-account`}
-                value={selectedId}
-                onChange={(event) => setProfileId(event.target.value)}
-              >
-                <option value="">{t("quotaActivityAllAccounts")}</option>
-                {accounts.map((account) => (
-                  <option value={account.id} key={account.id}>
-                    {displayLabel(account.label)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} aria-hidden="true" />
-            </div>
+            <Select
+              id={`${id}-account`}
+              value={selectedId}
+              onChange={(event) => setProfileId(event.target.value)}
+            >
+              <option value="">{t("quotaActivityAllAccounts")}</option>
+              {accounts.map((account) => (
+                <option value={account.id} key={account.id}>
+                  {displayLabel(account.label)}
+                </option>
+              ))}
+            </Select>
           </div>
           <div className="cost-field" data-cost-tour="model">
             <label htmlFor={`${id}-model`}>{t("costReferenceModel")}</label>
-            <div className="cost-select">
-              <select
-                id={`${id}-model`}
-                value={selectedPrice?.model ?? ""}
-                disabled={!prices.length}
-                onChange={(event) => {
-                  setModel(event.target.value);
-                  if (guideOpen && tourStep === 1 && event.target.value)
-                    setTourStep(2);
-                }}
-              >
-                <option value="">
-                  {t(
-                    loading && !prices.length
-                      ? "costLoading"
-                      : "costChooseModel",
-                  )}
+            <Select
+              id={`${id}-model`}
+              value={selectedPrice?.model ?? ""}
+              disabled={!prices.length}
+              onChange={(event) => {
+                setModel(event.target.value);
+                if (guideOpen && tourStep === 1 && event.target.value)
+                  setTourStep(2);
+              }}
+            >
+              <option value="">
+                {t(
+                  loading && !prices.length ? "costLoading" : "costChooseModel",
+                )}
+              </option>
+              {sortedPrices.map((price) => (
+                <option value={price.model} key={price.model}>
+                  {price.model}
                 </option>
-                {sortedPrices.map((price) => (
-                  <option value={price.model} key={price.model}>
-                    {price.model}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} aria-hidden="true" />
-            </div>
+              ))}
+            </Select>
           </div>
 
           <div className="cost-field" data-cost-tour="comparison">
             <label htmlFor={`${id}-comparison`}>
               {t("costComparisonModel")}
             </label>
-            <div className="cost-select">
-              <select
-                id={`${id}-comparison`}
-                value={comparisonPrice?.model ?? ""}
-                disabled={!prices.length}
-                onChange={(event) => setComparisonModel(event.target.value)}
-              >
-                <option value="">{t("costChooseComparison")}</option>
-                {sortedPrices.map((price) => (
-                  <option value={price.model} key={price.model}>
-                    {price.model}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} aria-hidden="true" />
-            </div>
+            <Select
+              id={`${id}-comparison`}
+              value={comparisonPrice?.model ?? ""}
+              disabled={!prices.length}
+              onChange={(event) => setComparisonModel(event.target.value)}
+            >
+              <option value="">{t("costChooseComparison")}</option>
+              {sortedPrices.map((price) => (
+                <option value={price.model} key={price.model}>
+                  {price.model}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -78,7 +79,7 @@ export function QuotaDetailDialog({
     >
       <div className="quota-detail-header">
         <h2 id={`${id}-title`}>{t("quotaAccountDetails")}</h2>
-        <select
+        <Select
           aria-label={t("quotaSelectAccount")}
           value={account.id}
           onChange={(event) => onAccountChange(event.target.value)}
@@ -88,7 +89,7 @@ export function QuotaDetailDialog({
               {displayLabel(item.label)}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           type="button"
           className="quota-icon-button"

@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useEffect, useRef, useState } from "react";
 import { GitMerge, LoaderCircle } from "lucide-react";
 import {
@@ -116,7 +117,7 @@ export function ProjectMergePanel({
                         : "projectMergeTarget",
                     )}
                   </span>
-                  <select
+                  <Select
                     id={`project-merge-${role}`}
                     value={role === "source" ? sourceId : targetId}
                     disabled={disabled}
@@ -146,7 +147,7 @@ export function ProjectMergePanel({
                           : ""}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               ))}
             </div>

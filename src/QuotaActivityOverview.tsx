@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useState } from "react";
 import type { AccountQuota, AccountSummary } from "./api";
 import type { Locale, Translate } from "./i18n";
@@ -32,7 +33,7 @@ export function QuotaActivityOverview({
     ? 1
     : new Set(accounts.map((account) => account.accountId)).size;
   const selector = (
-    <select
+    <Select
       aria-label={t("quotaActivityScope")}
       value={selectedId}
       onChange={(event) => setProfileId(event.target.value)}
@@ -43,7 +44,7 @@ export function QuotaActivityOverview({
           {displayLabel(account.label)}
         </option>
       ))}
-    </select>
+    </Select>
   );
 
   return (
