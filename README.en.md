@@ -66,18 +66,29 @@ Codex Auth Switch saves and switches multiple Codex ChatGPT logins on one device
 
 ## Highlights
 
-The sidebar organizes actions and data into six pages:
+The sidebar organizes actions and data by page:
 
 | Page                         | Purpose                                                                                                                  |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Accounts                     | Save, rename, and switch local accounts; sign in through local Codex or Device Code; transfer Auth once with a QR code or clipboard     |
 | Codex config                 | Edit credential storage, context window, reasoning, response verbosity, and web search settings                          |
 | Token usage                  | View local session totals, daily trends, and attribution by account and model provider                                   |
+| Call monitor                 | Inspect calls within a selected time range, session and turn flows, parent/child sessions, and a filterable timeline  |
 | Subscription quotas          | Search, filter, and compare account quotas, recovery times, reset credits, and daily activity                            |
 | Subscription value simulator | Independently estimate the API value of 7 / 30 days of account usage with adjustable models, shares, and cost breakdowns |
 | Settings                     | Choose language, theme, privacy, and startup page; manage automatic refresh, diagnostics, and signed updates             |
 
 Consistent text sizes and responsive layouts keep controls, cards, and scrollable tables readable in narrower windows. The value simulator opens with its controls visible, can be the default startup page, and provides separate account-usage and price refresh actions.
+
+### Call monitor
+
+Open **Call monitor** to inspect local command execution, file changes, MCP tools, supported web-search events, and outer tool calls within a selected rolling time window. The default is 24 hours, with 1/6/24-hour and 3/7/30-day presets and a custom 1–720-hour range. Calls are filtered by recorded timestamps and the latest calls are retained first. Select a session, turn, or tool node to filter the timeline; sessions show local titles, project folder names and start times, with project/time fallbacks for unnamed sessions. Turns are numbered by start time within the current records. Expand a call for its timestamps, turn number, source and exit code. Filter by session, tool type, or result, and optionally select this page as your startup page.
+
+While visible, the page incrementally reads `CODEX_HOME/sessions` and `archived_sessions` every 3 seconds. Updates can be paused and stop when the page or window is hidden. It does not proxy model requests, add telemetry or a backend service, or change authentication or Codex configuration. Only execution metadata and checked display labels are retained in memory. Titles come from the local `session_index.jsonl` (up to its last 2 MiB); projects use only the final directory name, never the full path. Labels suspected of containing credentials are discarded. Private mode hides titles and projects. External identifiers remain hashed for internal linking; conversation bodies, commands, arguments, and returned content do not enter the frontend or monitor cache.
+
+Client execution events take priority; sessions without execution events fall back to outer call records to avoid adding orchestration wrappers to internal executions. Legacy records do not infer duration or errors from output text. An unobserved result does not mean a call is running, and completion does not guarantee business success. Recorded parallel durations are added separately and do not measure network latency or tokens per tool.
+
+**Read settings** control per-file read depth (1–64 MiB), candidate files (1–256), calls retained per file (1–5,000), displayed calls (1–20,000), and record size (1–8 MiB, no larger than the read depth). Defaults are 8 MiB, 64 files, 1,000 calls per file, 5,000 displayed calls, and 1 MiB per record, plus an initial metadata read. Settings stay on this device; changing them rebuilds the read cache. Files are selected by recent modification time and calls by recorded time. Coverage notices separately report omitted files, files reaching read-depth or retention limits, omitted calls, unreadable sources, invalid records and oversized records. Zero counts are hidden. Local log parsing is a compatibility layer whose coverage and timing depend on the client version, not an officially guaranteed monitoring interface. Browser previews use independent fictional data.
 
 ## Interface Preview
 
