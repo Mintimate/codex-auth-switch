@@ -1,5 +1,6 @@
 mod app_update;
 mod auth_share;
+mod call_monitor;
 mod codex_app_server;
 mod desktop_client;
 mod device_login;
@@ -29,6 +30,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 use usage::{LocalUsageStats, ModelProviderState};
+
+type CallMonitorState = Arc<std::sync::Mutex<call_monitor::MonitorCache>>;
 
 struct AppState {
     device_login: device_login::DeviceLoginState,
@@ -191,6 +194,28 @@ async fn get_local_usage(
         .local_usage(&state.operation_gate)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_call_monitor(
+    app: AppHandle,
+    state: State<'_, CallMonitorState>,
+    settings: Option<call_monitor::MonitorSettings>,
+) -> Result<call_monitor::Snapshot, String> {
+    let home = account_manager(&app)?.codex_home_path().to_path_buf();
+    let cache = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "无法读取调用监控时间".to_string())?
+            .as_millis() as u64;
+        cache
+            .lock()
+            .map_err(|_| "无法读取调用监控".to_string())
+            .map(|mut cache| cache.snapshot_with_settings(&home, now, settings.unwrap_or_default()))
+    })
+    .await
+    .map_err(|_| "无法读取调用监控".to_string())?
 }
 
 #[tauri::command]
@@ -717,6 +742,7 @@ pub fn run() {
             startup_repair: Arc::new(startup_repair::RepairService::default()),
         })
         .manage(app_update::AppUpdateState::default())
+        .manage(CallMonitorState::default())
         .setup(|app| {
             app.manage(quota_refresh::QuotaRefresh::new(app.path().app_data_dir()?));
             if let Ok(app_data_dir) = app.path().app_data_dir() {
@@ -750,6 +776,7 @@ pub fn run() {
             set_codex_config_choice,
             enable_file_credential_storage,
             get_local_usage,
+            get_call_monitor,
             get_model_prices,
             get_usage_cache_info,
             clear_usage_cache,

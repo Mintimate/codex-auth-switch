@@ -2,6 +2,13 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import packageMetadata from "../package.json";
 import pricingSnapshot from "./pricing-snapshot.json";
 import { demoReadOnlyError, isBrowserPreview, isPublicDemo } from "./runtime";
+import {
+  defaultMonitorSettings,
+  normalizeMonitorSettings,
+  previewCallMonitor,
+  type CallMonitorSnapshot,
+  type MonitorSettings,
+} from "./callMonitor";
 
 export type AccountSummary = {
   id: string;
@@ -692,6 +699,7 @@ const demoCommands = new Set([
   "inspect_windows_startup",
   "get_usage_cache_info",
   "get_local_usage",
+  "get_call_monitor",
   "get_model_prices",
   "get_model_provider_state",
   "get_account_quotas",
@@ -707,6 +715,13 @@ const call = <T>(command: string, args?: Record<string, unknown>) => {
   if (isPublicDemo && !demoCommands.has(command))
     return Promise.reject(demoReadOnlyError());
   if (isBrowserPreview()) {
+    if (command === "get_call_monitor")
+      return Promise.resolve(
+        previewCallMonitor(
+          Date.now(),
+          normalizeMonitorSettings(args?.settings),
+        ) as T,
+      );
     if (command === "get_diagnostic_logs")
       return Promise.resolve(structuredClone(previewDiagnosticLogs) as T);
     if (command === "set_diagnostic_logging") {
@@ -1007,6 +1022,10 @@ export const getLocalUsage = async () => {
     return (await getLegacyUsageOverview()).local;
   }
 };
+
+export const getCallMonitor = (
+  settings: MonitorSettings = defaultMonitorSettings,
+) => call<CallMonitorSnapshot>("get_call_monitor", { settings });
 
 export const getModelPrices = (refresh = false) =>
   call<ModelPrices>("get_model_prices", { refresh });
