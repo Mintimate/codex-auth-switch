@@ -45,6 +45,7 @@ test("演示版读取虚构数据，返回值不会污染后续读取", async ()
   });
   for (const read of [
     api.getLocalUsage,
+    api.getCallMonitor,
     api.getModelPrices,
     api.getModelProviderState,
     api.getAccountQuotas,
